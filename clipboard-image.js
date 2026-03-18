@@ -1,12 +1,21 @@
+function _clipboardGetFilePicker() {
+  return foundry?.applications?.apps?.FilePicker?.implementation || FilePicker;
+}
+
+function _clipboardGetKeyboardManager() {
+  return foundry?.helpers?.interaction?.KeyboardManager || KeyboardManager;
+}
+
 async function _clipboardCreateFolderIfMissing(folderPath) {
+  const FilePickerImpl = _clipboardGetFilePicker();
   let source = "data";
   if (typeof ForgeVTT != "undefined" && ForgeVTT.usingTheForge) {
     source = "forgevtt";
   }
   try {
-    await FilePicker.browse(source, folderPath);
+    await FilePickerImpl.browse(source, folderPath);
   } catch (error) {
-    await FilePicker.createDirectory(source, folderPath);
+    await FilePickerImpl.createDirectory(source, folderPath);
   }
 }
 
@@ -18,15 +27,50 @@ function _clipboardGetSource() {
   return source;
 }
 
-function _clipboardGetImageSizeFast(img, callback) {
-  const wait = setInterval(function () {
-    const w = img.width, h = img.height;
-    if (w && h) {
+function _clipboardGetTargetFolder() {
+  return game.settings.get("clipboard-image", "image-location")?.trim() || "pasted_images";
+}
+
+function _clipboardHasCopiedObjects() {
+  const layer = canvas?.activeLayer;
+  if (!layer) return false;
+
+  // Foundry V13+ exposes a public clipboard object. Keep the legacy fallback for older cores.
+  return Boolean(layer.clipboard?.objects?.length || layer._copy?.length);
+}
+
+function _clipboardGetMousePosition() {
+  if (canvas?.mousePosition) {
+    return {
+      x: canvas.mousePosition.x,
+      y: canvas.mousePosition.y,
+    };
+  }
+
+  const pointer = canvas?.app?.renderer?.events?.pointer;
+  if (!pointer) return null;
+  const point = pointer.getLocalPosition(canvas.stage);
+  return {x: point.x, y: point.y};
+}
+
+function _clipboardGetImageSizeFast(img) {
+  return new Promise((resolve, reject) => {
+    const wait = setInterval(() => {
+      const w = img.width;
+      const h = img.height;
+      if (w && h) {
+        clearInterval(wait);
+        img.src = "";
+        resolve({width: w, height: h});
+      }
+    }, 10);
+
+    img.onerror = () => {
       clearInterval(wait);
-      img.src = '';
-      callback.apply(this, [w, h]);
-    }
-  }, 10);
+      img.src = "";
+      reject(new Error("Failed to determine pasted image size"));
+    };
+  });
 }
 
 async function _extractFromClipboard() {
@@ -45,6 +89,7 @@ async function _extractFromClipboard() {
 }
 
 async function _extractBlob(clipItems) {
+  if (!clipItems?.[0]) return null;
   let blob;
   for (let idx = 0; idx < clipItems[0].types.length; idx++) {
     const ftype = clipItems[0].types[idx];
@@ -56,56 +101,49 @@ async function _extractBlob(clipItems) {
   return blob;
 }
 
-function _pasteBlob(blob) {
-  game.canvas.tiles.activate();
-  const mousePos = canvas.app.renderer.events.pointer.getLocalPosition(canvas.stage);
+async function _pasteBlob(blob, targetFolder) {
+  if (!canvas?.ready || !canvas.scene) return false;
 
-  if (document.activeElement !== $(".game")[0] ||
+  const FilePickerImpl = _clipboardGetFilePicker();
+  canvas.tiles.activate();
+  const mousePos = _clipboardGetMousePosition();
+  const gameElement = document.querySelector(".game");
+
+  if (!mousePos ||
+    (gameElement && document.activeElement !== gameElement) ||
     mousePos.x < 0 || mousePos.y < 0 ||
-    mousePos.x > canvas.dimensions.width || mousePos.y > canvas.dimensions.height) return;
+    mousePos.x > canvas.dimensions.width || mousePos.y > canvas.dimensions.height) return false;
 
-  CLIPBOARD_IMAGE_LOCKED = true;
+  const filename = "pasted_image_" + Date.now() + ".png";
+  const file = new File([blob], filename, {type: blob.type});
+  const path = (await FilePickerImpl.upload(_clipboardGetSource(), targetFolder, file, {})).path;
 
-  const reader = new FileReader();
-  reader.onload = async function () {
+  const curDims = game.scenes.active.dimensions;
+  const image = new Image();
+  image.src = path;
+  let {width: imgWidth, height: imgHeight} = await _clipboardGetImageSizeFast(image);
+  const origWidth = imgWidth;
 
-    const filename = "pasted_image_" + Date.now() + ".png";
-    const file = new File([blob], filename, {type: blob.type});
-    const targetFolder = game.settings.get('clipboard-image', 'image-location');
-    const path = (await FilePicker.upload(_clipboardGetSource(), targetFolder, file, {})).path;
+  if (imgHeight > curDims.sceneHeight || imgWidth > curDims.sceneWidth) {
+    imgWidth = curDims.sceneWidth / 3;
+    imgHeight = imgWidth * imgHeight / origWidth;
+  }
 
-    const curDims = game.scenes.active.dimensions
-    let image = new Image()
-    image.src = path;
-    image.onerror = function () {
-      CLIPBOARD_IMAGE_LOCKED = false
-    };
-    _clipboardGetImageSizeFast(image, async function (imgWidth, imgHeight) {
-      const origWidth = imgWidth;
-
-      if (imgHeight > curDims.sceneHeight || imgWidth > curDims.sceneWidth) {
-        imgWidth = curDims.sceneWidth / 3;
-        imgHeight = imgWidth * imgHeight / origWidth;
-      }
-
-      let newTile = [{
-        texture: {
-          src: path,
-        },
-        width: imgWidth,
-        height: imgHeight,
-        x: mousePos.x,
-        y: mousePos.y,
-        sort: 0,
-        rotation: 0,
-        hidden: CLIPBOARD_HIDDEN_MODE,
-        locked: false,
-      }];
-      await canvas.scene.createEmbeddedDocuments("Tile", newTile);
-      CLIPBOARD_IMAGE_LOCKED = false;
-    });
-  };
-  reader.readAsDataURL(blob);
+  const newTile = [{
+    texture: {
+      src: path,
+    },
+    width: imgWidth,
+    height: imgHeight,
+    x: mousePos.x,
+    y: mousePos.y,
+    sort: 0,
+    rotation: 0,
+    hidden: CLIPBOARD_HIDDEN_MODE,
+    locked: false,
+  }];
+  await canvas.scene.createEmbeddedDocuments("Tile", newTile);
+  return true;
 }
 
 let CLIPBOARD_IMAGE_LOCKED = false;
@@ -117,35 +155,44 @@ document.addEventListener("keydown", event => {
 
 Hooks.once('init', function() {
   if (navigator.clipboard?.read) {
+    const KeyboardManagerImpl = _clipboardGetKeyboardManager();
     game.keybindings.register("clipboard-image", "paste-image", {
       name: "Paste Image from Clipboard",
       restricted: true,
       uneditable: [
-        {key: "KeyV", modifiers: [ KeyboardManager.MODIFIER_KEYS.CONTROL ]}
+        {key: "KeyV", modifiers: [ KeyboardManagerImpl.MODIFIER_KEYS.CONTROL ]}
       ],
       onDown: () => {
-        let succeeded = false;
-        if (canvas.activeLayer._copy.length) {
+        if (_clipboardHasCopiedObjects()) {
           console.warn("Image Clipboard: Priority given to Foundry copied objects.");
-          return succeeded;
+          return false;
         }
-        if (CLIPBOARD_IMAGE_LOCKED) return succeeded;
+        if (CLIPBOARD_IMAGE_LOCKED) return true;
         if (game.modules.get('vtta-tokenizer')?.active &&
             Object.values(ui.windows).filter(w => w.id === 'tokenizer-control').length)
-              return succeeded;
-        _extractFromClipboard().then((clipItems) => {
-          if (clipItems?.length) {
-            _clipboardCreateFolderIfMissing(game.settings.get('clipboard-image', 'image-location')).then(() => {
-              _extractBlob(clipItems).then((blob) => {
-                if (blob) {
-                  _pasteBlob(blob);
-                  succeeded = true
-                }
-              });
-            });
+              return false;
+
+        CLIPBOARD_IMAGE_LOCKED = true;
+        void (async () => {
+          try {
+            const clipItems = await _extractFromClipboard();
+            if (!clipItems?.length) return;
+
+            const blob = await _extractBlob(clipItems);
+            if (!blob) return;
+
+            const targetFolder = _clipboardGetTargetFolder();
+            await _clipboardCreateFolderIfMissing(targetFolder);
+            await _pasteBlob(blob, targetFolder);
+          } catch (error) {
+            ui.notifications.error("Clipboard Image: Failed to paste clipboard image. Check the console.");
+            console.error("Clipboard Image: Failed to paste clipboard image", error);
+          } finally {
+            CLIPBOARD_IMAGE_LOCKED = false;
           }
-        });
-        return succeeded;
+        })();
+
+        return true;
       },
       precedence: CONST.KEYBINDING_PRECEDENCE.PRIORITY
     });

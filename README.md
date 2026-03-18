@@ -1,4 +1,4 @@
-![GitHub all releases](https://img.shields.io/github/downloads/saif-ellafi/foundryvtt-clipboard-image/total?logo=GitHub) ![GitHub release (latest by date)](https://img.shields.io/github/downloads/saif-ellafi/foundryvtt-clipboard-image/latest/total) ![GitHub release (latest by date)](https://img.shields.io/github/v/release/saif-ellafi/foundryvtt-clipboard-image) ![GitHub issues](https://img.shields.io/github/issues-raw/saif-ellafi/foundryvtt-clipboard-image) ![GitHub](https://img.shields.io/github/license/saif-ellafi/foundryvtt-clipboard-image)
+![GitHub all releases](https://img.shields.io/github/downloads/sayhiben/foundryvtt-clipboard-image/total?logo=GitHub) ![GitHub release (latest by date)](https://img.shields.io/github/downloads/sayhiben/foundryvtt-clipboard-image/latest/total) ![GitHub release (latest by date)](https://img.shields.io/github/v/release/sayhiben/foundryvtt-clipboard-image) ![GitHub issues](https://img.shields.io/github/issues-raw/sayhiben/foundryvtt-clipboard-image) ![GitHub](https://img.shields.io/github/license/sayhiben/foundryvtt-clipboard-image)
 # JV's Clipboard Image for Foundry VTT
 
 Allows copy-pasting images directly into Foundry VTT Tiles Layer.
@@ -7,6 +7,10 @@ Allows copy-pasting images directly into Foundry VTT Tiles Layer.
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/V7V14D3AH)
 
 ![example](example.gif)
+
+### Compatibility
+
+Verified on Foundry VTT 13.351. The module now uses the public canvas clipboard and mouse APIs introduced in V13 and avoids the deprecated global `KeyboardManager` and `FilePicker` access paths.
 
 ### Usage
 
