@@ -194,12 +194,22 @@ async function _clipboardUploadBlob(blob, targetFolder) {
     ...fileDetails,
   });
 
-  const uploadPath = (await CLIPBOARD_IMAGE_FILE_PICKER.upload(
+  const uploadResponse = await CLIPBOARD_IMAGE_FILE_PICKER.upload(
     targetFolder.source,
     targetFolder.target,
     file,
     _clipboardGetFilePickerOptions(targetFolder)
-  )).path;
+  );
+  const uploadPath = uploadResponse?.path;
+
+  if (!uploadPath) {
+    _clipboardLog("error", "Upload did not return a usable path", {
+      destination: _clipboardDescribeDestinationForLog(targetFolder),
+      response: uploadResponse || null,
+      ...fileDetails,
+    });
+    throw new Error("Upload failed before a usable media path was returned");
+  }
 
   _clipboardLog("info", "Uploaded pasted media", {
     destination: _clipboardDescribeDestinationForLog(targetFolder),

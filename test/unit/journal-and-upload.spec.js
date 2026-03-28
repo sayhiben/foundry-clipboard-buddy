@@ -197,6 +197,15 @@ describe("journal, note, and upload workflows", () => {
       expect(uploadPath).toBe("folder/upload.png");
     });
 
+    it("throws when upload does not return a usable path", async () => {
+      env.MockFilePicker.upload.mockResolvedValueOnce({});
+      await expect(api._clipboardUploadBlob(new File(["x"], "upload.png", {type: "image/png"}), {
+        source: "data",
+        target: "folder",
+        bucket: "",
+      })).rejects.toThrow("usable media path");
+    });
+
     it("downloads and wraps supported media urls", async () => {
       globalThis.fetch.mockResolvedValueOnce({
         ok: true,
