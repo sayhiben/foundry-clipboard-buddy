@@ -1,5 +1,5 @@
 {
-  "name": "foundryvtt-clipboard-image",
+  "name": "foundry-clipboard-buddy",
   "version": "0.5.0",
   "description": "Paste images from Clipboard into Tiles",
   "main": "clipboard-image.js",
@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sayhiben/foundryvtt-clipboard-image.git"
+    "url": "git+https://github.com/sayhiben/foundry-clipboard-buddy.git"
   },
   "keywords": [
     "foundry",
@@ -24,9 +24,9 @@
   "author": "JeansenVaars (Saif Ellafi)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/sayhiben/foundryvtt-clipboard-image/issues"
+    "url": "https://github.com/sayhiben/foundry-clipboard-buddy/issues"
   },
-  "homepage": "https://github.com/sayhiben/foundryvtt-clipboard-image",
+  "homepage": "https://github.com/sayhiben/foundry-clipboard-buddy",
   "devDependencies": {
     "npm-build-zip": "^1.0.3"
   }

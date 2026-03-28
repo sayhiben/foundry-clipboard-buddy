@@ -1,5 +1,7 @@
-![GitHub all releases](https://img.shields.io/github/downloads/sayhiben/foundryvtt-clipboard-image/total?logo=GitHub) ![GitHub release (latest by date)](https://img.shields.io/github/downloads/sayhiben/foundryvtt-clipboard-image/latest/total) ![GitHub release (latest by date)](https://img.shields.io/github/v/release/sayhiben/foundryvtt-clipboard-image) ![GitHub issues](https://img.shields.io/github/issues-raw/sayhiben/foundryvtt-clipboard-image) ![GitHub](https://img.shields.io/github/license/sayhiben/foundryvtt-clipboard-image)
-# JV's Clipboard Image for Foundry VTT
+![GitHub all releases](https://img.shields.io/github/downloads/sayhiben/foundry-clipboard-buddy/total?logo=GitHub) ![GitHub release (latest by date)](https://img.shields.io/github/downloads/sayhiben/foundry-clipboard-buddy/latest/total) ![GitHub release (latest by date)](https://img.shields.io/github/v/release/sayhiben/foundry-clipboard-buddy) ![GitHub issues](https://img.shields.io/github/issues-raw/sayhiben/foundry-clipboard-buddy) ![GitHub](https://img.shields.io/github/license/sayhiben/foundry-clipboard-buddy)
+# Foundry Clipboard Buddy
+
+Fork of JV's Clipboard Image for Foundry VTT.
 
 Allows copy-pasting images directly into Foundry VTT Tiles Layer.
 
