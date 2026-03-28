@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const COVERAGE_PATH = path.resolve(__dirname, "..", "coverage", "coverage-final.json");
-const TARGET_FILENAME = "clipboard-image.js";
+const SOURCE_DIR = `${path.sep}src${path.sep}`;
 const THRESHOLDS = {
   statements: 99.5,
   functions: 100,
@@ -14,8 +14,8 @@ function percentage(covered, total) {
   return (covered / total) * 100;
 }
 
-function summarizeCounter(counter) {
-  const values = Object.values(counter);
+function summarizeCounterGroups(counterGroups) {
+  const values = counterGroups.flatMap(counter => Object.values(counter));
   const total = values.length;
   const covered = values.filter(value => value > 0).length;
   return {
@@ -25,8 +25,8 @@ function summarizeCounter(counter) {
   };
 }
 
-function summarizeBranches(counter) {
-  const values = Object.values(counter).flat();
+function summarizeBranchGroups(counterGroups) {
+  const values = counterGroups.flatMap(counter => Object.values(counter).flat());
   const total = values.length;
   const covered = values.filter(value => value > 0).length;
   return {
@@ -42,18 +42,17 @@ if (!fs.existsSync(COVERAGE_PATH)) {
 }
 
 const coverage = JSON.parse(fs.readFileSync(COVERAGE_PATH, "utf8"));
-const targetEntry = Object.entries(coverage).find(([filePath]) => filePath.endsWith(TARGET_FILENAME));
+const sourceEntries = Object.entries(coverage).filter(([filePath]) => filePath.includes(SOURCE_DIR));
 
-if (!targetEntry) {
-  console.error(`Could not find coverage entry for ${TARGET_FILENAME}`);
+if (!sourceEntries.length) {
+  console.error("Could not find coverage entries for src/");
   process.exit(1);
 }
 
-const [, info] = targetEntry;
 const metrics = {
-  statements: summarizeCounter(info.s),
-  functions: summarizeCounter(info.f),
-  branches: summarizeBranches(info.b),
+  statements: summarizeCounterGroups(sourceEntries.map(([, info]) => info.s)),
+  functions: summarizeCounterGroups(sourceEntries.map(([, info]) => info.f)),
+  branches: summarizeBranchGroups(sourceEntries.map(([, info]) => info.b)),
 };
 
 const failures = Object.entries(THRESHOLDS)
@@ -68,7 +67,7 @@ const summary = Object.entries(metrics)
   .map(([metric, value]) => `${metric} ${value.percentage.toFixed(2)}% (${value.covered}/${value.total})`)
   .join(", ");
 
-console.log(`Coverage for ${TARGET_FILENAME}: ${summary}`);
+console.log(`Coverage for src runtime: ${summary}`);
 
 if (failures.length) {
   for (const failure of failures) {

@@ -5,7 +5,8 @@ import {vi} from "vitest";
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const RUNTIME_PATH = path.resolve(__dirname, "..", "..", "clipboard-image.js");
+const RUNTIME_PATH = path.resolve(__dirname, "..", "..", "src", "index.js");
+const SOURCE_ROOT = path.resolve(__dirname, "..", "..", "src") + path.sep;
 
 let nextId = 1;
 
@@ -364,7 +365,9 @@ function loadRuntime(options = {}) {
 
   if (options.customize) options.customize(env);
 
-  delete require.cache[RUNTIME_PATH];
+  for (const cacheKey of Object.keys(require.cache)) {
+    if (cacheKey.startsWith(SOURCE_ROOT)) delete require.cache[cacheKey];
+  }
   const runtime = require(RUNTIME_PATH);
 
   env.runtime = runtime;

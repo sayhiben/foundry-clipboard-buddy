@@ -4,6 +4,7 @@ const globals = require("globals");
 module.exports = [
   {
     ignores: [
+      "clipboard-image.js",
       "coverage/**",
       "dist/**",
       "node_modules/**",
@@ -13,7 +14,7 @@ module.exports = [
   },
   js.configs.recommended,
   {
-    files: ["clipboard-image.js", "playwright.config.js", "vitest.config.js", "eslint.config.js", "scripts/**/*.js", "test/**/*.js"],
+    files: ["clipboard-image.js", "src/**/*.js", "playwright.config.js", "vitest.config.js", "eslint.config.js", "scripts/**/*.js", "test/**/*.js"],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "script",

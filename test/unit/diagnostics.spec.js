@@ -220,6 +220,17 @@ describe("diagnostics and settings helpers", () => {
   });
 
   describe("_clipboardCreateFolderIfMissing", () => {
+    it("skips directory creation for s3 destinations", async () => {
+      await expect(api._clipboardCreateFolderIfMissing({
+        source: "s3",
+        target: "worlds/example/pasted_images",
+        bucket: "foundry-store",
+      })).resolves.toBeUndefined();
+
+      expect(env.MockFilePicker.browse).not.toHaveBeenCalled();
+      expect(env.MockFilePicker.createDirectory).not.toHaveBeenCalled();
+    });
+
     it("returns when the target folder already exists", async () => {
       env.MockFilePicker.browse.mockResolvedValueOnce({});
       await expect(api._clipboardCreateFolderIfMissing({

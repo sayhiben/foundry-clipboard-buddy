@@ -10,8 +10,8 @@ module.exports = defineConfig({
   coverage: {
     provider: "v8",
     all: false,
-    include: ["clipboard-image.js"],
-    exclude: ["coverage/**", "dist/**", "playwright.config.js", "test/**"],
+    include: ["src/**/*.js"],
+    exclude: ["clipboard-image.js", "coverage/**", "dist/**", "playwright.config.js", "test/**", "scripts/**"],
     reporter: ["text", "json-summary", "html"],
     thresholds: {
       branches: 100,

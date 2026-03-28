@@ -23,7 +23,9 @@ The suite is designed to cover the browser-driven flows that can be validated ag
 - Copied-object priority handling
 - Chat upload button flow
 
-It intentionally does not try to replace all manual QA. Browser permission prompts, real `navigator.clipboard.read()` behavior, Safari/iOS/Android specifics, remote-host CORS failures, Forge/S3 integration, and visual animation/video playback still belong in manual testing.
+It intentionally does not try to replace all manual QA. Browser permission prompts, real `navigator.clipboard.read()` behavior, Safari/iOS/Android specifics, remote-host CORS failures, Forge integration, and visual animation/video playback still belong in manual testing.
+
+Amazon S3 is covered separately by an opt-in smoke spec when you provide a live bucket and a Foundry server that is already configured for S3.
 
 ## Prerequisites
 
@@ -46,12 +48,15 @@ The suite uses these environment variables:
   GM user name or user id for login, when a saved storage state is not provided.
 - `FOUNDRY_PASSWORD`
   Password for the selected user, when required by the world.
+  If the selected Foundry user has a blank password, make sure you unset any inherited `FOUNDRY_PASSWORD` environment variable instead of accidentally reusing a stale value.
 - `FOUNDRY_STORAGE_STATE`
   Optional Playwright storage-state JSON path for a pre-authenticated session.
 - `PW_BROWSER`
   Browser name for the Playwright project. Defaults to `chromium`.
 - `PW_HEADLESS`
-  Set to `false` to run headed.
+  Set to `true` to force headless. Local default is headed because Foundry and PIXI are more reliable there; CI still defaults to headless.
+- `FOUNDRY_S3_BUCKET`
+  Optional bucket name for the opt-in Amazon S3 smoke spec in `test/playwright/s3.spec.js`.
 
 Examples:
 
@@ -63,17 +68,33 @@ npm run test:smoke
 ```
 
 ```bash
+env -u FOUNDRY_PASSWORD \
+FOUNDRY_URL=http://127.0.0.1:30000 \
+FOUNDRY_USER=Gamemaster \
+npm run test:smoke
+```
+
+```bash
 FOUNDRY_URL=http://127.0.0.1:30000 \
 FOUNDRY_STORAGE_STATE=test/.auth/gm.json \
 npm run test:headed
 ```
 
+```bash
+FOUNDRY_URL=http://127.0.0.1:30000 \
+FOUNDRY_USER=Gamemaster \
+FOUNDRY_S3_BUCKET=foundry-store \
+npm run test:smoke:s3
+```
+
 ## Commands
 
 - `npm run test:smoke`
-  Run the Playwright smoke suite.
+  Run the Playwright smoke suite. This is headed by default in local development.
 - `npm run test:headed`
-  Run the smoke suite in a headed browser.
+  Run the smoke suite in a headed browser explicitly.
+- `npm run test:smoke:s3`
+  Run the opt-in Amazon S3 smoke spec against a Foundry instance that is already configured with server-side S3 credentials.
 - `npm test`
   Run the unit suite and coverage checks without launching Foundry.
 - `npm run test:install`
@@ -84,6 +105,8 @@ npm run test:headed
 ## Notes
 
 - The suite uses the active scene and creates temporary artifacts inside it, then cleans up the created scene documents and journals after each test.
+- Local Playwright runs default to headed Chromium because Foundry's graphics stack is not reliable under headless Chromium in this environment.
 - Uploaded media files remain in the configured `playwright` upload subfolders. They are isolated by test run id but are not automatically deleted from disk.
+- The optional Amazon S3 smoke spec deletes the uploaded S3 prefix after it verifies the object landed in the configured bucket.
 - The tests drive Foundry through real DOM `paste` and file-upload paths and assert against Foundry document state through `canvas.scene`, `game.messages`, and `game.journal`.
 - Each test temporarily enables the module's `Verbose logging` setting and relays `Clipboard Image [...]` browser-console lines into the Playwright output, which makes failures much easier to diagnose.

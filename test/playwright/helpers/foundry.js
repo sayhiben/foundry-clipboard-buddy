@@ -142,27 +142,35 @@ async function findFirstVisibleLocator(page, selectors) {
   return null;
 }
 
-async function beginClipboardRun(page, testInfo) {
+async function beginClipboardRun(page, testInfo, options = {}) {
   const runId = `${Date.now()}-${sanitizeId(testInfo.title)}`;
   const prefix = `[PW ${runId}]`;
-  const uploadFolder = await page.evaluate(({runId}) => {
+  const uploadFolder = await page.evaluate(({runId, overrideTarget}) => {
     const worldId = game.world?.id || "world";
-    return `worlds/${worldId}/pasted_images/playwright/${runId}`;
-  }, {runId});
+    return overrideTarget || `worlds/${worldId}/pasted_images/playwright/${runId}`;
+  }, {runId, overrideTarget: options.target || ""});
+  const source = options.source || "data";
+  const bucket = source === "s3" ? (options.bucket || "") : "";
+  const verboseLogging = Object.hasOwn(options, "verboseLogging") ? Boolean(options.verboseLogging) : true;
 
-  const previousSettings = await page.evaluate(async ({moduleId, uploadFolder}) => {
-    const source = await game.settings.get(moduleId, "image-location-source");
-    const target = await game.settings.get(moduleId, "image-location");
-    const bucket = await game.settings.get(moduleId, "image-location-bucket");
-    const verboseLogging = await game.settings.get(moduleId, "verbose-logging");
+  const previousSettings = await page.evaluate(async ({moduleId, uploadFolder, source, bucket, verboseLogging}) => {
+    const previousSource = await game.settings.get(moduleId, "image-location-source");
+    const previousTarget = await game.settings.get(moduleId, "image-location");
+    const previousBucket = await game.settings.get(moduleId, "image-location-bucket");
+    const previousVerboseLogging = await game.settings.get(moduleId, "verbose-logging");
 
-    await game.settings.set(moduleId, "image-location-source", "data");
+    await game.settings.set(moduleId, "image-location-source", source);
     await game.settings.set(moduleId, "image-location", uploadFolder);
-    await game.settings.set(moduleId, "image-location-bucket", "");
-    await game.settings.set(moduleId, "verbose-logging", true);
+    await game.settings.set(moduleId, "image-location-bucket", bucket);
+    await game.settings.set(moduleId, "verbose-logging", verboseLogging);
 
-    return {source, target, bucket, verboseLogging};
-  }, {moduleId: MODULE_ID, uploadFolder});
+    return {
+      source: previousSource,
+      target: previousTarget,
+      bucket: previousBucket,
+      verboseLogging: previousVerboseLogging,
+    };
+  }, {moduleId: MODULE_ID, uploadFolder, source, bucket, verboseLogging});
 
   await page.evaluate(() => {
     canvas.tokens?.releaseAll?.();
@@ -174,6 +182,8 @@ async function beginClipboardRun(page, testInfo) {
     runId,
     prefix,
     uploadFolder,
+    source,
+    bucket,
     previousSettings,
   };
 }

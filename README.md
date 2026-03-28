@@ -12,8 +12,6 @@ It lets you paste or upload media and contextual text into:
 
 The Foundry manifest title is currently `Clipboard Image`.
 
-Maintained in this fork by Saif Addin Ellafi.
-
 ![Clipboard Image demo](example.gif)
 
 ## Compatibility
