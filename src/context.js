@@ -30,18 +30,120 @@ function _clipboardGetTokenPosition(mousePos) {
   return canvas?.grid?.getTopLeftPoint?.(mousePos) || mousePos;
 }
 
+function _clipboardGetPastedDocumentName(path) {
+  const rawName = String(path || "").split("/").pop() || "";
+  let decodedName = rawName;
+
+  try {
+    decodedName = decodeURIComponent(rawName);
+  } catch (error) {
+    decodedName = rawName;
+  }
+
+  const trimmedName = decodedName.replace(/\.[^.]+$/, "").trim();
+  return trimmedName || "Pasted Media";
+}
+
+function _clipboardGetAvailableActorTypes() {
+  const candidates = [
+    game?.system?.documentTypes?.Actor,
+    game?.documentTypes?.Actor,
+    _clipboardGetActorDocumentClass()?.TYPES,
+  ];
+  const baseDocumentType = CONST?.BASE_DOCUMENT_TYPE;
+
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate) || !candidate.length) continue;
+    return candidate.filter(type => type && type !== baseDocumentType);
+  }
+
+  return [];
+}
+
+function _clipboardGetActorDocumentClass() {
+  return foundry?.documents?.Actor || globalThis.Actor || null;
+}
+
+function _clipboardGetDefaultActorType() {
+  const defaultType = CONFIG?.Actor?.defaultType || null;
+  const availableTypes = _clipboardGetAvailableActorTypes();
+
+  if (defaultType && (!availableTypes.length || availableTypes.includes(defaultType))) {
+    return defaultType;
+  }
+
+  return availableTypes[0] || defaultType || null;
+}
+
+async function _clipboardCreatePastedTokenActor({path, mediaKind, width, height}) {
+  const ActorDocument = _clipboardGetActorDocumentClass();
+  if (!ActorDocument?.create) {
+    throw new Error("Actor creation is unavailable for pasted tokens.");
+  }
+
+  const name = _clipboardGetPastedDocumentName(path);
+  const actorType = _clipboardGetDefaultActorType();
+  const actorData = {
+    name,
+    img: path,
+    prototypeToken: {
+      name,
+      texture: {
+        src: path,
+      },
+      width,
+      height,
+    },
+  };
+
+  if (actorType) actorData.type = actorType;
+
+  _clipboardLog("debug", "Creating backing actor for pasted token", {
+    actorType,
+    mediaKind,
+    name,
+    path,
+    width,
+    height,
+  });
+
+  const actor = await ActorDocument.create(actorData);
+  if (!actor?.id) {
+    throw new Error("Failed to create a backing Actor for the pasted token.");
+  }
+
+  _clipboardLog("info", "Created backing actor for pasted token", {
+    actorId: actor.id,
+    actorType,
+    mediaKind,
+    name,
+    path,
+    width,
+    height,
+  });
+
+  return actor;
+}
+
 const CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES = {
   Token: {
     documentName: "Token",
     getControlledDocuments: () => (canvas?.tokens?.controlled || []).map(token => token.document),
     getLayer: () => canvas?.tokens,
-    createData: ({path, imgWidth, imgHeight, mousePos}) => {
+    createData: async ({path, imgWidth, imgHeight, mousePos, mediaKind}) => {
       const snappedPosition = _clipboardGetTokenPosition(mousePos);
       const dimensions = _clipboardScaleTokenDimensions(imgWidth, imgHeight);
+      const actor = await _clipboardCreatePastedTokenActor({
+        path,
+        mediaKind,
+        width: dimensions.width,
+        height: dimensions.height,
+      });
 
       return [{
-        actorId: null,
-        name: "Pasted Media",
+        actorId: actor.id,
+        actorLink: false,
+        name: actor.name || _clipboardGetPastedDocumentName(path),
         texture: {
           src: path,
         },
@@ -180,6 +282,11 @@ module.exports = {
   _clipboardGetMousePosition,
   _clipboardGetCanvasCenter,
   _clipboardGetTokenPosition,
+  _clipboardGetPastedDocumentName,
+  _clipboardGetAvailableActorTypes,
+  _clipboardGetActorDocumentClass,
+  _clipboardGetDefaultActorType,
+  _clipboardCreatePastedTokenActor,
   _clipboardGetActiveDocumentName,
   _clipboardGetPlaceableStrategy,
   _clipboardGetReplacementTarget,

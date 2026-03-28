@@ -87,11 +87,47 @@ test("pastes an image as a token on the Tokens layer", async ({page}, testInfo) 
     await expect.poll(async () => (await getStateSnapshot(page)).tokens.length).toBe(before.tokens.length + 1);
     const after = await getStateSnapshot(page);
     const [token] = getNewDocuments(before, after, "tokens");
+    const actorInfo = await page.evaluate(tokenId => {
+      const tokenDocument = canvas.scene.tokens.get(tokenId);
+      if (!tokenDocument) return null;
+      return {
+        actorId: tokenDocument.actorId,
+        actorExists: Boolean(tokenDocument.actor),
+        actorName: tokenDocument.actor?.name || null,
+        actorImg: tokenDocument.actor?.img || null,
+      };
+    }, token.id);
 
     expect(token.textureSrc).toContain(run.uploadFolder);
-    expect(token.name).toBe("Pasted Media");
+    expect(token.name).toBe("test-token");
+    expect(token.actorId).toBeTruthy();
+    expect(actorInfo).toEqual({
+      actorId: token.actorId,
+      actorExists: true,
+      actorName: "test-token",
+      actorImg: expect.stringContaining(run.uploadFolder),
+    });
     expect(token.width).toBeGreaterThan(0);
     expect(token.height).toBeGreaterThan(0);
+
+    await page.evaluate(tokenId => {
+      const tokenPlaceable = canvas.tokens.placeables.find(placeable => placeable.document.id === tokenId);
+      if (!tokenPlaceable) throw new Error(`Could not find token placeable ${tokenId}.`);
+      tokenPlaceable.control({releaseOthers: true});
+      tokenPlaceable.document.actor.sheet.render(true);
+    }, token.id);
+
+    await expect.poll(async () => page.evaluate(actorId => {
+      const app = Object.values(ui.windows).find(entry => (entry.document?.id || entry.object?.id) === actorId);
+      return app ? {title: app.title || "", actorId} : null;
+    }, token.actorId)).toEqual({
+      title: "[Token] test-token",
+      actorId: token.actorId,
+    });
+
+    await page.evaluate(actorId => Promise.all(Object.values(ui.windows)
+      .filter(entry => (entry.document?.id || entry.object?.id) === actorId)
+      .map(entry => entry.close())), token.actorId);
   } finally {
     await cleanupClipboardRun(page, run);
   }

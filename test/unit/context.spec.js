@@ -34,16 +34,18 @@ describe("canvas context helpers", () => {
       expect(api._clipboardGetPlaceableStrategy("Unknown").documentName).toBe("Tile");
     });
 
-    it("builds token create data", () => {
+    it("builds actor-backed token create data", async () => {
       api._clipboardSetRuntimeState({hiddenMode: true});
-      expect(api._clipboardGetPlaceableStrategy("Token").createData({
+      await expect(api._clipboardGetPlaceableStrategy("Token").createData({
         path: "image.png",
         imgWidth: 400,
         imgHeight: 200,
         mousePos: {x: 155, y: 245},
-      })).toEqual([{
-        actorId: null,
-        name: "Pasted Media",
+        mediaKind: "image",
+      })).resolves.toEqual([{
+        actorId: "actor-1",
+        actorLink: false,
+        name: "image",
         texture: {src: "image.png"},
         width: 2,
         height: 1,
@@ -52,6 +54,17 @@ describe("canvas context helpers", () => {
         hidden: true,
         locked: false,
       }]);
+      expect(globalThis.foundry.documents.Actor.create).toHaveBeenCalledWith({
+        name: "image",
+        type: "character",
+        img: "image.png",
+        prototypeToken: {
+          name: "image",
+          texture: {src: "image.png"},
+          width: 2,
+          height: 1,
+        },
+      });
     });
 
     it("builds tile create data", () => {
@@ -74,6 +87,35 @@ describe("canvas context helpers", () => {
         locked: false,
         video: {autoplay: true, loop: true, volume: 0},
       }]);
+    });
+
+    it("prefers the configured default actor type when it is allowed", () => {
+      globalThis.CONFIG.Actor.defaultType = "npc";
+      expect(api._clipboardGetDefaultActorType()).toBe("npc");
+    });
+
+    it("falls back to the first available actor type when the configured default is unavailable", () => {
+      globalThis.CONFIG.Actor.defaultType = "vehicle";
+      expect(api._clipboardGetDefaultActorType()).toBe("character");
+    });
+
+    it("keeps the raw document name when url decoding fails", () => {
+      expect(api._clipboardGetPastedDocumentName("%E0%A4%A.png")).toBe("%E0%A4%A");
+    });
+
+    it("throws when token actor creation is unavailable", async () => {
+      const originalCreate = globalThis.foundry.documents.Actor.create;
+      globalThis.foundry.documents.Actor.create = undefined;
+      try {
+        await expect(api._clipboardCreatePastedTokenActor({
+          path: "image.png",
+          mediaKind: "image",
+          width: 1,
+          height: 1,
+        })).rejects.toThrow("Actor creation is unavailable");
+      } finally {
+        globalThis.foundry.documents.Actor.create = originalCreate;
+      }
     });
   });
 

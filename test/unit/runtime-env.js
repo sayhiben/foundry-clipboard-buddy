@@ -64,6 +64,30 @@ function createJournalEntry(env, data = {}) {
   return entry;
 }
 
+function createActor(env, data = {}) {
+  const actor = {
+    id: data.id || makeId("actor"),
+    name: data.name || "Actor",
+    type: data.type || env.defaultActorType,
+    img: data.img || "",
+    prototypeToken: {
+      name: data.prototypeToken?.name || data.name || "Actor",
+      texture: {
+        src: data.prototypeToken?.texture?.src || data.img || "",
+      },
+      width: data.prototypeToken?.width ?? 1,
+      height: data.prototypeToken?.height ?? 1,
+    },
+    update: vi.fn(async updateData => {
+      Object.assign(actor, updateData);
+      return actor;
+    }),
+  };
+
+  env.actors.set(actor.id, actor);
+  return actor;
+}
+
 function createPlaceableDocument(documentName, data = {}) {
   const flags = new Map();
   if (data.flags) {
@@ -117,6 +141,7 @@ function loadRuntime(options = {}) {
   const settingsRegistry = new Map();
   const journalEntries = new Map();
   const sceneNotes = new Map();
+  const actors = new Map();
 
   class MockFilePicker {
     static browse = vi.fn(async () => ({}));
@@ -163,6 +188,8 @@ function loadRuntime(options = {}) {
     settingsRegistry,
     journalEntries,
     sceneNotes,
+    actors,
+    defaultActorType: "character",
     MockFilePicker,
     MockFormApplication,
   };
@@ -265,12 +292,24 @@ function loadRuntime(options = {}) {
       register: vi.fn(),
     },
     modules: new Map(),
+    system: {
+      documentTypes: {
+        Actor: ["character", "npc"],
+      },
+    },
+    documentTypes: {
+      Actor: ["character", "npc"],
+    },
     journal: {
       get: id => journalEntries.get(id),
+    },
+    actors: {
+      get: id => actors.get(id),
     },
   };
 
   globalThis.CONST = {
+    BASE_DOCUMENT_TYPE: "base",
     JOURNAL_ENTRY_PAGE_FORMATS: {
       HTML: 9,
     },
@@ -280,6 +319,9 @@ function loadRuntime(options = {}) {
   };
 
   globalThis.CONFIG = {
+    Actor: {
+      defaultType: "character",
+    },
     JournalEntry: {
       noteIcons: {
         Book: "icons/svg/book.svg",
@@ -334,8 +376,12 @@ function loadRuntime(options = {}) {
           return entry;
         }),
       },
+      Actor: {
+        create: vi.fn(async data => createActor(env, data)),
+      },
     },
   };
+  globalThis.Actor = globalThis.foundry.documents.Actor;
 
   globalThis.Hooks = {
     once: vi.fn((hook, callback) => {
@@ -373,6 +419,7 @@ function loadRuntime(options = {}) {
   env.runtime = runtime;
   env.api = runtime.__testables;
   env.createJournalEntry = data => createJournalEntry(env, data);
+  env.createActor = data => createActor(env, data);
   env.createPage = data => createPage(data);
   env.createPlaceableDocument = (documentName, data) => createPlaceableDocument(documentName, data);
   env.createControlledPlaceable = (documentName, data) => createControlledPlaceable(documentName, data);

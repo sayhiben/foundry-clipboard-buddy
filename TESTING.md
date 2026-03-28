@@ -71,12 +71,14 @@ These flows should stay true across the test matrix:
 1. Activate the Tiles layer, clear selection, and paste a static image.
    Expected: a new tile appears at the mouse position.
 2. Activate the Tokens layer, clear selection, and paste a static image.
-   Expected: a new actorless token appears snapped to the grid, with its shortest side normalized to one grid square.
-3. Paste a large image onto the Tiles layer.
+   Expected: a new token appears snapped to the grid, with its shortest side normalized to one grid square.
+3. Double-click a newly pasted token.
+   Expected: it opens normally for editing and does not warn about a missing Actor.
+4. Paste a large image onto the Tiles layer.
    Expected: the created tile scales down to fit roughly one-third of the scene width while preserving aspect ratio.
-4. Hold `Caps Lock` during media paste on the canvas.
+5. Hold `Caps Lock` during media paste on the canvas.
    Expected: the newly created tile or token is hidden.
-5. Copy a Foundry placeable, then paste media on the canvas with the normal keyboard or browser paste path.
+6. Copy a Foundry placeable, then paste media on the canvas with the normal keyboard or browser paste path.
    Expected: Foundry's copied-object buffer takes priority and the module does not create media.
 
 ### 2. Media Replacement

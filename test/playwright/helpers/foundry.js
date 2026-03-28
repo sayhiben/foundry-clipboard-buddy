@@ -231,6 +231,16 @@ async function cleanupClipboardRun(page, run) {
       await canvas.scene.deleteEmbeddedDocuments("Tile", tileIds);
     }
 
+    const actorIds = game.actors.contents
+      .filter(actor =>
+        (actor.img || "").includes(run.uploadFolder) ||
+        (actor.prototypeToken?.texture?.src || "").includes(run.uploadFolder)
+      )
+      .map(actor => actor.id);
+    for (const id of actorIds) {
+      await game.actors.get(id)?.delete();
+    }
+
     for (const id of journalIds) {
       await game.journal.get(id)?.delete();
     }
@@ -601,6 +611,7 @@ async function getStateSnapshot(page) {
     tokens: canvas.scene.tokens.contents.map(token => ({
       id: token.id,
       name: token.name,
+      actorId: token.actorId,
       x: token.x,
       y: token.y,
       width: token.width,
@@ -650,6 +661,7 @@ async function getTokenDocument(page, id) {
     if (!token) return null;
     return {
       id: token.id,
+      actorId: token.actorId,
       x: token.x,
       y: token.y,
       width: token.width,

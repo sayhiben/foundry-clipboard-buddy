@@ -52,7 +52,7 @@ async function _clipboardApplyPasteResult(path, context) {
   }
 
   const {width: imgWidth, height: imgHeight} = await _clipboardLoadMediaDimensions(path);
-  const createData = context.createStrategy.createData({
+  const createData = await context.createStrategy.createData({
     path,
     imgWidth,
     imgHeight,

@@ -38,7 +38,7 @@ Repository:
 
 - If one or more tokens are selected, pasted media replaces their texture in place.
 - If one or more tiles are selected, pasted media replaces their texture in place.
-- If nothing is selected and the Tokens layer is active, pasted media creates a new actorless token snapped to the grid.
+- If nothing is selected and the Tokens layer is active, pasted media creates a new token snapped to the grid with a backing world Actor so it can be edited normally afterward.
 - If nothing is selected on other canvas layers, pasted media creates a new tile at the mouse position.
 - On a fresh scene, Foundry usually opens on the Tokens layer, so paste will create a token until you switch to Tile Controls.
 - Normal keyboard or browser canvas paste respects Foundry's copied-object buffer before creating module content.

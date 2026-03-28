@@ -35,11 +35,32 @@ describe("paste and handler workflows", () => {
 
       expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("Token", [
         expect.objectContaining({
+          actorId: expect.any(String),
+          actorLink: false,
           texture: {src: "path.png"},
           width: 2,
           height: 1,
         }),
       ]);
+      expect(globalThis.foundry.documents.Actor.create).toHaveBeenCalledWith(expect.objectContaining({
+        img: "path.png",
+        prototypeToken: expect.objectContaining({
+          texture: {src: "path.png"},
+        }),
+      }));
+    });
+
+    it("fails when token actor creation does not return a usable actor", async () => {
+      const restoreImage = withMockImage({width: 200, height: 100});
+      globalThis.foundry.documents.Actor.create.mockResolvedValueOnce(null);
+
+      await expect(api._clipboardApplyPasteResult("path.png", {
+        replacementTarget: null,
+        createStrategy: api._clipboardGetPlaceableStrategy("Token"),
+        mousePos: {x: 150, y: 250},
+      })).rejects.toThrow("backing Actor");
+
+      restoreImage();
     });
   });
 
