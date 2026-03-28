@@ -2,6 +2,28 @@
 
 This module relies on manual QA in Foundry VTT. Use this guide as the working checklist for release validation and regression testing.
 
+## Automated Coverage
+
+This repository also ships a Playwright smoke suite under [test/README.md](./test/README.md) and [test/playwright/smoke.spec.js](./test/playwright/smoke.spec.js).
+
+The automated suite is intended to cover stable browser-driven workflows such as:
+- Canvas image paste into tiles and tokens
+- Selected token and tile replacement
+- Mixed media-and-text clipboard payloads
+- Contextual text note creation and append
+- Chat image paste and upload
+- Chat non-media URL fallback
+- Direct media URL paste
+- HTML media URL extraction, hidden-mode paste, scene-control fallbacks, and copied-object priority
+
+Keep the manual checklist for:
+- Real `navigator.clipboard.read()` permission behavior
+- Cross-browser prompt differences
+- Safari, iOS, and Android specific UX
+- Forge or Amazon S3 storage integrations
+- Remote-host CORS or download failures
+- Visual playback validation for animation and video
+
 ## Test Environment
 
 Validate on Foundry VTT `13.351` as a GM with the module enabled.
@@ -173,6 +195,7 @@ These flows should stay true across the test matrix:
 ### 11. Regression Watchlist
 
 Review the browser console while testing and confirm:
+- With `Verbose logging` enabled, clipboard-image logs clearly describe clipboard parsing, upload destination, media download, paste routing, and create vs replace outcomes
 - No unhandled exceptions are emitted in successful flows
 - Expected failures show clear notifications
 - Chat-targeted paste never duplicates onto the canvas

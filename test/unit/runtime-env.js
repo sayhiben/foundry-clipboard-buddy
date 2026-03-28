@@ -1,0 +1,382 @@
+import path from "node:path";
+import {createRequire} from "node:module";
+import {fileURLToPath} from "node:url";
+import {vi} from "vitest";
+
+const require = createRequire(import.meta.url);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const RUNTIME_PATH = path.resolve(__dirname, "..", "..", "clipboard-image.js");
+
+let nextId = 1;
+
+function makeId(prefix) {
+  const id = `${prefix}-${nextId}`;
+  nextId += 1;
+  return id;
+}
+
+function createPage(data = {}) {
+  const page = {
+    id: data.id || makeId("page"),
+    type: data.type || "text",
+    name: data.name || "Page",
+    text: {
+      content: data.text?.content || "",
+      format: data.text?.format ?? 1,
+    },
+    update: vi.fn(async updateData => {
+      if (Object.hasOwn(updateData, "text.content")) page.text.content = updateData["text.content"];
+      if (Object.hasOwn(updateData, "text.format")) page.text.format = updateData["text.format"];
+      return page;
+    }),
+  };
+
+  return page;
+}
+
+function createPagesCollection(pages) {
+  const map = new Map(pages.map(page => [page.id, page]));
+  return {
+    contents: pages,
+    get: id => map.get(id),
+    set: (id, page) => map.set(id, page),
+  };
+}
+
+function createJournalEntry(env, data = {}) {
+  const pages = (data.pages || []).map(pageData => createPage(pageData));
+  const entry = {
+    id: data.id || makeId("entry"),
+    name: data.name || "Journal Entry",
+    pages: createPagesCollection(pages),
+    createEmbeddedDocuments: vi.fn(async (_type, pageDataList) => {
+      const createdPages = pageDataList.map(pageData => createPage(pageData));
+      for (const page of createdPages) {
+        entry.pages.contents.push(page);
+        entry.pages.set(page.id, page);
+      }
+      return createdPages;
+    }),
+  };
+
+  env.journalEntries.set(entry.id, entry);
+  return entry;
+}
+
+function createPlaceableDocument(documentName, data = {}) {
+  const flags = new Map();
+  if (data.flags) {
+    for (const [scope, values] of Object.entries(data.flags)) {
+      flags.set(scope, {...values});
+    }
+  }
+
+  const document = {
+    id: data.id || makeId(documentName.toLowerCase()),
+    documentName,
+    name: data.name || documentName,
+    x: data.x ?? 0,
+    y: data.y ?? 0,
+    width: data.width ?? 1,
+    height: data.height ?? 1,
+    object: data.object || null,
+    getFlag: vi.fn((scope, key) => flags.get(scope)?.[key] ?? null),
+    setFlag: vi.fn(async (scope, key, value) => {
+      const scopedFlags = flags.get(scope) || {};
+      scopedFlags[key] = value;
+      flags.set(scope, scopedFlags);
+      return value;
+    }),
+  };
+
+  return document;
+}
+
+function createControlledPlaceable(documentName, data = {}) {
+  return {
+    document: createPlaceableDocument(documentName, data),
+  };
+}
+
+function loadRuntime(options = {}) {
+  nextId = 1;
+  document.body.innerHTML = '<div class="game" tabindex="0"></div><div id="fixtures"></div>';
+  document.querySelector(".game")?.focus();
+
+  const onceHandlers = {};
+  const onHandlers = {};
+  const registeredSettings = [];
+  const registeredMenus = [];
+  const settingsValues = new Map([
+    ["clipboard-image.image-location-source", "auto"],
+    ["clipboard-image.image-location", "pasted_images"],
+    ["clipboard-image.image-location-bucket", ""],
+    ["clipboard-image.verbose-logging", false],
+  ]);
+  const settingsRegistry = new Map();
+  const journalEntries = new Map();
+  const sceneNotes = new Map();
+
+  class MockFilePicker {
+    static browse = vi.fn(async () => ({}));
+    static createDirectory = vi.fn(async () => ({}));
+    static upload = vi.fn(async (_source, target, file) => ({path: `${target}/${file.name}`}));
+    static instances = [];
+
+    constructor(options = {}) {
+      Object.assign(this, options);
+      this.sources = {
+        s3: {
+          bucket: "",
+          target: options.current || "",
+        },
+      };
+      this.render = vi.fn(() => this);
+      MockFilePicker.instances.push(this);
+    }
+  }
+
+  class MockFormApplication {
+    static get defaultOptions() {
+      return {base: true};
+    }
+
+    constructor() {
+      this.form = null;
+      this.element = {
+        find: vi.fn(() => ({
+          toggleClass: vi.fn(),
+        })),
+      };
+    }
+
+    activateListeners() {}
+  }
+
+  const env = {
+    onceHandlers,
+    onHandlers,
+    registeredSettings,
+    registeredMenus,
+    settingsValues,
+    settingsRegistry,
+    journalEntries,
+    sceneNotes,
+    MockFilePicker,
+    MockFormApplication,
+  };
+
+  const scene = {
+    notes: {
+      get: id => sceneNotes.get(id),
+    },
+    updateEmbeddedDocuments: vi.fn(async (_documentName, updates) => updates),
+    createEmbeddedDocuments: vi.fn(async (documentName, dataList) => {
+      if (documentName === "Note") {
+        return dataList.map(data => {
+          const note = {
+            id: data.id || makeId("note"),
+            ...data,
+            update: vi.fn(async updateData => {
+              Object.assign(note, updateData);
+              return note;
+            }),
+          };
+          sceneNotes.set(note.id, note);
+          return note;
+        });
+      }
+
+      return dataList.map(data => ({
+        id: data.id || makeId(documentName.toLowerCase()),
+        ...data,
+      }));
+    }),
+  };
+
+  globalThis.ui = {
+    notifications: {
+      error: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    },
+    windows: {},
+  };
+
+  globalThis.canvas = {
+    ready: true,
+    scene,
+    dimensions: {
+      width: 1000,
+      height: 800,
+      sceneWidth: 900,
+      sceneHeight: 700,
+      size: 100,
+    },
+    mousePosition: {x: 150, y: 250},
+    grid: {
+      sizeX: 100,
+      sizeY: 100,
+      getTopLeftPoint: vi.fn(point => ({
+        x: Math.floor(point.x / 100) * 100,
+        y: Math.floor(point.y / 100) * 100,
+      })),
+    },
+    tokens: {
+      controlled: [],
+      activate: vi.fn(),
+      options: {name: "tokens"},
+    },
+    tiles: {
+      controlled: [],
+      activate: vi.fn(),
+      options: {name: "tiles"},
+    },
+    notes: {
+      activate: vi.fn(),
+    },
+  };
+  globalThis.canvas.activeLayer = globalThis.canvas.tiles;
+
+  globalThis.game = {
+    user: {
+      id: "user-1",
+      isGM: true,
+    },
+    settings: {
+      settings: settingsRegistry,
+      get: vi.fn((moduleId, key) => settingsValues.get(`${moduleId}.${key}`)),
+      set: vi.fn(async (moduleId, key, value) => {
+        settingsValues.set(`${moduleId}.${key}`, value);
+        return value;
+      }),
+      register: vi.fn((moduleId, key, config) => {
+        const settingsKey = `${moduleId}.${key}`;
+        settingsRegistry.set(settingsKey, config);
+        if (!settingsValues.has(settingsKey)) settingsValues.set(settingsKey, config.default);
+        registeredSettings.push({moduleId, key, config});
+      }),
+      registerMenu: vi.fn((moduleId, key, config) => {
+        registeredMenus.push({moduleId, key, config});
+      }),
+    },
+    keybindings: {
+      register: vi.fn(),
+    },
+    modules: new Map(),
+    journal: {
+      get: id => journalEntries.get(id),
+    },
+  };
+
+  globalThis.CONST = {
+    JOURNAL_ENTRY_PAGE_FORMATS: {
+      HTML: 9,
+    },
+    KEYBINDING_PRECEDENCE: {
+      PRIORITY: 42,
+    },
+  };
+
+  globalThis.CONFIG = {
+    JournalEntry: {
+      noteIcons: {
+        Book: "icons/svg/book.svg",
+        Candle: "icons/svg/candle.svg",
+      },
+    },
+  };
+
+  globalThis.foundry = {
+    applications: {
+      apps: {
+        FilePicker: {
+          implementation: MockFilePicker,
+        },
+      },
+    },
+    helpers: {
+      interaction: {
+        KeyboardManager: {
+          MODIFIER_KEYS: {
+            CONTROL: "Control",
+          },
+        },
+      },
+      media: {
+        VideoHelper: {
+          hasVideoExtension: vi.fn(() => false),
+        },
+      },
+    },
+    appv1: {
+      api: {
+        FormApplication: MockFormApplication,
+      },
+    },
+    utils: {
+      escapeHTML: vi.fn(value => String(value || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")),
+      mergeObject: vi.fn((target, source) => ({...target, ...source})),
+    },
+    documents: {
+      ChatMessage: {
+        create: vi.fn(async data => data),
+        getSpeaker: vi.fn(() => ({alias: "GM"})),
+      },
+      JournalEntry: {
+        create: vi.fn(async data => {
+          const entry = createJournalEntry(env, data);
+          return entry;
+        }),
+      },
+    },
+  };
+
+  globalThis.Hooks = {
+    once: vi.fn((hook, callback) => {
+      onceHandlers[hook] = callback;
+    }),
+    on: vi.fn((hook, callback) => {
+      onHandlers[hook] = callback;
+    }),
+  };
+
+  globalThis.fetch = vi.fn();
+  globalThis.console = {
+    debug: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    log: vi.fn(),
+    warn: vi.fn(),
+  };
+  globalThis.ForgeVTT = undefined;
+
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: {
+      read: vi.fn(async () => []),
+    },
+  });
+
+  if (options.customize) options.customize(env);
+
+  delete require.cache[RUNTIME_PATH];
+  const runtime = require(RUNTIME_PATH);
+
+  env.runtime = runtime;
+  env.api = runtime.__testables;
+  env.createJournalEntry = data => createJournalEntry(env, data);
+  env.createPage = data => createPage(data);
+  env.createPlaceableDocument = (documentName, data) => createPlaceableDocument(documentName, data);
+  env.createControlledPlaceable = (documentName, data) => createControlledPlaceable(documentName, data);
+
+  return env;
+}
+
+export {
+  loadRuntime,
+};

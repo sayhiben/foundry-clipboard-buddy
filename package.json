@@ -4,10 +4,18 @@
   "description": "Paste media and contextual text from Clipboard into Tiles, Tokens, Notes, or Chat",
   "main": "clipboard-image.js",
   "scripts": {
-    "copy": "mkdir -p dist && cp ./clipboard-image.js dist/ && cp ./clipboard-image.css dist/ && cp ./README.md dist/ && cp ./TESTING.md dist/ && cp ./CHANGELOG.md dist/ && cp ./LICENSE.md dist/ && cp ./module.json dist/ && cp ./THANKS.txt dist/ && cp -R ./templates dist/",
-    "copyWin": "mkdir dist && copy module.json dist && copy clipboard-image.js dist && copy clipboard-image.css dist && copy README.md dist && copy TESTING.md dist && copy CHANGELOG.md dist && copy LICENSE.md dist && copy module.json dist && copy THANKS.txt dist && xcopy templates dist\\templates /E /I /Y",
+    "copy": "rm -rf dist && mkdir -p dist && cp ./clipboard-image.js dist/ && cp ./clipboard-image.css dist/ && cp ./README.md dist/ && cp ./TESTING.md dist/ && cp ./CHANGELOG.md dist/ && cp ./LICENSE.md dist/ && cp ./module.json dist/ && cp -R ./templates dist/",
+    "copyWin": "if exist dist rmdir /S /Q dist && mkdir dist && copy module.json dist && copy clipboard-image.js dist && copy clipboard-image.css dist && copy README.md dist && copy TESTING.md dist && copy CHANGELOG.md dist && copy LICENSE.md dist && xcopy templates dist\\templates /E /I /Y",
+    "lint": "eslint .",
     "zip": "npm-build-zip --source=dist --destination=.",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npm run test:unit",
+    "test:unit": "npm run test:unit:run && node scripts/check-coverage.js",
+    "test:unit:run": "vitest run --coverage",
+    "test:unit:watch": "vitest",
+    "test:smoke": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:install": "playwright install chromium",
+    "test:list": "playwright test --list"
   },
   "repository": {
     "type": "git",
@@ -36,6 +44,13 @@
   },
   "homepage": "https://github.com/sayhiben/foundry-clipboard-buddy",
   "devDependencies": {
+    "@eslint/js": "^9.23.0",
+    "@playwright/test": "^1.54.2",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^9.23.0",
+    "globals": "^16.0.0",
+    "jsdom": "^26.0.0",
     "npm-build-zip": "^1.0.3"
+    ,"vitest": "^3.2.4"
   }
 }

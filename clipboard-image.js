@@ -15,12 +15,132 @@ const CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION = "clipboard-image-chat-upload"
 const CLIPBOARD_IMAGE_TEXT_NOTE_FLAG = "textNote"
 const CLIPBOARD_IMAGE_TEXT_NOTE_PAGE_NAME = "Notes"
 const CLIPBOARD_IMAGE_TEXT_NOTE_JOURNAL_PREFIX = "Pasted Note"
+const CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING = "verbose-logging"
+const CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT = "image/*,video/*"
 const CLIPBOARD_IMAGE_IMAGE_EXTENSIONS = new Set(["apng", "avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "tif", "tiff", "webp"])
 const CLIPBOARD_IMAGE_VIDEO_EXTENSIONS = new Set(["m4v", "mp4", "mpeg", "mpg", "ogg", "ogv", "webm"])
 const CLIPBOARD_IMAGE_BOUND_CHAT_ROOTS = new WeakSet()
+const CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS = Object.freeze({
+  fallbackToCenter: true,
+  requireCanvasFocus: false,
+})
 
 let CLIPBOARD_IMAGE_LOCKED = false;
 let CLIPBOARD_HIDDEN_MODE = false;
+
+function _clipboardVerboseLoggingEnabled() {
+  try {
+    const settingKey = `${CLIPBOARD_IMAGE_MODULE_ID}.${CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING}`;
+    if (!game?.settings?.settings?.has?.(settingKey)) return false;
+    return Boolean(game.settings.get(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING));
+  } catch (error) {
+    return false;
+  }
+}
+
+function _clipboardSerializeError(error) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return error;
+}
+
+function _clipboardDescribeFile(file) {
+  if (!file) return null;
+
+  return {
+    name: file.name || null,
+    type: file.type || null,
+    size: file.size ?? null,
+  };
+}
+
+function _clipboardDescribeDestinationForLog(destination) {
+  if (!destination) return null;
+
+  return {
+    storedSource: destination.storedSource,
+    source: destination.source,
+    target: destination.target,
+    bucket: destination.bucket || null,
+  };
+}
+
+function _clipboardDescribeReplacementTarget(replacementTarget) {
+  if (!replacementTarget) return null;
+
+  return {
+    documentName: replacementTarget.documentName,
+    ids: replacementTarget.documents.map(document => document.id),
+  };
+}
+
+function _clipboardDescribePasteContext(context) {
+  if (!context) return null;
+
+  return {
+    mousePos: context.mousePos,
+    createDocumentName: context.createStrategy?.documentName || null,
+    replacementTarget: _clipboardDescribeReplacementTarget(context.replacementTarget),
+    requireCanvasFocus: context.requireCanvasFocus,
+    hasCanvasFocus: _clipboardHasCanvasFocus(),
+  };
+}
+
+function _clipboardDescribeClipboardItems(clipItems) {
+  return (clipItems || []).map((item, index) => ({
+    index,
+    types: Array.from(item.types || []),
+  }));
+}
+
+function _clipboardDescribeDataTransfer(dataTransfer) {
+  if (!dataTransfer) return null;
+
+  return {
+    types: Array.from(dataTransfer.types || []),
+    files: Array.from(dataTransfer.files || []).map(_clipboardDescribeFile),
+    items: Array.from(dataTransfer.items || []).map(item => ({
+      kind: item.kind,
+      type: item.type,
+    })),
+  };
+}
+
+function _clipboardDescribeImageInput(imageInput) {
+  if (!imageInput) return null;
+  if (imageInput.blob) {
+    return {
+      source: "blob",
+      ...(_clipboardDescribeFile(imageInput.blob) || {}),
+      mediaKind: _clipboardGetMediaKind({blob: imageInput.blob, filename: imageInput.blob.name}),
+    };
+  }
+
+  return {
+    source: "url",
+    url: imageInput.url || null,
+    mediaKind: _clipboardGetMediaKind({src: imageInput.url}),
+  };
+}
+
+function _clipboardLog(level, message, details) {
+  if ((level === "debug" || level === "info") && !_clipboardVerboseLoggingEnabled()) return;
+
+  const logger = console[level] || console.log;
+  const prefix = `Clipboard Image [${level.toUpperCase()}]: ${message}`;
+  if (details === undefined) {
+    logger(prefix);
+    return;
+  }
+
+  logger(prefix, details);
+}
 
 function _clipboardUsingTheForge() {
   return typeof ForgeVTT != "undefined" && ForgeVTT.usingTheForge;
@@ -82,11 +202,38 @@ function _clipboardCanSelectSource(source) {
 async function _clipboardCreateFolderIfMissing(destination) {
   const options = _clipboardGetFilePickerOptions(destination);
   _clipboardAssertUploadDestination(destination);
+  _clipboardLog("debug", "Ensuring upload destination exists", {
+    destination: _clipboardDescribeDestinationForLog(destination),
+  });
   try {
     await CLIPBOARD_IMAGE_FILE_PICKER.browse(destination.source, destination.target, options);
   } catch (error) {
-    await CLIPBOARD_IMAGE_FILE_PICKER.createDirectory(destination.source, destination.target, options);
+    const segments = destination.target.split("/").filter(Boolean);
+    let currentPath = "";
+
+    for (const segment of segments) {
+      currentPath = currentPath ? `${currentPath}/${segment}` : segment;
+
+      try {
+        await CLIPBOARD_IMAGE_FILE_PICKER.browse(destination.source, currentPath, options);
+      } catch (browseError) {
+        try {
+          _clipboardLog("debug", "Creating missing upload directory segment", {
+            destination: _clipboardDescribeDestinationForLog(destination),
+            currentPath,
+          });
+          await CLIPBOARD_IMAGE_FILE_PICKER.createDirectory(destination.source, currentPath, options);
+        } catch (createError) {
+          const message = createError instanceof Error ? createError.message : `${createError}`;
+          if (!/already exists|EEXIST/i.test(message)) throw createError;
+        }
+      }
+    }
   }
+
+  _clipboardLog("debug", "Upload destination is ready", {
+    destination: _clipboardDescribeDestinationForLog(destination),
+  });
 }
 
 function _clipboardGetStoredBucket() {
@@ -282,6 +429,36 @@ function _clipboardNormalizePastedText(text) {
 
 function _clipboardEscapeHtml(text) {
   return foundry.utils.escapeHTML(text || "");
+}
+
+function _clipboardExtractTextFromHtml(html) {
+  if (!html?.trim()) return "";
+
+  const documentFragment = new DOMParser().parseFromString(html, "text/html");
+  const body = documentFragment.body;
+  if (!body) return "";
+
+  for (const lineBreak of body.querySelectorAll("br")) {
+    lineBreak.replaceWith(documentFragment.createTextNode("\n"));
+  }
+
+  const blockTags = [
+    "address", "article", "aside", "blockquote", "dd", "div", "dl", "dt", "fieldset",
+    "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6",
+    "header", "hr", "li", "main", "nav", "ol", "p", "pre", "section", "table", "tr", "ul",
+  ];
+
+  for (const block of body.querySelectorAll(blockTags.join(","))) {
+    if (block.firstChild?.textContent?.startsWith("\n") !== true) {
+      block.prepend(documentFragment.createTextNode("\n"));
+    }
+    if (block.lastChild?.textContent?.endsWith("\n") !== true) {
+      block.append(documentFragment.createTextNode("\n"));
+    }
+  }
+
+  const extractedText = body.textContent?.replace(/^\n+/, "") || "";
+  return _clipboardNormalizePastedText(extractedText);
 }
 
 function _clipboardConvertTextToHtml(text) {
@@ -576,6 +753,11 @@ async function _clipboardReplaceControlledMedia(path, replacementTarget, mediaKi
 
     return update;
   });
+  _clipboardLog("info", "Replacing controlled media", {
+    replacementTarget: _clipboardDescribeReplacementTarget(replacementTarget),
+    mediaKind,
+    path,
+  });
   await canvas.scene.updateEmbeddedDocuments(replacementTarget.documentName, updates);
   return true;
 }
@@ -631,34 +813,51 @@ async function _clipboardLoadVideoDimensions(path) {
 }
 
 async function _clipboardLoadMediaDimensions(path) {
-  return _clipboardGetMediaKind({src: path}) === "video"
-    ? _clipboardLoadVideoDimensions(path)
-    : _clipboardLoadImageDimensions(path);
+  const mediaKind = _clipboardGetMediaKind({src: path}) === "video" ? "video" : "image";
+  const dimensions = mediaKind === "video"
+    ? await _clipboardLoadVideoDimensions(path)
+    : await _clipboardLoadImageDimensions(path);
+
+  _clipboardLog("debug", "Loaded pasted media dimensions", {
+    path,
+    mediaKind,
+    width: dimensions.width,
+    height: dimensions.height,
+  });
+
+  return dimensions;
 }
 
 async function _clipboardReadClipboardItems() {
   let clipItems;
   try {
+    _clipboardLog("debug", "Reading clipboard items via navigator.clipboard.read()");
     clipItems = await navigator.clipboard.read();
   } catch (error) {
     if (!error) {
-      console.warn("Clipboard Image: Failed to parse clipboard. Make sure your browser supports navigator.clipboard.");
+      _clipboardLog("warn", "Failed to parse clipboard. Make sure your browser supports navigator.clipboard.");
       return null;
     }
 
     if (error instanceof DOMException) {
       if (error.name === "NotAllowedError") {
-        console.info("Clipboard Image: Clipboard access was blocked or dismissed.");
+        _clipboardLog("info", "Clipboard access was blocked or dismissed.");
         return null;
       }
       if (error.name === "NotFoundError") {
-        console.info("Clipboard Image: Clipboard is empty.");
+        _clipboardLog("info", "Clipboard is empty.");
         return null;
       }
     }
 
+    _clipboardLog("error", "Clipboard read failed", {error: _clipboardSerializeError(error)});
     throw error;
   }
+
+  _clipboardLog("debug", "Read clipboard items", {
+    itemCount: clipItems?.length || 0,
+    items: _clipboardDescribeClipboardItems(clipItems),
+  });
   return clipItems;
 }
 
@@ -687,15 +886,10 @@ async function _clipboardReadClipboardText(clipItems, mimeType) {
 }
 
 async function _clipboardExtractTextInput(clipItems) {
-  const plainText = _clipboardNormalizePastedText(await _clipboardReadClipboardText(clipItems, "text/plain"));
-  if (plainText) return {text: plainText};
-
-  const html = await _clipboardReadClipboardText(clipItems, "text/html");
-  if (!html?.trim()) return null;
-
-  const documentFragment = new DOMParser().parseFromString(html, "text/html");
-  const extractedText = _clipboardNormalizePastedText(documentFragment.body?.textContent || "");
-  return extractedText ? {text: extractedText} : null;
+  return _clipboardExtractTextInputFromValues({
+    plainText: await _clipboardReadClipboardText(clipItems, "text/plain"),
+    html: await _clipboardReadClipboardText(clipItems, "text/html"),
+  });
 }
 
 function _clipboardParseSupportedUrl(value) {
@@ -736,23 +930,83 @@ function _clipboardExtractImageUrlFromHtml(html) {
   return _clipboardParseSupportedUrl(mediaElement?.getAttribute("src")?.trim());
 }
 
-async function _clipboardExtractImageInput(clipItems) {
-  const blob = await _clipboardExtractImageBlob(clipItems);
-  if (blob) return {blob};
+function _clipboardCreateLoggedImageInput(imageInput, message, details = undefined) {
+  const logDetails = {
+    imageInput: _clipboardDescribeImageInput(imageInput),
+  };
 
-  const uriList = await _clipboardReadClipboardText(clipItems, "text/uri-list");
+  if (details) Object.assign(logDetails, details);
+  _clipboardLog("debug", message, logDetails);
+  return imageInput;
+}
+
+function _clipboardExtractTextInputFromValues({plainText = "", html = ""} = {}) {
+  const normalizedPlainText = _clipboardNormalizePastedText(plainText);
+  if (normalizedPlainText) return {text: normalizedPlainText};
+  if (!html?.trim()) return null;
+
+  const extractedText = _clipboardExtractTextFromHtml(html);
+  return extractedText ? {text: extractedText} : null;
+}
+
+function _clipboardExtractImageInputFromValues(
+  {blob = null, uriList = "", html = "", plainText = ""} = {},
+  {
+    blobMessage,
+    uriListMessage,
+    htmlMessage,
+    plainTextMessage,
+    details,
+  } = {}
+) {
+  if (blob) return _clipboardCreateLoggedImageInput({blob}, blobMessage, details);
+
+  const fallbackText = plainText || "";
+  const trimmedPlainText = fallbackText.trim();
   const uriListUrl = _clipboardExtractImageUrlFromUriList(uriList);
-  if (uriListUrl) return {url: uriListUrl};
+  if (uriListUrl) {
+    return _clipboardCreateLoggedImageInput({
+      url: uriListUrl,
+      text: fallbackText || uriListUrl,
+    }, uriListMessage, details);
+  }
 
-  const html = await _clipboardReadClipboardText(clipItems, "text/html");
   const htmlUrl = _clipboardExtractImageUrlFromHtml(html);
-  if (htmlUrl) return {url: htmlUrl};
+  if (htmlUrl) {
+    return _clipboardCreateLoggedImageInput({
+      url: htmlUrl,
+      text: fallbackText || htmlUrl,
+    }, htmlMessage, details);
+  }
 
-  const plainText = await _clipboardReadClipboardText(clipItems, "text/plain");
-  const textUrl = _clipboardExtractImageUrlFromText(plainText);
-  if (textUrl) return {url: textUrl};
+  const textUrl = _clipboardExtractImageUrlFromText(trimmedPlainText);
+  if (textUrl) {
+    return _clipboardCreateLoggedImageInput({
+      url: textUrl,
+      text: fallbackText || textUrl,
+    }, plainTextMessage, details);
+  }
 
   return null;
+}
+
+async function _clipboardExtractImageInput(clipItems) {
+  const blob = await _clipboardExtractImageBlob(clipItems);
+  if (blob) {
+    return _clipboardExtractImageInputFromValues({blob}, {
+      blobMessage: "Resolved media input from async clipboard blob",
+    });
+  }
+
+  return _clipboardExtractImageInputFromValues({
+    uriList: await _clipboardReadClipboardText(clipItems, "text/uri-list"),
+    html: await _clipboardReadClipboardText(clipItems, "text/html"),
+    plainText: await _clipboardReadClipboardText(clipItems, "text/plain"),
+  }, {
+    uriListMessage: "Resolved media input from async clipboard uri-list",
+    htmlMessage: "Resolved media input from async clipboard HTML",
+    plainTextMessage: "Resolved media input from async clipboard plain text",
+  });
 }
 
 function _clipboardExtractImageBlobFromDataTransfer(dataTransfer) {
@@ -777,32 +1031,27 @@ function _clipboardReadDataTransferText(dataTransfer, mimeType) {
 }
 
 function _clipboardExtractTextInputFromDataTransfer(dataTransfer) {
-  const plainText = _clipboardNormalizePastedText(_clipboardReadDataTransferText(dataTransfer, "text/plain"));
-  if (plainText) return {text: plainText};
-
-  const html = _clipboardReadDataTransferText(dataTransfer, "text/html");
-  if (!html?.trim()) return null;
-
-  const documentFragment = new DOMParser().parseFromString(html, "text/html");
-  const extractedText = _clipboardNormalizePastedText(documentFragment.body?.textContent || "");
-  return extractedText ? {text: extractedText} : null;
+  return _clipboardExtractTextInputFromValues({
+    plainText: _clipboardReadDataTransferText(dataTransfer, "text/plain"),
+    html: _clipboardReadDataTransferText(dataTransfer, "text/html"),
+  });
 }
 
 function _clipboardExtractImageInputFromDataTransfer(dataTransfer) {
-  const blob = _clipboardExtractImageBlobFromDataTransfer(dataTransfer);
-  if (blob) return {blob};
-
-  const plainText = _clipboardReadDataTransferText(dataTransfer, "text/plain").trim();
-  const uriListUrl = _clipboardExtractImageUrlFromUriList(_clipboardReadDataTransferText(dataTransfer, "text/uri-list"));
-  if (uriListUrl) return {url: uriListUrl, text: plainText || uriListUrl};
-
-  const htmlUrl = _clipboardExtractImageUrlFromHtml(_clipboardReadDataTransferText(dataTransfer, "text/html"));
-  if (htmlUrl) return {url: htmlUrl, text: plainText || htmlUrl};
-
-  const textUrl = _clipboardExtractImageUrlFromText(plainText);
-  if (textUrl) return {url: textUrl, text: plainText};
-
-  return null;
+  return _clipboardExtractImageInputFromValues({
+    blob: _clipboardExtractImageBlobFromDataTransfer(dataTransfer),
+    uriList: _clipboardReadDataTransferText(dataTransfer, "text/uri-list"),
+    html: _clipboardReadDataTransferText(dataTransfer, "text/html"),
+    plainText: _clipboardReadDataTransferText(dataTransfer, "text/plain"),
+  }, {
+    blobMessage: "Resolved media input from paste/drop file data",
+    uriListMessage: "Resolved media input from paste/drop uri-list",
+    htmlMessage: "Resolved media input from paste/drop HTML",
+    plainTextMessage: "Resolved media input from paste/drop plain text URL",
+    details: {
+      dataTransfer: _clipboardDescribeDataTransfer(dataTransfer),
+    },
+  });
 }
 
 function _clipboardGetChatRootFromTarget(target) {
@@ -860,6 +1109,10 @@ function _clipboardCreateChatMediaContent(path) {
 }
 
 async function _clipboardCreateChatMessage(path) {
+  _clipboardLog("info", "Creating chat media message", {
+    path,
+    mediaKind: _clipboardGetMediaKind({src: path}) || "image",
+  });
   return foundry.documents.ChatMessage.create({
     content: _clipboardCreateChatMediaContent(path),
     speaker: foundry.documents.ChatMessage.getSpeaker(),
@@ -901,6 +1154,12 @@ async function _clipboardEnsureAssociatedTextPage(document, text) {
   const existingEntry = noteData?.entryId ? game.journal?.get?.(noteData.entryId) : null;
   const existingPage = noteData?.pageId ? existingEntry?.pages?.get?.(noteData.pageId) : null;
   if (existingPage?.type === "text") {
+    _clipboardLog("info", "Appending pasted text to existing placeable note page", {
+      documentName: document.documentName,
+      documentId: document.id,
+      entryId: existingEntry.id,
+      pageId: existingPage.id,
+    });
     await _clipboardAppendTextToPage(existingPage, text);
     return {
       entry: existingEntry,
@@ -911,6 +1170,11 @@ async function _clipboardEnsureAssociatedTextPage(document, text) {
 
   const journalName = `${document.name || document.documentName} Notes`;
   if (existingEntry) {
+    _clipboardLog("info", "Creating a new note page in an existing journal entry", {
+      documentName: document.documentName,
+      documentId: document.id,
+      entryId: existingEntry.id,
+    });
     const createdPages = await existingEntry.createEmbeddedDocuments("JournalEntryPage", [
       _clipboardCreateTextPageData(text, CLIPBOARD_IMAGE_TEXT_NOTE_PAGE_NAME),
     ]);
@@ -962,6 +1226,15 @@ async function _clipboardEnsurePlaceableTextNote(document, text, fallbackPositio
     pageId: page.id,
     noteId: note?.id || null,
   });
+
+  _clipboardLog("info", "Created or updated a placeable text note", {
+    documentName: document.documentName,
+    documentId: document.id,
+    entryId: entry.id,
+    pageId: page.id,
+    noteId: note?.id || null,
+    position,
+  });
   return true;
 }
 
@@ -980,24 +1253,44 @@ async function _clipboardCreateStandaloneTextNote(text, context) {
       text: preview,
     }),
   ]);
+
+  _clipboardLog("info", "Created standalone text note", {
+    entryId: entry.id,
+    pageId: page.id,
+    position,
+    preview,
+  });
   return true;
 }
 
 async function _clipboardUploadBlob(blob, targetFolder) {
   _clipboardAssertUploadDestination(targetFolder);
   const file = _clipboardCreateUploadFile(blob);
+  const fileDetails = _clipboardDescribeFile(file);
+  _clipboardLog("info", "Uploading pasted media", {
+    destination: _clipboardDescribeDestinationForLog(targetFolder),
+    ...fileDetails,
+  });
 
-  return (await CLIPBOARD_IMAGE_FILE_PICKER.upload(
+  const uploadPath = (await CLIPBOARD_IMAGE_FILE_PICKER.upload(
     targetFolder.source,
     targetFolder.target,
     file,
     _clipboardGetFilePickerOptions(targetFolder)
   )).path;
+
+  _clipboardLog("info", "Uploaded pasted media", {
+    destination: _clipboardDescribeDestinationForLog(targetFolder),
+    path: uploadPath,
+  });
+
+  return uploadPath;
 }
 
 async function _clipboardFetchImageUrl(url) {
   let response;
   try {
+    _clipboardLog("info", "Downloading pasted media URL", {url});
     response = await fetch(url);
   } catch (error) {
     throw new Error(`Failed to download pasted media URL from ${url}`);
@@ -1023,6 +1316,14 @@ async function _clipboardFetchImageUrl(url) {
     : new Blob([blob], {type: _clipboardGetMimeTypeFromFilename(filename)});
   const resolvedFilename = _clipboardEnsureFilenameExtension(filename, typedBlob);
   const resolvedMimeType = _clipboardNormalizeMimeType(typedBlob.type) || _clipboardGetMimeTypeFromFilename(resolvedFilename);
+  _clipboardLog("info", "Downloaded pasted media URL", {
+    url,
+    responseContentType: contentType || null,
+    blobType: blobType || null,
+    resolvedFilename,
+    resolvedMimeType,
+    size: typedBlob.size,
+  });
   return new File([typedBlob], resolvedFilename, {type: resolvedMimeType});
 }
 
@@ -1035,7 +1336,14 @@ async function _clipboardResolveImageInputBlob(imageInput) {
 
 async function _clipboardApplyPasteResult(path, context) {
   const mediaKind = _clipboardGetMediaKind({src: path}) || "image";
-  if (await _clipboardReplaceControlledMedia(path, context.replacementTarget, mediaKind)) return true;
+  if (await _clipboardReplaceControlledMedia(path, context.replacementTarget, mediaKind)) {
+    _clipboardLog("info", "Applied pasted media by replacing controlled documents", {
+      path,
+      mediaKind,
+      replacementTarget: _clipboardDescribeReplacementTarget(context.replacementTarget),
+    });
+    return true;
+  }
 
   const {width: imgWidth, height: imgHeight} = await _clipboardLoadMediaDimensions(path);
   const createData = context.createStrategy.createData({
@@ -1046,6 +1354,13 @@ async function _clipboardApplyPasteResult(path, context) {
     mousePos: context.mousePos,
   });
   await canvas.scene.createEmbeddedDocuments(context.createStrategy.documentName, createData);
+  _clipboardLog("info", "Applied pasted media by creating new documents", {
+    path,
+    mediaKind,
+    documentName: context.createStrategy.documentName,
+    createCount: createData.length,
+    mousePos: context.mousePos,
+  });
   return true;
 }
 
@@ -1061,7 +1376,17 @@ async function _clipboardPasteBlob(blob, targetFolder, contextOptions = {}) {
   if (!canvas?.ready || !canvas.scene) return false;
 
   const context = _clipboardResolvePasteContext(contextOptions);
-  if (!_clipboardCanPasteToContext(context)) return false;
+  _clipboardLog("debug", "Resolved canvas paste context", {
+    context: _clipboardDescribePasteContext(context),
+    destination: _clipboardDescribeDestinationForLog(targetFolder),
+    blob: _clipboardDescribeImageInput({blob}),
+  });
+  if (!_clipboardCanPasteToContext(context)) {
+    _clipboardLog("info", "Skipping canvas paste because the current context is not eligible", {
+      context: _clipboardDescribePasteContext(context),
+    });
+    return false;
+  }
 
   _clipboardPrepareCreateLayer(context);
   const path = await _clipboardUploadBlob(blob, targetFolder);
@@ -1070,13 +1395,21 @@ async function _clipboardPasteBlob(blob, targetFolder, contextOptions = {}) {
 
 function _clipboardHasPasteConflict({respectCopiedObjects = true} = {}) {
   if (respectCopiedObjects && _clipboardHasCopiedObjects()) {
-    console.warn("Image Clipboard: Priority given to Foundry copied objects.");
+    _clipboardLog("warn", "Priority given to Foundry copied objects.");
     return true;
   }
 
-  if (CLIPBOARD_IMAGE_LOCKED) return true;
+  if (CLIPBOARD_IMAGE_LOCKED) {
+    _clipboardLog("info", "Skipping paste because the module is already handling another paste.");
+    return true;
+  }
+
   if (game.modules.get("vtta-tokenizer")?.active &&
-      Object.values(ui.windows).some(windowApp => windowApp.id === "tokenizer-control")) return true;
+      Object.values(ui.windows).some(windowApp => windowApp.id === "tokenizer-control")) {
+    _clipboardLog("info", "Skipping paste because VTTA Tokenizer is active.");
+    return true;
+  }
+
   return false;
 }
 
@@ -1085,8 +1418,16 @@ async function _clipboardExecutePasteWorkflow(workflow, options = {}) {
   if (_clipboardHasPasteConflict({respectCopiedObjects})) return false;
 
   CLIPBOARD_IMAGE_LOCKED = true;
+  _clipboardLog("debug", "Starting paste workflow", {
+    options,
+  });
   try {
-    return await workflow();
+    const result = await workflow();
+    _clipboardLog("debug", "Finished paste workflow", {
+      options,
+      result,
+    });
+    return result;
   } catch (error) {
     if (notifyError) {
       const message = error instanceof Error && error.message
@@ -1094,7 +1435,10 @@ async function _clipboardExecutePasteWorkflow(workflow, options = {}) {
         : "Clipboard Image: Failed to handle media input. Check the console.";
       ui.notifications.error(message);
     }
-    console.error("Clipboard Image: Failed to handle media input", error);
+    _clipboardLog("error", "Failed to handle media input", {
+      options,
+      error: _clipboardSerializeError(error),
+    });
     return false;
   } finally {
     CLIPBOARD_IMAGE_LOCKED = false;
@@ -1110,9 +1454,27 @@ async function _clipboardHandleImageBlob(blob, options = {}) {
 }
 
 async function _clipboardHandleImageInput(imageInput, options = {}) {
+  _clipboardLog("debug", "Handling media input", {
+    imageInput: _clipboardDescribeImageInput(imageInput),
+  });
   const blob = await _clipboardResolveImageInputBlob(imageInput);
   if (!blob) return false;
   return _clipboardHandleImageBlob(blob, options);
+}
+
+async function _clipboardHandleImageInputWithTextFallback(imageInput, options = {}) {
+  try {
+    return await _clipboardHandleImageInput(imageInput, options);
+  } catch (error) {
+    const fallbackText = _clipboardNormalizePastedText(imageInput?.text || imageInput?.url || "");
+    if (!fallbackText) throw error;
+
+    _clipboardLog("info", "Falling back to pasted text after media handling failed.", {
+      imageInput: _clipboardDescribeImageInput(imageInput),
+      error: _clipboardSerializeError(error),
+    });
+    return _clipboardHandleTextInput({text: fallbackText}, options);
+  }
 }
 
 async function _clipboardHandleChatImageBlob(blob) {
@@ -1132,15 +1494,32 @@ async function _clipboardHandleTextInput(textInput, options = {}) {
   if (!canvas?.ready || !canvas.scene) return false;
 
   const context = _clipboardResolvePasteContext(options.contextOptions);
-  if (!_clipboardCanPasteToContext(context)) return false;
+  _clipboardLog("debug", "Handling pasted text", {
+    textLength: text.length,
+    context: _clipboardDescribePasteContext(context),
+  });
+  if (!_clipboardCanPasteToContext(context)) {
+    _clipboardLog("info", "Skipping pasted text because the current context is not eligible", {
+      context: _clipboardDescribePasteContext(context),
+    });
+    return false;
+  }
 
   if (context.replacementTarget?.documents?.length) {
+    _clipboardLog("info", "Applying pasted text to controlled placeables", {
+      replacementTarget: _clipboardDescribeReplacementTarget(context.replacementTarget),
+      textLength: text.length,
+    });
     for (const document of context.replacementTarget.documents) {
       await _clipboardEnsurePlaceableTextNote(document, text, context.mousePos);
     }
     return true;
   }
 
+  _clipboardLog("info", "Creating a standalone text note from pasted text", {
+    textLength: text.length,
+    mousePos: context.mousePos,
+  });
   return _clipboardCreateStandaloneTextNote(text, context);
 }
 
@@ -1177,7 +1556,7 @@ async function _clipboardReadAndPasteClipboardContent(options = {}) {
   const mediaInput = await _clipboardExtractImageInput(clipItems);
   if (mediaInput) {
     if (options.handleImageInput) return options.handleImageInput(mediaInput);
-    return _clipboardHandleImageInput(mediaInput, options);
+    return _clipboardHandleImageInputWithTextFallback(mediaInput, options);
   }
 
   const textInput = await _clipboardExtractTextInput(clipItems);
@@ -1196,7 +1575,7 @@ function _clipboardChooseImageFile() {
   return new Promise(resolve => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "image/*,video/*";
+    input.accept = CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT;
     input.style.display = "none";
 
     const cleanup = () => {
@@ -1226,21 +1605,33 @@ function _clipboardChooseImageFile() {
   });
 }
 
-async function _clipboardOpenUploadPicker() {
+async function _clipboardChooseAndHandleMediaFile({emptyMessage, selectedMessage, handler}) {
   const file = await _clipboardChooseImageFile();
-  if (!file) return false;
-  return _clipboardHandleImageBlob(file, {
-    contextOptions: {
-      fallbackToCenter: true,
-      requireCanvasFocus: false,
-    },
+  if (!file) {
+    _clipboardLog("info", emptyMessage);
+    return false;
+  }
+
+  _clipboardLog("info", selectedMessage, _clipboardDescribeFile(file));
+  return handler(file);
+}
+
+async function _clipboardOpenUploadPicker() {
+  return _clipboardChooseAndHandleMediaFile({
+    emptyMessage: "Upload picker closed without selecting a file.",
+    selectedMessage: "Selected a media file from the upload picker",
+    handler: file => _clipboardHandleImageBlob(file, {
+      contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS,
+    }),
   });
 }
 
 async function _clipboardOpenChatUploadPicker() {
-  const file = await _clipboardChooseImageFile();
-  if (!file) return false;
-  return _clipboardHandleChatImageBlob(file);
+  return _clipboardChooseAndHandleMediaFile({
+    emptyMessage: "Chat upload picker closed without selecting a file.",
+    selectedMessage: "Selected a media file from the chat upload picker",
+    handler: file => _clipboardHandleChatImageBlob(file),
+  });
 }
 
 function _clipboardHandleScenePasteAction() {
@@ -1249,24 +1640,28 @@ function _clipboardHandleScenePasteAction() {
     return;
   }
 
+  _clipboardLog("info", "Invoked scene Paste Media action.", {
+    activeLayer: canvas?.activeLayer?.options?.name || null,
+  });
   void _clipboardExecutePasteWorkflow(() => _clipboardReadAndPasteImage({
     notifyNoImage: true,
-    contextOptions: {
-      fallbackToCenter: true,
-      requireCanvasFocus: false,
-    },
+    contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS,
   }), {
     respectCopiedObjects: false,
   });
 }
 
 function _clipboardHandleSceneUploadAction() {
+  _clipboardLog("info", "Invoked scene Upload Media action.", {
+    activeLayer: canvas?.activeLayer?.options?.name || null,
+  });
   void _clipboardExecutePasteWorkflow(() => _clipboardOpenUploadPicker(), {
     respectCopiedObjects: false,
   });
 }
 
 function _clipboardHandleChatUploadAction() {
+  _clipboardLog("info", "Invoked chat Upload Media action.");
   void _clipboardExecutePasteWorkflow(() => _clipboardOpenChatUploadPicker(), {
     respectCopiedObjects: false,
   });
@@ -1326,6 +1721,10 @@ function _clipboardOnChatDrop(event) {
   const mediaInput = _clipboardExtractImageInputFromDataTransfer(event.dataTransfer);
   if (!mediaInput) return;
 
+  _clipboardLog("info", "Handling dropped media in chat.", {
+    imageInput: _clipboardDescribeImageInput(mediaInput),
+    dataTransfer: _clipboardDescribeDataTransfer(event.dataTransfer),
+  });
   event.preventDefault();
   event.stopPropagation();
   void _clipboardExecutePasteWorkflow(() => _clipboardHandleChatImageInput(mediaInput), {
@@ -1420,14 +1819,34 @@ async function _clipboardHandleChatImageInputWithTextFallback(imageInput, target
   }
 }
 
+function _clipboardConsumePasteEvent(event) {
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function _clipboardCanHandleCanvasPasteContext(context, rejectionMessage) {
+  if (_clipboardCanPasteToContext(context)) return true;
+
+  _clipboardLog("info", rejectionMessage, {
+    context: _clipboardDescribePasteContext(context),
+  });
+  return false;
+}
+
 function _clipboardOnPaste(event) {
+  _clipboardLog("debug", "Received paste event.", {
+    targetTagName: event.target?.tagName || null,
+    isChatTarget: Boolean(_clipboardGetChatRootFromTarget(event.target)),
+    isEditableTarget: _clipboardIsEditableTarget(event.target),
+    dataTransfer: _clipboardDescribeDataTransfer(event.clipboardData),
+  });
+
   const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
   if (imageInput) {
     if (_clipboardGetChatRootFromTarget(event.target)) {
       if (_clipboardHasPasteConflict({respectCopiedObjects: false})) return;
 
-      event.preventDefault();
-      event.stopPropagation();
+      _clipboardConsumePasteEvent(event);
       void _clipboardExecutePasteWorkflow(() => _clipboardHandleChatImageInputWithTextFallback(imageInput, event.target), {
         respectCopiedObjects: false,
       });
@@ -1435,13 +1854,11 @@ function _clipboardOnPaste(event) {
     }
 
     const context = _clipboardResolvePasteContext();
-    if (!_clipboardCanPasteToContext(context)) return;
+    if (!_clipboardCanHandleCanvasPasteContext(context, "Ignoring pasted media because the canvas context is not eligible.")) return;
     if (_clipboardHasPasteConflict()) return;
 
-    event.preventDefault();
-    event.stopPropagation();
-
-    void _clipboardExecutePasteWorkflow(() => _clipboardHandleImageInput(imageInput), {
+    _clipboardConsumePasteEvent(event);
+    void _clipboardExecutePasteWorkflow(() => _clipboardHandleImageInputWithTextFallback(imageInput), {
       respectCopiedObjects: false,
     });
     return;
@@ -1452,18 +1869,26 @@ function _clipboardOnPaste(event) {
   if (_clipboardGetChatRootFromTarget(event.target) || _clipboardIsEditableTarget(event.target)) return;
 
   const context = _clipboardResolvePasteContext();
-  if (!_clipboardCanPasteToContext(context)) return;
+  if (!_clipboardCanHandleCanvasPasteContext(context, "Ignoring pasted text because the canvas context is not eligible.")) return;
   if (_clipboardHasPasteConflict()) return;
 
-  event.preventDefault();
-  event.stopPropagation();
+  _clipboardConsumePasteEvent(event);
   void _clipboardExecutePasteWorkflow(() => _clipboardHandleTextInput(textInput), {
     respectCopiedObjects: false,
   });
 }
 
 function _clipboardOnKeydown(event) {
-  CLIPBOARD_HIDDEN_MODE = (event.ctrlKey || event.metaKey) && event.getModifierState("CapsLock");
+  const hiddenMode = (event.ctrlKey || event.metaKey) && event.getModifierState("CapsLock");
+  if (hiddenMode !== CLIPBOARD_HIDDEN_MODE) {
+    _clipboardLog("debug", "Updated hidden paste mode.", {
+      hiddenMode,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      code: event.code,
+    });
+  }
+  CLIPBOARD_HIDDEN_MODE = hiddenMode;
 
   if (event.defaultPrevented || event.repeat) return;
   if (event.code !== "KeyV" || !event.metaKey || event.ctrlKey || event.altKey) return;
@@ -1644,6 +2069,15 @@ function _clipboardRegisterSettings() {
     type: String,
     default: "",
   });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING, {
+    name: "Verbose logging",
+    hint: "Log detailed clipboard-image diagnostics to the browser console for debugging.",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: false,
+  });
 }
 
 document.addEventListener("keydown", _clipboardOnKeydown);
@@ -1653,6 +2087,10 @@ Hooks.once('init', function() {
   _clipboardRegisterSettings();
   Hooks.on("getSceneControlButtons", _clipboardAddSceneControlButtons);
   Hooks.on("renderChatInput", _clipboardOnRenderChatInput);
+  _clipboardLog("info", "Initializing clipboard-image module.", {
+    clipboardReadAvailable: Boolean(navigator.clipboard?.read),
+    sceneControls: CLIPBOARD_IMAGE_SCENE_CONTROLS,
+  });
 
   if (navigator.clipboard?.read) {
     game.keybindings.register("clipboard-image", "paste-image", {
@@ -1680,7 +2118,186 @@ Hooks.once('init', function() {
 });
 
 Hooks.once('ready', function() {
+  _clipboardLog("info", "clipboard-image module is ready.", {
+    clipboardReadAvailable: Boolean(navigator.clipboard?.read),
+    verboseLogging: _clipboardVerboseLoggingEnabled(),
+  });
   if (game.user.isGM && !navigator.clipboard?.read) {
     ui.notifications.info("Clipboard Image: Direct clipboard reads are unavailable here. Browser paste events and Upload Media scene controls are still available.");
+    _clipboardLog("info", "Direct clipboard reads are unavailable; paste-event and upload fallbacks remain available.");
   }
 });
+
+function _clipboardGetRuntimeState() {
+  return {
+    locked: CLIPBOARD_IMAGE_LOCKED,
+    hiddenMode: CLIPBOARD_HIDDEN_MODE,
+  };
+}
+
+function _clipboardSetRuntimeState({locked, hiddenMode} = {}) {
+  if (typeof locked === "boolean") CLIPBOARD_IMAGE_LOCKED = locked;
+  if (typeof hiddenMode === "boolean") CLIPBOARD_HIDDEN_MODE = hiddenMode;
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    ClipboardImageDestinationConfig,
+    __testables: {
+      _clipboardVerboseLoggingEnabled,
+      _clipboardSerializeError,
+      _clipboardDescribeFile,
+      _clipboardDescribeDestinationForLog,
+      _clipboardDescribeReplacementTarget,
+      _clipboardDescribePasteContext,
+      _clipboardDescribeClipboardItems,
+      _clipboardDescribeDataTransfer,
+      _clipboardDescribeImageInput,
+      _clipboardLog,
+      _clipboardUsingTheForge,
+      _clipboardGetStoredSource,
+      _clipboardResolveSource,
+      _clipboardGetSourceLabel,
+      _clipboardGetSourceChoices,
+      _clipboardCanSelectSource,
+      _clipboardCreateFolderIfMissing,
+      _clipboardGetStoredBucket,
+      _clipboardGetTargetFolder,
+      _clipboardGetUploadDestination,
+      _clipboardGetFilePickerOptions,
+      _clipboardDescribeDestination,
+      _clipboardNormalizeMimeType,
+      _clipboardGetFilenameExtension,
+      _clipboardGetFileExtension,
+      _clipboardGetFilenameFromUrl,
+      _clipboardLooksLikeImageFilename,
+      _clipboardLooksLikeVideoFilename,
+      _clipboardIsImageMimeType,
+      _clipboardIsVideoMimeType,
+      _clipboardIsMediaMimeType,
+      _clipboardGetMediaKind,
+      _clipboardIsSupportedMediaBlob,
+      _clipboardGetMimeTypeFromFilename,
+      _clipboardEnsureFilenameExtension,
+      _clipboardGetTileVideoData,
+      _clipboardNormalizePastedText,
+      _clipboardEscapeHtml,
+      _clipboardExtractTextFromHtml,
+      _clipboardConvertTextToHtml,
+      _clipboardGetTextPreview,
+      _clipboardGetTextPageFormat,
+      _clipboardGetDefaultNoteIcon,
+      _clipboardGetDocumentCenter,
+      _clipboardGetAssociatedNotePosition,
+      _clipboardCreateTextPageData,
+      _clipboardAppendHtmlContent,
+      _clipboardCreateSceneNoteData,
+      _clipboardCreateUploadFile,
+      _clipboardAssertUploadDestination,
+      _clipboardHasCopiedObjects,
+      _clipboardGetMousePosition,
+      _clipboardGetCanvasCenter,
+      _clipboardScaleTileDimensions,
+      _clipboardRoundDimension,
+      _clipboardScaleTokenDimensions,
+      _clipboardGetTokenPosition,
+      _clipboardGetActiveDocumentName,
+      _clipboardGetPlaceableStrategy,
+      _clipboardGetReplacementTarget,
+      _clipboardResolvePasteContext,
+      _clipboardHasCanvasFocus,
+      _clipboardIsMouseWithinCanvas,
+      _clipboardCanPasteToContext,
+      _clipboardPrepareCreateLayer,
+      _clipboardReplaceControlledMedia,
+      _clipboardLoadImageDimensions,
+      _clipboardLoadVideoDimensions,
+      _clipboardLoadMediaDimensions,
+      _clipboardReadClipboardItems,
+      _clipboardExtractImageBlob,
+      _clipboardReadClipboardText,
+      _clipboardExtractTextInput,
+      _clipboardParseSupportedUrl,
+      _clipboardExtractImageUrlFromUriList,
+      _clipboardExtractImageUrlFromText,
+      _clipboardExtractImageUrlFromHtml,
+      _clipboardCreateLoggedImageInput,
+      _clipboardExtractTextInputFromValues,
+      _clipboardExtractImageInputFromValues,
+      _clipboardExtractImageInput,
+      _clipboardExtractImageBlobFromDataTransfer,
+      _clipboardReadDataTransferText,
+      _clipboardExtractTextInputFromDataTransfer,
+      _clipboardExtractImageInputFromDataTransfer,
+      _clipboardGetChatRootFromTarget,
+      _clipboardIsEditableTarget,
+      _clipboardCreateChatMediaContent,
+      _clipboardCreateChatMessage,
+      _clipboardCreateTextJournalEntry,
+      _clipboardAppendTextToPage,
+      _clipboardGetAssociatedTextNoteData,
+      _clipboardEnsureAssociatedTextPage,
+      _clipboardEnsurePlaceableTextNote,
+      _clipboardCreateStandaloneTextNote,
+      _clipboardUploadBlob,
+      _clipboardFetchImageUrl,
+      _clipboardResolveImageInputBlob,
+      _clipboardApplyPasteResult,
+      _clipboardPostChatImage,
+      _clipboardPasteBlob,
+      _clipboardHasPasteConflict,
+      _clipboardExecutePasteWorkflow,
+      _clipboardHandleImageBlob,
+      _clipboardHandleImageInput,
+      _clipboardHandleImageInputWithTextFallback,
+      _clipboardHandleChatImageBlob,
+      _clipboardHandleChatImageInput,
+      _clipboardHandleTextInput,
+      _clipboardReadAndPasteImage,
+      _clipboardReadAndPasteClipboardContent,
+      _clipboardChooseImageFile,
+      _clipboardChooseAndHandleMediaFile,
+      _clipboardOpenUploadPicker,
+      _clipboardOpenChatUploadPicker,
+      _clipboardHandleScenePasteAction,
+      _clipboardHandleSceneUploadAction,
+      _clipboardHandleChatUploadAction,
+      _clipboardAddSceneControlButtons,
+      _clipboardToggleChatDropTarget,
+      _clipboardOnChatDragOver,
+      _clipboardOnChatDragLeave,
+      _clipboardOnChatDrop,
+      _clipboardAttachChatUploadButton,
+      _clipboardBindChatRoot,
+      _clipboardOnRenderChatInput,
+      _clipboardInsertTextAtTarget,
+      _clipboardHandleChatImageInputWithTextFallback,
+      _clipboardConsumePasteEvent,
+      _clipboardCanHandleCanvasPasteContext,
+      _clipboardOnPaste,
+      _clipboardOnKeydown,
+      _clipboardRegisterSettings,
+      _clipboardGetRuntimeState,
+      _clipboardSetRuntimeState,
+      constants: {
+        CLIPBOARD_IMAGE_MODULE_ID,
+        CLIPBOARD_IMAGE_DEFAULT_FOLDER,
+        CLIPBOARD_IMAGE_SOURCE_AUTO,
+        CLIPBOARD_IMAGE_SOURCE_DATA,
+        CLIPBOARD_IMAGE_SOURCE_S3,
+        CLIPBOARD_IMAGE_SOURCE_FORGE,
+        CLIPBOARD_IMAGE_SCENE_CONTROLS,
+        CLIPBOARD_IMAGE_TOOL_PASTE,
+        CLIPBOARD_IMAGE_TOOL_UPLOAD,
+        CLIPBOARD_IMAGE_CHAT_ROOT_ATTRIBUTE,
+        CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION,
+        CLIPBOARD_IMAGE_TEXT_NOTE_FLAG,
+        CLIPBOARD_IMAGE_TEXT_NOTE_PAGE_NAME,
+        CLIPBOARD_IMAGE_TEXT_NOTE_JOURNAL_PREFIX,
+        CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING,
+        CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT,
+        CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS,
+      },
+    },
+  };
+}

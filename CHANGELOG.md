@@ -1,4 +1,7 @@
 ### Unreleased
+* Add client-side verbose browser-console logging for clipboard parsing, upload, paste routing, and create vs replace diagnostics
+* Expand the Playwright smoke suite with edge-case coverage for mixed clipboard payloads, non-media URL note fallback, HTML media URLs, hidden paste mode, scene-control paste, and copied-object priority
+* Add a Playwright smoke suite for automatable Foundry workflows, plus setup docs for browser-driven regression testing
 * Add a dedicated `TESTING.md` manual QA guide for release validation and regression coverage
 * Support contextual plain-text paste by creating or updating Journal-backed scene notes for selected placeables and open map locations
 * Support animated image formats and browser-supported video media for canvas paste, chat paste, uploads, and media URLs
