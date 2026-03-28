@@ -1,4 +1,19 @@
 ### Unreleased
+* Add a dedicated `TESTING.md` manual QA guide for release validation and regression coverage
+* Support contextual plain-text paste by creating or updating Journal-backed scene notes for selected placeables and open map locations
+* Support animated image formats and browser-supported video media for canvas paste, chat paste, uploads, and media URLs
+* Download pasted media URLs before creating tiles, tokens, or chat media posts
+* Post pasted media to chat when the chat input is focused
+* Add chat drag/drop and upload-button support for image and video messages
+* Format chat media posts as clickable thumbnails or inline video previews with an `Open full media` link
+* Replace selected tile textures in place when pasting over controlled tiles
+* Replace selected token textures in place when pasting over controlled tokens
+* Paste into the active Tokens layer as media-backed tokens, while keeping Tiles as the default paste target
+* Add browser `paste` event support alongside async clipboard reads
+* Add scene control buttons for `Paste Media` and `Upload Media`
+* Add file-picker media import as a fallback for mobile or restricted browsers
+* Improve macOS support with a dedicated `Cmd+V` path
+* Scan all clipboard items for media data instead of only the first clipboard entry
 * Add an upload destination settings panel for choosing User Data, The Forge, Amazon S3, or another picker-provided source
 * Route directory creation and uploads through the selected FilePicker source and S3 bucket
 
