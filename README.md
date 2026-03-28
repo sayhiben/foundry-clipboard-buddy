@@ -19,6 +19,7 @@ Verified on Foundry VTT 13.351. The module now uses the public canvas clipboard 
 1. Copy an Image you like from any source (internet, file or a screenshot)
 2. Go to Foundry, focus on the Canvas and Press CTRL+V
 3. If an Image is found in your Clipboard, it will paste the image under your mouse and switch you to the Tiles layer.
+4. To change where pasted files are stored, open World Settings and configure Clipboard Image's `Upload destination`.
 
 ### Servers without HTTPS or Domain
 The browser won't trust your server for Clipboard access if you are running a server on an IP Address for example. Going to `about:flags` in your browser and trusting your server can be done here, before Image Clipboard works
@@ -31,9 +32,9 @@ Firefox Won't work by default. Version 90+ Disabled Clipboard API paste function
 
 ### Functionalities
 
-1. Images uploaded to a folder called `pasted_images` by default. This can be configured per world in the settings. If
-   you would like for example to store pasted images within your specific world, then you can
-   set `worlds/<my-world>/pasted_images`
+1. Images upload to `pasted_images` by default. In World Settings, `Upload destination` lets you choose the file store and folder using Foundry's native file picker.
+   This supports User Data, The Forge, and Amazon S3 without the module implementing its own backend-specific upload logic.
+   If you would like for example to store pasted images within your specific world, then you can set `worlds/<my-world>/pasted_images`
 2. If an image is larger than Canvas dimensions, then the Tile (not image) will be pasted as 1/3 the size of the canvas,
    while holding image proportions.
 3. Use CAPS LOCK to toggle between hidden or visible paste mode

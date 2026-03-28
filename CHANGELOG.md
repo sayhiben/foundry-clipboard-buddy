@@ -1,3 +1,7 @@
+### Unreleased
+* Add an upload destination settings panel for choosing User Data, The Forge, Amazon S3, or another picker-provided source
+* Route directory creation and uploads through the selected FilePicker source and S3 bucket
+
 ### 0.5.0
 * Support Foundry V13
 * Replace private canvas clipboard and pointer access with public APIs
