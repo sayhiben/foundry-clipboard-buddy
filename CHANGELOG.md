@@ -17,7 +17,7 @@
 * Add file-picker media import as a fallback for mobile or restricted browsers
 * Improve macOS support with a dedicated `Cmd+V` path
 * Scan all clipboard items for media data instead of only the first clipboard entry
-* Add an upload destination settings panel for choosing User Data, The Forge, Amazon S3, or another picker-provided source
+* Add an upload destination settings panel for choosing User Data, The Forge, S3-compatible storage, or another picker-provided source
 * Route directory creation and uploads through the selected FilePicker source and S3 bucket
 
 ### 0.5.0

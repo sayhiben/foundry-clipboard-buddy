@@ -322,6 +322,13 @@ function loadRuntime(options = {}) {
     documentTypes: {
       Actor: ["character", "npc"],
     },
+    data: {
+      files: {
+        s3: {
+          endpoint: "",
+        },
+      },
+    },
     journal: {
       get: id => journalEntries.get(id),
     },

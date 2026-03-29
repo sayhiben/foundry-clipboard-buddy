@@ -44,6 +44,18 @@ describe("settings and permission helpers", () => {
       env.settingsValues.set("clipboard-image.minimum-role-canvas-media", "   ");
       expect(api._clipboardGetConfiguredMinimumRole("minimum-role-canvas-media")).toBe("PLAYER");
     });
+
+    it("allows users who exactly meet the configured minimum role", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.TRUSTED;
+      env.settingsValues.set("clipboard-image.minimum-role-canvas-media", "TRUSTED");
+      env.settingsValues.set("clipboard-image.minimum-role-canvas-text", "TRUSTED");
+      env.settingsValues.set("clipboard-image.minimum-role-chat-media", "TRUSTED");
+
+      expect(api._clipboardCanUseCanvasMedia()).toBe(true);
+      expect(api._clipboardCanUseCanvasText()).toBe(true);
+      expect(api._clipboardCanUseChatMedia()).toBe(true);
+    });
   });
 
   describe("feature toggles", () => {
@@ -74,11 +86,15 @@ describe("settings and permission helpers", () => {
     it("respects token and tile create/replace toggles", () => {
       env.settingsValues.set("clipboard-image.enable-token-creation", false);
       env.settingsValues.set("clipboard-image.enable-tile-replacement", false);
+      env.settingsValues.set("clipboard-image.enable-scene-paste-tool", false);
+      env.settingsValues.set("clipboard-image.enable-scene-upload-tool", false);
 
       expect(api._clipboardCanCreateTokens()).toBe(false);
       expect(api._clipboardCanCreateTiles()).toBe(true);
       expect(api._clipboardCanReplaceTokens()).toBe(true);
       expect(api._clipboardCanReplaceTiles()).toBe(false);
+      expect(api._clipboardCanUseScenePasteTool()).toBe(false);
+      expect(api._clipboardCanUseSceneUploadTool()).toBe(false);
     });
   });
 
@@ -101,6 +117,28 @@ describe("settings and permission helpers", () => {
       expect(api._clipboardGetCanvasTextPasteMode()).toBe("disabled");
       expect(api._clipboardGetScenePastePromptMode()).toBe("always");
       expect(api._clipboardShouldCreateBackingActors()).toBe(false);
+    });
+
+    it("accepts the remaining explicit behavior modes", () => {
+      env.settingsValues.set("clipboard-image.default-empty-canvas-target", "tile");
+      env.settingsValues.set("clipboard-image.chat-media-display", "full-preview");
+      env.settingsValues.set("clipboard-image.scene-paste-prompt-mode", "never");
+
+      expect(api._clipboardGetDefaultEmptyCanvasTarget()).toBe("tile");
+      expect(api._clipboardGetChatMediaDisplayMode()).toBe("full-preview");
+      expect(api._clipboardGetScenePastePromptMode()).toBe("never");
+    });
+
+    it("falls back to safe defaults for unsupported behavior values", () => {
+      env.settingsValues.set("clipboard-image.default-empty-canvas-target", "weird");
+      env.settingsValues.set("clipboard-image.chat-media-display", "weird");
+      env.settingsValues.set("clipboard-image.canvas-text-paste-mode", "weird");
+      env.settingsValues.set("clipboard-image.scene-paste-prompt-mode", "weird");
+
+      expect(api._clipboardGetDefaultEmptyCanvasTarget()).toBe("active-layer");
+      expect(api._clipboardGetChatMediaDisplayMode()).toBe("thumbnail");
+      expect(api._clipboardGetCanvasTextPasteMode()).toBe("scene-notes");
+      expect(api._clipboardGetScenePastePromptMode()).toBe("auto");
     });
   });
 });

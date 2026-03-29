@@ -426,6 +426,18 @@ describe("ui and hook integration helpers", () => {
       expect(controls.tiles.tools["clipboard-image-upload"].visible).toBe(true);
     });
 
+    it("hides scene controls from non-gms when the world setting disallows them", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      env.settingsValues.set("clipboard-image.allow-non-gm-scene-controls", false);
+
+      const controls = {tiles: {tools: {}}, tokens: {tools: {}}};
+      api._clipboardAddSceneControlButtons(controls);
+
+      expect(controls.tiles.tools["clipboard-image-paste"].visible).toBe(false);
+      expect(controls.tiles.tools["clipboard-image-upload"].visible).toBe(false);
+    });
+
     it("invokes scene control callbacks", async () => {
       const controls = {tiles: {tools: {}}, tokens: {tools: {}}};
       api._clipboardAddSceneControlButtons(controls);
@@ -781,14 +793,29 @@ describe("ui and hook integration helpers", () => {
       });
 
       const app = new ClipboardImageDestinationConfig();
+      globalThis.game.data.files.s3.endpoint = "https://r2.example.com";
       env.settingsValues.set("clipboard-image.image-location-source", "s3");
       env.settingsValues.set("clipboard-image.image-location", "folder");
       env.settingsValues.set("clipboard-image.image-location-bucket", "bucket");
       expect(app.getData()).toMatchObject({
         bucket: "bucket",
         isS3: true,
+        s3Endpoint: "https://r2.example.com",
         target: "folder",
         source: "s3",
+      });
+    });
+
+    it("keeps the s3 endpoint hidden and empty for non-s3 sources", () => {
+      const {ClipboardImageDestinationConfig} = env.runtime;
+      const app = new ClipboardImageDestinationConfig();
+      env.settingsValues.set("clipboard-image.image-location-source", "data");
+      globalThis.game.data.files.s3.endpoint = "https://r2.example.com";
+
+      expect(app.getData()).toMatchObject({
+        isS3: false,
+        s3Endpoint: "https://r2.example.com",
+        source: "data",
       });
     });
 
@@ -800,6 +827,7 @@ describe("ui and hook integration helpers", () => {
       const bucketHandlers = {};
       const clickHandlers = {};
       const bucketGroup = {toggleClass: vi.fn()};
+      const endpointGroup = {toggleClass: vi.fn()};
 
       app.form = {
         elements: {
@@ -813,9 +841,16 @@ describe("ui and hook integration helpers", () => {
           target: {value: "folder"},
           bucket: {value: ""},
         },
-        querySelector: vi.fn(() => ({value: ""})),
+        querySelector: vi.fn(selector => {
+          if (selector === '[data-role="destination-summary"]') return {value: ""};
+          if (selector === '[data-role="s3-endpoint"]') return {value: ""};
+          return {value: ""};
+        }),
       };
-      app.element = {find: vi.fn(() => bucketGroup)};
+      app.element = {find: vi.fn(selector => {
+        if (selector === ".clipboard-image-s3-endpoint") return endpointGroup;
+        return bucketGroup;
+      })};
 
       app.activateListeners({
         find: vi.fn(selector => {
@@ -831,12 +866,14 @@ describe("ui and hook integration helpers", () => {
       targetHandlers.input();
       bucketHandlers.input();
       expect(bucketGroup.toggleClass).toHaveBeenCalled();
+      expect(endpointGroup.toggleClass).toHaveBeenCalled();
       expect(clickHandlers.click).toBeTypeOf("function");
     });
 
     it("ensures custom source options exist and refreshes summary text", () => {
       const {ClipboardImageDestinationConfig} = env.runtime;
       const app = new ClipboardImageDestinationConfig();
+      globalThis.game.data.files.s3.endpoint = "https://r2.example.com";
       app.form = {
         elements: {
           source: {
@@ -849,7 +886,11 @@ describe("ui and hook integration helpers", () => {
           target: {value: "folder"},
           bucket: {value: ""},
         },
-        querySelector: vi.fn(() => ({value: ""})),
+        querySelector: vi.fn(selector => {
+          if (selector === '[data-role="destination-summary"]') return {value: ""};
+          if (selector === '[data-role="s3-endpoint"]') return {value: ""};
+          return {value: ""};
+        }),
       };
       app.element = {find: vi.fn(() => ({toggleClass: vi.fn()}))};
 
@@ -857,6 +898,36 @@ describe("ui and hook integration helpers", () => {
       app._refreshFormState();
       expect(app.form.elements.source.add).toHaveBeenCalled();
       expect(app.form.querySelector).toHaveBeenCalledWith('[data-role="destination-summary"]');
+      expect(app.form.querySelector).toHaveBeenCalledWith('[data-role="s3-endpoint"]');
+    });
+
+    it("returns early from config refresh helpers when no form or source field exists", () => {
+      const {ClipboardImageDestinationConfig} = env.runtime;
+      const app = new ClipboardImageDestinationConfig();
+
+      app.form = null;
+      expect(() => app._refreshFormState()).not.toThrow();
+      expect(() => app._ensureSourceOption("custom")).not.toThrow();
+
+      app.form = {elements: {}};
+      expect(() => app._ensureSourceOption("custom")).not.toThrow();
+    });
+
+    it("skips adding duplicate source options", () => {
+      const {ClipboardImageDestinationConfig} = env.runtime;
+      const app = new ClipboardImageDestinationConfig();
+      const add = vi.fn();
+      app.form = {
+        elements: {
+          source: {
+            options: [{value: "data"}, {value: "custom"}],
+            add,
+          },
+        },
+      };
+
+      app._ensureSourceOption("custom");
+      expect(add).not.toHaveBeenCalled();
     });
 
     it("applies picker selections and rejects unsupported sources", () => {
@@ -975,6 +1046,23 @@ describe("ui and hook integration helpers", () => {
         bucket: "bucket-z",
       });
       expect(globalThis.game.settings.set).toHaveBeenCalledTimes(3);
+    });
+
+    it("does not persist any endpoint override from the destination form", async () => {
+      const {ClipboardImageDestinationConfig} = env.runtime;
+      const app = new ClipboardImageDestinationConfig();
+      await app._updateObject(null, {
+        source: "s3",
+        target: "final-folder",
+        bucket: "bucket-z",
+        endpoint: "https://should-not-save.example.com",
+      });
+
+      expect(globalThis.game.settings.set).not.toHaveBeenCalledWith(
+        "clipboard-image",
+        expect.stringContaining("endpoint"),
+        expect.anything()
+      );
     });
   });
 

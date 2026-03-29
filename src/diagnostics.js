@@ -43,6 +43,7 @@ function _clipboardDescribeDestinationForLog(destination) {
     source: destination.source,
     target: destination.target,
     bucket: destination.bucket || null,
+    endpoint: destination.endpoint || null,
   };
 }
 

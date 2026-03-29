@@ -1,5 +1,6 @@
-const fs = require("fs/promises");
+const fs = require("fs");
 const path = require("path");
+const {execFileSync} = require("child_process");
 const {expect} = require("@playwright/test");
 
 const MODULE_ID = "clipboard-image";
@@ -11,9 +12,110 @@ const CHAT_INPUT_SELECTORS = [
   "textarea[name='content']",
 ];
 const CLIPBOARD_LOG_PREFIX = "Clipboard Image [";
+const FOUNDRY_DOCKER_CONTAINER = process.env.FOUNDRY_DOCKER_CONTAINER || "";
+const FOUNDRY_CLASSIC_LEVEL_PATH = process.env.FOUNDRY_CLASSIC_LEVEL_PATH || "";
+const FOUNDRY_DATA_PATH = process.env.FOUNDRY_DATA_PATH || "";
+const FOUNDRY_WORLD_ID = process.env.FOUNDRY_WORLD_ID || "";
 
 function getFoundryUrl() {
   return process.env.FOUNDRY_URL || process.env.FOUNDRY_JOIN_URL || process.env.FOUNDRY_BASE_URL || "http://127.0.0.1:30000";
+}
+
+function _clipboardDockerText(args) {
+  return execFileSync("docker", args, {
+    encoding: "utf8",
+    env: process.env,
+  }).trim();
+}
+
+function _clipboardGetFoundryPort() {
+  try {
+    const parsed = new URL(getFoundryUrl());
+    return parsed.port || (parsed.protocol === "https:" ? "443" : "80");
+  } catch {
+    return "30000";
+  }
+}
+
+function _clipboardResolveDockerContainerByPort() {
+  const port = _clipboardGetFoundryPort();
+  const rows = _clipboardDockerText(["ps", "--format", "{{.Names}}\t{{.Ports}}"])
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  for (const row of rows) {
+    const [name, ports = ""] = row.split("\t");
+    if (ports.includes(`:${port}->`) || ports.includes(`:::${port}->`)) return name;
+  }
+
+  return "";
+}
+
+function _clipboardResolveFoundryTestEnvironment() {
+  if (FOUNDRY_DATA_PATH && FOUNDRY_WORLD_ID) {
+    const foundryRoot = path.dirname(path.resolve(FOUNDRY_DATA_PATH));
+    const classicLevelPath = FOUNDRY_CLASSIC_LEVEL_PATH || path.join(foundryRoot, "resources", "app", "node_modules", "classic-level");
+    return {
+      containerName: FOUNDRY_DOCKER_CONTAINER,
+      dataPath: path.resolve(FOUNDRY_DATA_PATH),
+      worldId: FOUNDRY_WORLD_ID,
+      classicLevelPath,
+    };
+  }
+
+  const containerName = FOUNDRY_DOCKER_CONTAINER || _clipboardResolveDockerContainerByPort();
+  if (!containerName) {
+    throw new Error("Could not resolve a running Foundry container. Set FOUNDRY_DOCKER_CONTAINER or provide FOUNDRY_DATA_PATH and FOUNDRY_WORLD_ID.");
+  }
+
+  const mounts = JSON.parse(_clipboardDockerText(["inspect", containerName, "--format", "{{json .Mounts}}"]) || "[]");
+  const dataMount = mounts.find(mount => mount.Type === "bind" && mount.Destination === "/data" && mount.Source);
+  if (!dataMount?.Source) {
+    throw new Error(`Could not resolve the /data bind mount for Foundry container ${containerName}.`);
+  }
+
+  const dataPath = dataMount.Source;
+  const optionsPath = path.join(dataPath, "Config", "options.json");
+  if (!fs.existsSync(optionsPath)) {
+    throw new Error(`Could not find Foundry options.json at ${optionsPath}.`);
+  }
+
+  const options = JSON.parse(fs.readFileSync(optionsPath, "utf8"));
+  const foundryRoot = path.dirname(dataPath);
+  const classicLevelPath = FOUNDRY_CLASSIC_LEVEL_PATH || path.join(foundryRoot, "resources", "app", "node_modules", "classic-level");
+
+  return {
+    containerName,
+    dataPath,
+    worldId: options.world,
+    classicLevelPath,
+  };
+}
+
+function _clipboardRestartFoundry(containerName) {
+  if (!containerName) return;
+  _clipboardDockerText(["restart", containerName]);
+}
+
+async function _clipboardWaitForFoundryServer() {
+  const joinUrl = new URL(getFoundryUrl());
+  joinUrl.pathname = "/join";
+  joinUrl.search = "";
+  joinUrl.hash = "";
+
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(joinUrl, {redirect: "manual"});
+      if (response.ok || [301, 302, 303, 307, 308].includes(response.status)) return;
+    } catch {
+      // Foundry is still restarting.
+    }
+    await new Promise(resolve => setTimeout(resolve, 1_000));
+  }
+
+  throw new Error(`Timed out waiting for Foundry to restart at ${joinUrl.href}.`);
 }
 
 function getFixturePath(filename) {
@@ -42,7 +144,7 @@ async function waitForFoundryReady(page) {
   }).toBe(true);
 }
 
-async function loginToFoundry(page) {
+async function loginToFoundry(page, credentials = {}) {
   attachClipboardConsoleLogging(page);
   await page.goto(getFoundryUrl(), {waitUntil: "domcontentloaded"});
   await waitForFoundryShell(page);
@@ -62,8 +164,8 @@ async function loginToFoundry(page) {
     return;
   }
 
-  const user = process.env.FOUNDRY_USER || process.env.FOUNDRY_USERNAME || "";
-  const password = process.env.FOUNDRY_PASSWORD || "";
+  const user = credentials.user ?? process.env.FOUNDRY_USER ?? process.env.FOUNDRY_USERNAME ?? "";
+  const password = credentials.password ?? process.env.FOUNDRY_PASSWORD ?? "";
 
   const userSelect = page.locator("select[name='userid']").first();
   if (await userSelect.count()) {
@@ -184,6 +286,49 @@ async function beginClipboardRun(page, testInfo, options = {}) {
   };
 }
 
+async function setModuleSettings(page, updates, {moduleId = MODULE_ID} = {}) {
+  return page.evaluate(async ({moduleId, updates}) => {
+    const previous = {};
+    for (const [key, value] of Object.entries(updates)) {
+      previous[key] = await game.settings.get(moduleId, key);
+      await game.settings.set(moduleId, key, value);
+    }
+    return previous;
+  }, {moduleId, updates});
+}
+
+async function restoreModuleSettings(page, previous, {moduleId = MODULE_ID} = {}) {
+  if (!previous || !Object.keys(previous).length) return;
+
+  await page.evaluate(async ({moduleId, previous}) => {
+    for (const [key, value] of Object.entries(previous)) {
+      await game.settings.set(moduleId, key, value);
+    }
+  }, {moduleId, previous});
+}
+
+async function setCorePermissions(page, updates) {
+  return page.evaluate(async updates => {
+    const previous = await game.settings.get("core", "permissions");
+    const next = foundry.utils.deepClone(previous);
+
+    for (const [permission, roles] of Object.entries(updates)) {
+      next[permission] = roles;
+    }
+
+    await game.settings.set("core", "permissions", next);
+    return previous;
+  }, updates);
+}
+
+async function restoreCorePermissions(page, previous) {
+  if (!previous) return;
+
+  await page.evaluate(async previous => {
+    await game.settings.set("core", "permissions", previous);
+  }, previous);
+}
+
 async function cleanupClipboardRun(page, run) {
   if (!run) return;
 
@@ -225,6 +370,7 @@ async function cleanupClipboardRun(page, run) {
 
     const actorIds = game.actors.contents
       .filter(actor =>
+        (actor.name || "").includes(run.prefix) ||
         (actor.img || "").includes(run.uploadFolder) ||
         (actor.prototypeToken?.texture?.src || "").includes(run.uploadFolder)
       )
@@ -244,6 +390,41 @@ async function cleanupClipboardRun(page, run) {
   }, {moduleId: MODULE_ID, run});
 
   await releaseAllControlledPlaceables(page);
+}
+
+async function ensureUploadDirectory(page, directoryPath, {source = "data", bucket = ""} = {}) {
+  if (!directoryPath) return "";
+
+  return page.evaluate(async ({directoryPath, source, bucket}) => {
+    const FilePickerImplementation = foundry.applications.apps.FilePicker.implementation;
+    const segments = String(directoryPath)
+      .split("/")
+      .map(segment => segment.trim())
+      .filter(Boolean);
+
+    let current = "";
+    for (const segment of segments) {
+      current = current ? `${current}/${segment}` : segment;
+      try {
+        await FilePickerImplementation.createDirectory(source, current, {bucket});
+      } catch (error) {
+        const message = String(error?.message || error || "");
+        if (/already exists|EEXIST/i.test(message)) continue;
+
+        const parent = current.includes("/") ? current.replace(/\/[^/]+$/, "") : "";
+        const listing = await FilePickerImplementation.browse(source, parent, {bucket});
+        const exists = Array.isArray(listing?.dirs)
+          ? listing.dirs.some(entry => {
+            const candidate = String(entry || "");
+            return candidate === current || candidate.endsWith(`/${segment}`);
+          })
+          : false;
+        if (!exists) throw error;
+      }
+    }
+
+    return current;
+  }, {directoryPath, source, bucket});
 }
 
 async function focusCanvas(page) {
@@ -446,6 +627,9 @@ async function clearCanvasMousePosition(page) {
 
 async function invokeSceneTool(page, controlName, toolName) {
   await page.evaluate(({controlName, toolName}) => {
+    ui.controls.initialize({control: controlName});
+    ui.controls.render(true);
+
     const controls = Array.isArray(ui.controls.controls)
       ? ui.controls.controls
       : Object.values(ui.controls.controls || {});
@@ -467,8 +651,186 @@ async function invokeSceneTool(page, controlName, toolName) {
   }, {controlName, toolName});
 }
 
+async function getSceneToolState(page, controlName, toolName) {
+  return page.evaluate(({controlName, toolName}) => {
+    ui.controls.initialize({control: controlName});
+    ui.controls.render(true);
+
+    const controls = Array.isArray(ui.controls.controls)
+      ? ui.controls.controls
+      : Object.values(ui.controls.controls || {});
+    const control = controls.find(entry => entry.name === controlName);
+    const tools = Array.isArray(control?.tools)
+      ? control.tools
+      : Object.values(control?.tools || {});
+    const tool = tools.find(entry => entry.name === toolName) || null;
+    const domTool = document.querySelector(`li.scene-control[data-control="${controlName}"] [data-tool="${toolName}"]`);
+
+    return {
+      exists: Boolean(tool),
+      visible: Boolean(tool?.visible),
+      title: tool?.title || null,
+      domVisible: Boolean(domTool),
+    };
+  }, {controlName, toolName});
+}
+
+async function openUploadDestinationConfig(page) {
+  await page.evaluate(async moduleId => {
+    const menu = game.settings.menus.get(`${moduleId}.upload-destination`);
+    if (!menu?.type) throw new Error("Could not find the Clipboard Image upload-destination settings menu.");
+
+    const existing = Object.values(ui.windows).find(windowApp => windowApp.id === "clipboard-image-destination-config");
+    if (existing) {
+      existing.bringToFront?.();
+      return;
+    }
+
+    const app = new menu.type();
+    await app.render(true);
+  }, MODULE_ID);
+
+  await page.waitForSelector("#clipboard-image-destination-config", {state: "visible", timeout: DEFAULT_TIMEOUT});
+}
+
+async function closeUploadDestinationConfig(page) {
+  await page.evaluate(() => {
+    const app = Object.values(ui.windows).find(windowApp => windowApp.id === "clipboard-image-destination-config");
+    app?.close?.();
+  });
+
+  await page.waitForSelector("#clipboard-image-destination-config", {state: "hidden", timeout: DEFAULT_TIMEOUT}).catch(() => {});
+}
+
+async function getUploadDestinationSummary(page) {
+  return page.locator("#clipboard-image-destination-config [data-role='destination-summary']").inputValue();
+}
+
+async function ensureFoundryUsers(users) {
+  const environment = _clipboardResolveFoundryTestEnvironment();
+  const usersDbPath = path.join(environment.dataPath, "Data", "worlds", environment.worldId, "data", "users");
+  const {ClassicLevel} = require(environment.classicLevelPath);
+  const database = new ClassicLevel(usersDbPath, {valueEncoding: "json"});
+  const results = [];
+  let didChange = false;
+
+  await database.open();
+
+  try {
+    const keyedUsers = new Map();
+    for await (const [key, value] of database.iterator()) {
+      keyedUsers.set(value?.name || key, {key, value});
+    }
+
+    for (const spec of users) {
+      const entry = keyedUsers.get(spec.name) || null;
+      if (!entry) {
+        throw new Error(`Could not find Foundry user "${spec.name}" in ${usersDbPath}. Seed the QA users in the test world first.`);
+      }
+
+      const next = {
+        ...entry.value,
+        name: spec.name,
+        role: spec.role ?? entry.value.role,
+        pronouns: spec.pronouns ?? entry.value.pronouns ?? "",
+      };
+
+      if (typeof spec.color === "string") {
+        next.color = spec.color;
+      }
+
+      if (
+        next.name !== entry.value.name ||
+        next.role !== entry.value.role ||
+        next.pronouns !== entry.value.pronouns ||
+        next.color !== entry.value.color
+      ) {
+        next._stats = {
+          ...entry.value._stats,
+          modifiedTime: Date.now(),
+        };
+        await database.put(entry.key, next);
+        didChange = true;
+      }
+
+      results.push({
+        id: next._id,
+        name: next.name,
+        role: next.role,
+      });
+    }
+  } finally {
+    await database.close();
+  }
+
+  if (didChange) {
+    _clipboardRestartFoundry(environment.containerName);
+    if (environment.containerName) {
+      await _clipboardWaitForFoundryServer();
+    }
+  }
+
+  return results;
+}
+
+async function createActorBackedToken(page, {
+  actorName,
+  tokenName,
+  textureSrc,
+  x,
+  y,
+  width = 1,
+  height = 1,
+  ownerUserName = "",
+  defaultOwnership = 0,
+}) {
+  return page.evaluate(async data => {
+    const owner = data.ownerUserName
+      ? game.users.find(user => user.name === data.ownerUserName) || null
+      : null;
+    const ownership = {default: data.defaultOwnership};
+    if (owner) {
+      ownership[owner.id] = CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER;
+    }
+
+    const ActorDocument = globalThis.Actor || foundry.documents.Actor;
+    const actor = await ActorDocument.create({
+      name: data.actorName,
+      type: CONFIG.Actor.defaultType || game.system.documentTypes.Actor?.[0] || "character",
+      img: data.textureSrc,
+      ownership,
+      prototypeToken: {
+        name: data.tokenName,
+        texture: {src: data.textureSrc},
+        width: data.width,
+        height: data.height,
+      },
+    });
+
+    const [token] = await canvas.scene.createEmbeddedDocuments("Token", [{
+      actorId: actor.id,
+      actorLink: false,
+      name: data.tokenName,
+      texture: {src: data.textureSrc},
+      width: data.width,
+      height: data.height,
+      x: data.x,
+      y: data.y,
+      hidden: false,
+      locked: false,
+    }]);
+
+    return {
+      actorId: actor.id,
+      actorName: actor.name,
+      tokenId: token.id,
+      ownerUserId: owner?.id || null,
+    };
+  }, {actorName, tokenName, textureSrc, x, y, width, height, ownerUserName, defaultOwnership});
+}
+
 async function readFixtureBytes(filename) {
-  return Array.from(await fs.readFile(getFixturePath(filename)));
+  return Array.from(await fs.promises.readFile(getFixturePath(filename)));
 }
 
 async function dispatchFilePaste(page, {targetSelector, filename, mimeType}) {
@@ -769,8 +1131,10 @@ module.exports = {
   clearActiveLayerClipboardObjects,
   clearCanvasMousePosition,
   cleanupClipboardRun,
+  closeUploadDestinationConfig,
   controlPlaceable,
   controlPlaceables,
+  createActorBackedToken,
   createTile,
   createToken,
   dispatchClipboardModeKeydown,
@@ -778,6 +1142,8 @@ module.exports = {
   dispatchFilePaste,
   dispatchMixedPaste,
   dispatchTextPaste,
+  ensureUploadDirectory,
+  ensureFoundryUsers,
   focusCanvas,
   focusChatInput,
   getCanvasDimensions,
@@ -788,12 +1154,19 @@ module.exports = {
   getNoteDocument,
   getSafeCanvasPoint,
   getStateSnapshot,
+  getUploadDestinationSummary,
   getTileDocument,
   getTokenDocument,
+  getSceneToolState,
   invokeSceneTool,
   loginToFoundry,
+  openUploadDestinationConfig,
   restoreClipboardRead,
+  restoreCorePermissions,
   releaseAllControlledPlaceables,
+  restoreModuleSettings,
+  setCorePermissions,
+  setModuleSettings,
   setActiveLayerClipboardObjects,
   setCanvasMousePosition,
   stubClipboardRead,

@@ -23,6 +23,11 @@ const S3_REFRESH_ENABLED = process.env.FOUNDRY_S3_REFRESH !== "false";
 const S3_CONFIG_PATH = process.env.FOUNDRY_S3_AWS_CONFIG_PATH || "";
 const FOUNDRY_DOCKER_CONTAINER = process.env.FOUNDRY_DOCKER_CONTAINER || "";
 const FOUNDRY_S3_RESTART_COMMAND = process.env.FOUNDRY_S3_RESTART_COMMAND || "";
+const FOUNDRY_S3_ENDPOINT = process.env.FOUNDRY_S3_ENDPOINT || "";
+const HAS_FOUNDRY_S3_FORCE_PATH_STYLE = Object.hasOwn(process.env, "FOUNDRY_S3_FORCE_PATH_STYLE");
+const FOUNDRY_S3_FORCE_PATH_STYLE = HAS_FOUNDRY_S3_FORCE_PATH_STYLE
+  ? !/^(false|0|no)$/i.test(process.env.FOUNDRY_S3_FORCE_PATH_STYLE || "")
+  : null;
 
 function _clipboardAwsJson(args) {
   const output = execFileSync("aws", args, {
@@ -35,6 +40,11 @@ function _clipboardAwsJson(args) {
 
   if (!output) return null;
   return JSON.parse(output);
+}
+
+function _clipboardWithAwsEndpoint(args) {
+  if (!FOUNDRY_S3_ENDPOINT) return args;
+  return [...args, "--endpoint-url", FOUNDRY_S3_ENDPOINT];
 }
 
 function _clipboardDockerText(args) {
@@ -119,11 +129,21 @@ function _clipboardRefreshAwsCredentialsFile(configPath) {
     nextConfig.buckets = [S3_BUCKET];
   }
 
+  if (FOUNDRY_S3_ENDPOINT) {
+    nextConfig.endpoint = FOUNDRY_S3_ENDPOINT;
+  }
+
+  if (HAS_FOUNDRY_S3_FORCE_PATH_STYLE) {
+    nextConfig.forcePathStyle = FOUNDRY_S3_FORCE_PATH_STYLE;
+  }
+
   fs.writeFileSync(configPath, `${JSON.stringify(nextConfig, null, 2)}\n`);
   return {
     configPath,
     accessKeyId: exportedCredentials.AccessKeyId,
     expiration: exportedCredentials.Expiration || null,
+    endpoint: nextConfig.endpoint || null,
+    forcePathStyle: typeof nextConfig.forcePathStyle === "boolean" ? nextConfig.forcePathStyle : null,
   };
 }
 
@@ -178,6 +198,9 @@ async function _clipboardRefreshFoundryS3Credentials() {
   if (refreshed.expiration) {
     console.log(`[s3-smoke] Refreshed AWS session expires at ${refreshed.expiration}.`);
   }
+  if (refreshed.endpoint) {
+    console.log(`[s3-smoke] Using S3-compatible endpoint ${refreshed.endpoint}${refreshed.forcePathStyle === null ? "" : ` (forcePathStyle=${refreshed.forcePathStyle})`}.`);
+  }
 
   _clipboardRestartFoundryForS3Refresh(location.containerName);
   if (location.containerName || FOUNDRY_S3_RESTART_COMMAND) {
@@ -186,7 +209,7 @@ async function _clipboardRefreshFoundryS3Credentials() {
 }
 
 function _clipboardListS3Keys(bucket, prefix) {
-  const output = _clipboardAwsJson([
+  const output = _clipboardAwsJson(_clipboardWithAwsEndpoint([
     "s3api",
     "list-objects-v2",
     "--bucket",
@@ -195,7 +218,7 @@ function _clipboardListS3Keys(bucket, prefix) {
     prefix,
     "--output",
     "json",
-  ]);
+  ]));
 
   return Array.isArray(output?.Contents)
     ? output.Contents.map(entry => entry.Key).filter(Boolean)
@@ -203,7 +226,7 @@ function _clipboardListS3Keys(bucket, prefix) {
 }
 
 function _clipboardHeadS3Object(bucket, key) {
-  return _clipboardAwsJson([
+  return _clipboardAwsJson(_clipboardWithAwsEndpoint([
     "s3api",
     "head-object",
     "--bucket",
@@ -212,18 +235,18 @@ function _clipboardHeadS3Object(bucket, key) {
     key,
     "--output",
     "json",
-  ]);
+  ]));
 }
 
 function _clipboardDeleteS3Object(bucket, key) {
-  execFileSync("aws", [
+  execFileSync("aws", _clipboardWithAwsEndpoint([
     "s3api",
     "delete-object",
     "--bucket",
     bucket,
     "--key",
     key,
-  ], {
+  ]), {
     env: {
       ...process.env,
       AWS_PAGER: "",
@@ -261,7 +284,7 @@ async function _clipboardGetRenderedTileInfo(page, tileId) {
 
 test.describe.configure({mode: "serial"});
 
-test.describe("Amazon S3 integration", () => {
+test.describe("S3-compatible storage integration", () => {
   test.skip(!S3_BUCKET, "FOUNDRY_S3_BUCKET must be set to run S3 smoke coverage.");
   test.skip(!HAS_AWS_CLI, "AWS CLI must be installed to run S3 smoke coverage.");
 
@@ -277,7 +300,7 @@ test.describe("Amazon S3 integration", () => {
     await restoreClipboardRead(page).catch(() => {});
   });
 
-  test("uploads pasted media into the configured S3 bucket", async ({page}, testInfo) => {
+  test("uploads pasted media into the configured storage bucket", async ({page}, testInfo) => {
     const run = await beginClipboardRun(page, testInfo, {
       source: "s3",
       bucket: S3_BUCKET,

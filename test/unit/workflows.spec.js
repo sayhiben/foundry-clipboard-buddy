@@ -237,6 +237,62 @@ describe("paste and handler workflows", () => {
       })).resolves.toBe(false);
     });
 
+    it("fails closed when token creation is disabled", async () => {
+      env.settingsValues.set("clipboard-image.enable-token-creation", false);
+      globalThis.canvas.activeLayer = globalThis.canvas.tokens;
+      const restoreImage = withMockImage();
+
+      await expect(api._clipboardHandleImageBlob(new File(["x"], "image.png", {type: "image/png"}), {
+        contextOptions: {fallbackToCenter: true, requireCanvasFocus: false},
+      })).resolves.toBe(false);
+
+      restoreImage();
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
+    it("fails closed when tile creation is disabled", async () => {
+      env.settingsValues.set("clipboard-image.enable-tile-creation", false);
+      globalThis.canvas.activeLayer = globalThis.canvas.tiles;
+      const restoreImage = withMockImage();
+
+      await expect(api._clipboardHandleImageBlob(new File(["x"], "image.png", {type: "image/png"}), {
+        contextOptions: {fallbackToCenter: true, requireCanvasFocus: false},
+      })).resolves.toBe(false);
+
+      restoreImage();
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
+    it("fails closed when token replacement is disabled", async () => {
+      env.settingsValues.set("clipboard-image.enable-token-replacement", false);
+      globalThis.canvas.tokens.controlled = [env.createControlledPlaceable("Token", {name: "Hero"})];
+      globalThis.canvas.activeLayer = globalThis.canvas.tokens;
+      const restoreImage = withMockImage();
+
+      await expect(api._clipboardHandleImageBlob(new File(["x"], "image.png", {type: "image/png"}), {
+        contextOptions: {requireCanvasFocus: false},
+      })).resolves.toBe(false);
+
+      restoreImage();
+      expect(globalThis.canvas.scene.updateEmbeddedDocuments).not.toHaveBeenCalled();
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
+    it("fails closed when tile replacement is disabled", async () => {
+      env.settingsValues.set("clipboard-image.enable-tile-replacement", false);
+      globalThis.canvas.tiles.controlled = [env.createControlledPlaceable("Tile", {name: "Map"})];
+      globalThis.canvas.activeLayer = globalThis.canvas.tiles;
+      const restoreImage = withMockImage();
+
+      await expect(api._clipboardHandleImageBlob(new File(["x"], "image.png", {type: "image/png"}), {
+        contextOptions: {requireCanvasFocus: false},
+      })).resolves.toBe(false);
+
+      restoreImage();
+      expect(globalThis.canvas.scene.updateEmbeddedDocuments).not.toHaveBeenCalled();
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
     it("falls back to text handling when media input resolves to non-media text", async () => {
       document.body.innerHTML = '<div class="game" tabindex="0"></div>';
       document.querySelector(".game").focus();

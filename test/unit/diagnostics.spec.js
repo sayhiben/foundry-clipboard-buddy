@@ -155,6 +155,23 @@ describe("diagnostics and settings helpers", () => {
       expect(api._clipboardGetStoredBucket()).toBe("bucket-name");
     });
 
+    it("reads the configured s3-compatible endpoint from Foundry", () => {
+      globalThis.game.data.files.s3.endpoint = "https://r2.example.com";
+      expect(api._clipboardGetConfiguredS3Endpoint()).toBe("https://r2.example.com");
+
+      globalThis.game.data.files.s3.endpoint = {href: "https://cdn.example.com/base/"};
+      expect(api._clipboardGetConfiguredS3Endpoint()).toBe("https://cdn.example.com/base/");
+
+      globalThis.game.data.files.s3.endpoint = {url: "https://storage.example.com"};
+      expect(api._clipboardGetConfiguredS3Endpoint()).toBe("https://storage.example.com");
+
+      globalThis.game.data.files.s3.endpoint = "";
+      expect(api._clipboardGetConfiguredS3Endpoint()).toBe("");
+
+      globalThis.game.data.files.s3.endpoint = {host: "r2.example.com"};
+      expect(api._clipboardGetConfiguredS3Endpoint()).toBe("[object Object]");
+    });
+
     it("resolves source fallbacks", () => {
       expect(api._clipboardResolveSource(null)).toBe("data");
       globalThis.ForgeVTT = {usingTheForge: true};
@@ -167,7 +184,7 @@ describe("diagnostics and settings helpers", () => {
     it("returns source labels and choices", () => {
       expect(api._clipboardGetSourceLabel("auto")).toBe("Automatic");
       expect(api._clipboardGetSourceLabel("data")).toBe("User Data");
-      expect(api._clipboardGetSourceLabel("s3")).toBe("Amazon S3");
+      expect(api._clipboardGetSourceLabel("s3")).toBe("S3-Compatible Storage");
       expect(api._clipboardGetSourceLabel("forgevtt")).toBe("The Forge");
       expect(api._clipboardGetSourceLabel("custom")).toBe("custom");
 
@@ -182,6 +199,7 @@ describe("diagnostics and settings helpers", () => {
     });
 
     it("builds upload destinations and picker options", () => {
+      globalThis.game.data.files.s3.endpoint = "https://r2.example.com";
       const destination = api._clipboardGetUploadDestination({
         storedSource: "s3",
         target: "nested/folder",
@@ -193,8 +211,21 @@ describe("diagnostics and settings helpers", () => {
         source: "s3",
         target: "nested/folder",
         bucket: "bucket-a",
+        endpoint: "https://r2.example.com",
       });
       expect(api._clipboardGetFilePickerOptions(destination)).toEqual({bucket: "bucket-a"});
+
+      expect(api._clipboardGetUploadDestination({
+        storedSource: "data",
+        target: "nested/folder",
+        bucket: "ignored",
+      })).toEqual({
+        storedSource: "data",
+        source: "data",
+        target: "nested/folder",
+        bucket: "",
+        endpoint: "",
+      });
     });
 
     it("describes upload destinations", () => {
@@ -210,7 +241,8 @@ describe("diagnostics and settings helpers", () => {
         source: "s3",
         target: "folder",
         bucket: "",
-      })).toBe("Amazon S3 / (select a bucket) / folder");
+        endpoint: "https://r2.example.com",
+      })).toBe("S3-Compatible Storage / (select a bucket) / folder");
 
       expect(api._clipboardDescribeDestination({
         storedSource: "data",
@@ -218,6 +250,22 @@ describe("diagnostics and settings helpers", () => {
         target: "folder",
         bucket: "",
       })).toBe("User Data / folder");
+    });
+
+    it("includes the configured endpoint in destination logs", () => {
+      expect(api._clipboardDescribeDestinationForLog({
+        storedSource: "s3",
+        source: "s3",
+        target: "folder",
+        bucket: "bucket-a",
+        endpoint: "https://r2.example.com",
+      })).toEqual({
+        storedSource: "s3",
+        source: "s3",
+        target: "folder",
+        bucket: "bucket-a",
+        endpoint: "https://r2.example.com",
+      });
     });
   });
 
@@ -273,7 +321,11 @@ describe("diagnostics and settings helpers", () => {
 
   describe("_clipboardAssertUploadDestination", () => {
     it("throws when s3 is missing a bucket", () => {
-      expect(() => api._clipboardAssertUploadDestination({source: "s3", bucket: ""})).toThrow("bucket");
+      expect(() => api._clipboardAssertUploadDestination({
+        source: "s3",
+        bucket: "",
+        endpoint: "https://r2.example.com",
+      })).toThrow("bucket");
     });
 
     it("allows non-s3 destinations without a bucket", () => {

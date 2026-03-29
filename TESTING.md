@@ -21,7 +21,7 @@ Keep the manual checklist for:
 - Real `navigator.clipboard.read()` permission behavior
 - Cross-browser prompt differences
 - Safari, iOS, and Android specific UX
-- Forge or Amazon S3 storage integrations
+- Forge or S3-compatible storage integrations
 - Remote-host CORS or download failures
 - Visual playback validation for animation and video
 
@@ -188,7 +188,9 @@ These flows should stay true across the test matrix:
    Expected: new uploads are created in that folder.
 3. If your deployment uses The Forge or S3, switch to that source and paste media.
    Expected: directory creation and upload respect the configured FilePicker source.
-4. For S3, test a missing or invalid bucket selection.
+4. For S3-compatible storage, confirm the upload-destination config shows the expected endpoint or base URL from Foundry's server configuration.
+   Expected: the displayed endpoint matches the current provider configuration.
+5. For S3-compatible storage, test a missing or invalid bucket selection.
    Expected: the module reports a clear upload error and does not create broken content.
 
 ### 10. Browser And Platform Validation

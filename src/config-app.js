@@ -12,6 +12,7 @@ const {
   _clipboardGetStoredSource,
   _clipboardGetTargetFolder,
   _clipboardGetStoredBucket,
+  _clipboardGetConfiguredS3Endpoint,
   _clipboardGetUploadDestination,
   _clipboardDescribeDestination,
   _clipboardGetSourceChoices,
@@ -38,6 +39,7 @@ class ClipboardImageDestinationConfig extends CLIPBOARD_IMAGE_FORM_APPLICATION {
       bucket,
       destinationSummary: _clipboardDescribeDestination(destination),
       isS3: destination.storedSource === CLIPBOARD_IMAGE_SOURCE_S3,
+      s3Endpoint: _clipboardGetConfiguredS3Endpoint(),
       source,
       sourceChoices: _clipboardGetSourceChoices(source),
       target,
@@ -80,10 +82,14 @@ class ClipboardImageDestinationConfig extends CLIPBOARD_IMAGE_FORM_APPLICATION {
     const bucket = storedSource === CLIPBOARD_IMAGE_SOURCE_S3 ? form.elements.bucket.value?.trim() || "" : "";
     const destination = _clipboardGetUploadDestination({storedSource, target, bucket});
     const summaryField = form.querySelector('[data-role="destination-summary"]');
+    const endpointField = form.querySelector('[data-role="s3-endpoint"]');
     const bucketGroup = this.element.find(".clipboard-image-s3-bucket");
+    const endpointGroup = this.element.find(".clipboard-image-s3-endpoint");
 
     if (summaryField) summaryField.value = _clipboardDescribeDestination(destination);
+    if (endpointField) endpointField.value = destination.endpoint || "";
     bucketGroup.toggleClass("hidden", storedSource !== CLIPBOARD_IMAGE_SOURCE_S3);
+    endpointGroup.toggleClass("hidden", storedSource !== CLIPBOARD_IMAGE_SOURCE_S3);
   }
 
   _applyPickerSelection(path, picker, previousStoredSource) {

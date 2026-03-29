@@ -551,7 +551,7 @@ var ClipboardImageRuntime = (() => {
           case CLIPBOARD_IMAGE_SOURCE_DATA:
             return "User Data";
           case CLIPBOARD_IMAGE_SOURCE_S3:
-            return "Amazon S3";
+            return "S3-Compatible Storage";
           case CLIPBOARD_IMAGE_SOURCE_FORGE:
             return "The Forge";
           default:
@@ -578,6 +578,14 @@ var ClipboardImageRuntime = (() => {
       function _clipboardGetStoredBucket() {
         return game.settings.get(CLIPBOARD_IMAGE_MODULE_ID, "image-location-bucket")?.trim() || "";
       }
+      function _clipboardGetConfiguredS3Endpoint() {
+        const endpoint = game?.data?.files?.s3?.endpoint;
+        if (!endpoint) return "";
+        if (typeof endpoint === "string") return endpoint.trim();
+        if (typeof endpoint?.href === "string") return endpoint.href.trim();
+        if (typeof endpoint?.url === "string") return endpoint.url.trim();
+        return `${endpoint}`.trim();
+      }
       function _clipboardGetTargetFolder() {
         return game.settings.get(CLIPBOARD_IMAGE_MODULE_ID, "image-location")?.trim() || CLIPBOARD_IMAGE_DEFAULT_FOLDER;
       }
@@ -590,7 +598,8 @@ var ClipboardImageRuntime = (() => {
           storedSource,
           source: resolvedSource,
           target,
-          bucket
+          bucket,
+          endpoint: resolvedSource === CLIPBOARD_IMAGE_SOURCE_S3 ? _clipboardGetConfiguredS3Endpoint() : ""
         };
       }
       function _clipboardGetFilePickerOptions(destination) {
@@ -612,7 +621,7 @@ var ClipboardImageRuntime = (() => {
       }
       function _clipboardAssertUploadDestination(destination) {
         if (destination.source === CLIPBOARD_IMAGE_SOURCE_S3 && !destination.bucket) {
-          throw new Error("Amazon S3 destinations require a bucket selection");
+          throw new Error("S3-compatible destinations require a bucket selection");
         }
       }
       async function _clipboardCreateFolderIfMissing(destination) {
@@ -622,7 +631,7 @@ var ClipboardImageRuntime = (() => {
           destination: _clipboardDescribeDestinationForLog(destination)
         });
         if (destination.source === CLIPBOARD_IMAGE_SOURCE_S3) {
-          _clipboardLog("debug", "Skipping directory creation for S3 destination", {
+          _clipboardLog("debug", "Skipping directory creation for S3-compatible destination", {
             destination: _clipboardDescribeDestinationForLog(destination)
           });
           return;
@@ -753,6 +762,7 @@ var ClipboardImageRuntime = (() => {
         _clipboardGetSourceChoices,
         _clipboardCanSelectSource,
         _clipboardGetStoredBucket,
+        _clipboardGetConfiguredS3Endpoint,
         _clipboardGetTargetFolder,
         _clipboardGetUploadDestination,
         _clipboardGetFilePickerOptions,
@@ -786,6 +796,7 @@ var ClipboardImageRuntime = (() => {
         _clipboardGetStoredSource,
         _clipboardGetTargetFolder,
         _clipboardGetStoredBucket,
+        _clipboardGetConfiguredS3Endpoint,
         _clipboardGetUploadDestination,
         _clipboardDescribeDestination,
         _clipboardGetSourceChoices
@@ -809,6 +820,7 @@ var ClipboardImageRuntime = (() => {
             bucket,
             destinationSummary: _clipboardDescribeDestination(destination),
             isS3: destination.storedSource === CLIPBOARD_IMAGE_SOURCE_S3,
+            s3Endpoint: _clipboardGetConfiguredS3Endpoint(),
             source,
             sourceChoices: _clipboardGetSourceChoices(source),
             target
@@ -843,9 +855,13 @@ var ClipboardImageRuntime = (() => {
           const bucket = storedSource === CLIPBOARD_IMAGE_SOURCE_S3 ? form.elements.bucket.value?.trim() || "" : "";
           const destination = _clipboardGetUploadDestination({ storedSource, target, bucket });
           const summaryField = form.querySelector('[data-role="destination-summary"]');
+          const endpointField = form.querySelector('[data-role="s3-endpoint"]');
           const bucketGroup = this.element.find(".clipboard-image-s3-bucket");
+          const endpointGroup = this.element.find(".clipboard-image-s3-endpoint");
           if (summaryField) summaryField.value = _clipboardDescribeDestination(destination);
+          if (endpointField) endpointField.value = destination.endpoint || "";
           bucketGroup.toggleClass("hidden", storedSource !== CLIPBOARD_IMAGE_SOURCE_S3);
+          endpointGroup.toggleClass("hidden", storedSource !== CLIPBOARD_IMAGE_SOURCE_S3);
         }
         _applyPickerSelection(path, picker, previousStoredSource) {
           const form = this.form;
@@ -1042,30 +1058,30 @@ var ClipboardImageRuntime = (() => {
         game.settings.registerMenu(CLIPBOARD_IMAGE_MODULE_ID, "upload-destination", {
           name: "Upload destination",
           label: "Configure",
-          hint: "Choose the file store and folder used for pasted images. Supports User Data, The Forge, and Amazon S3 through Foundry's native file picker.",
+          hint: "Choose the file store and folder used for pasted media. Supports User Data, The Forge, and Foundry-configured S3-compatible storage through Foundry's native file picker.",
           icon: "fa-solid fa-folder-tree",
           type: ClipboardImageDestinationConfig,
           restricted: true
         });
         game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, "image-location", {
-          name: "Pasted image location",
-          hint: "Folder where clipboard images are saved.",
+          name: "Pasted media location",
+          hint: "Folder where pasted media is saved.",
           scope: "world",
           config: false,
           type: String,
           default: CLIPBOARD_IMAGE_DEFAULT_FOLDER
         });
         game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, "image-location-source", {
-          name: "Pasted image source",
-          hint: "File source where clipboard images are saved.",
+          name: "Pasted media source",
+          hint: "File source where pasted media is saved.",
           scope: "world",
           config: false,
           type: String,
           default: CLIPBOARD_IMAGE_SOURCE_AUTO
         });
         game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, "image-location-bucket", {
-          name: "Pasted image S3 bucket",
-          hint: "S3 bucket used when clipboard images are saved to Amazon S3.",
+          name: "Pasted media bucket",
+          hint: "Bucket used when pasted media is saved to an S3-compatible provider configured in Foundry.",
           scope: "world",
           config: false,
           type: String,
@@ -1647,7 +1663,8 @@ var ClipboardImageRuntime = (() => {
           storedSource: destination.storedSource,
           source: destination.source,
           target: destination.target,
-          bucket: destination.bucket || null
+          bucket: destination.bucket || null,
+          endpoint: destination.endpoint || null
         };
       }
       function _clipboardDescribeReplacementTarget(replacementTarget) {

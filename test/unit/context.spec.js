@@ -255,6 +255,59 @@ describe("canvas context helpers", () => {
         blocked: true,
       });
     });
+
+    it("allows gms to replace selected tokens regardless of ownership", () => {
+      globalThis.game.user.isGM = true;
+      const token = env.createControlledPlaceable("Token", {
+        id: "token-a",
+        isOwner: false,
+        canUserModify: () => false,
+        actor: {isOwner: false, canUserModify: () => false},
+      });
+      globalThis.canvas.tokens.controlled = [token];
+      globalThis.canvas.activeLayer = globalThis.canvas.tokens;
+
+      expect(api._clipboardGetReplacementTarget("Token")).toMatchObject({
+        documentName: "Token",
+        documents: [token.document],
+        requestedCount: 1,
+        blocked: false,
+      });
+    });
+
+    it("allows players to replace selected tokens they can update through actor ownership", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = 1;
+      const token = env.createControlledPlaceable("Token", {
+        id: "token-a",
+        isOwner: false,
+        canUserModify: () => false,
+        actor: {isOwner: true, canUserModify: () => true},
+      });
+      globalThis.canvas.tokens.controlled = [token];
+      globalThis.canvas.activeLayer = globalThis.canvas.tokens;
+
+      expect(api._clipboardGetReplacementTarget("Token")).toMatchObject({
+        documentName: "Token",
+        documents: [token.document],
+        requestedCount: 1,
+        blocked: false,
+      });
+    });
+
+    it("blocks selected token replacement entirely when the feature toggle is disabled", () => {
+      env.settingsValues.set("clipboard-image.enable-token-replacement", false);
+      const token = env.createControlledPlaceable("Token", {id: "token-a"});
+      globalThis.canvas.tokens.controlled = [token];
+      globalThis.canvas.activeLayer = globalThis.canvas.tokens;
+
+      expect(api._clipboardGetReplacementTarget("Token")).toMatchObject({
+        documentName: "Token",
+        documents: [],
+        requestedCount: 1,
+        blocked: true,
+      });
+    });
   });
 
   describe("focus and paste eligibility", () => {

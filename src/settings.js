@@ -183,15 +183,15 @@ function _clipboardRegisterSettings() {
   game.settings.registerMenu(CLIPBOARD_IMAGE_MODULE_ID, "upload-destination", {
     name: "Upload destination",
     label: "Configure",
-    hint: "Choose the file store and folder used for pasted images. Supports User Data, The Forge, and Amazon S3 through Foundry's native file picker.",
+    hint: "Choose the file store and folder used for pasted media. Supports User Data, The Forge, and Foundry-configured S3-compatible storage through Foundry's native file picker.",
     icon: "fa-solid fa-folder-tree",
     type: ClipboardImageDestinationConfig,
     restricted: true,
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, "image-location", {
-    name: "Pasted image location",
-    hint: "Folder where clipboard images are saved.",
+    name: "Pasted media location",
+    hint: "Folder where pasted media is saved.",
     scope: "world",
     config: false,
     type: String,
@@ -199,8 +199,8 @@ function _clipboardRegisterSettings() {
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, "image-location-source", {
-    name: "Pasted image source",
-    hint: "File source where clipboard images are saved.",
+    name: "Pasted media source",
+    hint: "File source where pasted media is saved.",
     scope: "world",
     config: false,
     type: String,
@@ -208,8 +208,8 @@ function _clipboardRegisterSettings() {
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, "image-location-bucket", {
-    name: "Pasted image S3 bucket",
-    hint: "S3 bucket used when clipboard images are saved to Amazon S3.",
+    name: "Pasted media bucket",
+    hint: "Bucket used when pasted media is saved to an S3-compatible provider configured in Foundry.",
     scope: "world",
     config: false,
     type: String,

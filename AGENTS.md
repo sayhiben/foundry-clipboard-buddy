@@ -56,12 +56,16 @@
 - Nested upload destinations must be created segment-by-segment through `FilePicker`; a single deep `createDirectory` call is not reliable.
 - Remote media URLs are downloaded in the browser before upload. Failures must surface clearly and should not leave partial scene state behind.
 - Browser clipboard permission behavior is separate from browser `paste` events. Keep those paths conceptually distinct.
+- Foundry's server-side S3 config owns the real endpoint or base URL for S3-compatible providers. The module may surface that endpoint in the UI and tests, but it should not pretend to apply a per-world endpoint override unless it can actually affect Foundry's upload client.
 - Finder or OS-file clipboard copies are exposed most reliably through the native browser `paste` event, not `navigator.clipboard.read()`. Do not reintroduce keyboard interception that bypasses native `Cmd+V` / `Ctrl+V`.
 - Uploaded media paths should use unique real filenames, not only cache-busting query strings. Firefox/PIXI can reuse stale textures when the underlying file path is reused.
 - SVG uploads should be normalized before storage when they rely on CSS style sizing or `viewBox` without explicit root `width` and `height`. Firefox is stricter here than Chrome.
 - Layer behavior is real product behavior: Tokens layer creates tokens, other layers create tiles, and selected placeables are replaced in place. Keep docs and tests explicit about that.
 - Role gates and feature toggles should disable workflows cleanly. Do not silently reroute a disabled token paste into tile creation, or vice versa.
 - Scene-control visibility is no longer a simple `isGM` check. It depends on both the world settings and the current user's configured role.
+- The Playwright permission coverage lives in `test/playwright/permissions.spec.js`, not only in `smoke.spec.js`. Keep multi-user browser flows isolated from the single-page smoke setup when they need separate GM and player sessions.
+- In this local Foundry setup, browser-driven user creation or role changes are not reliable. The Playwright harness seeds the existing `Clipboard QA` users directly through the world user store, with `Clipboard QA 2` and `Clipboard QA 3` acting as Players.
+- Player media-upload tests need a destination folder that already exists. Pre-create the upload directory as GM before exercising player chat-media or token-replacement uploads, or the failure will come from Foundry's directory-creation rules rather than the module policy layer.
 
 ## Coding Style & Maintainability
 - Use JavaScript with 2-space indentation and keep style consistent with the files under `src/`.
@@ -87,6 +91,7 @@
 - When debugging browser tests, headed Chromium is often more reliable than headless Foundry in this environment.
 - When debugging Firefox-specific rendering or SVG behavior, run a targeted headed Firefox smoke. Chrome passing does not prove Firefox correctness here.
 - The opt-in S3 smoke refreshes Foundry-side AWS session credentials from the current AWS CLI session before it runs. Keep that preflight working, and prefer explicit env overrides over hardcoding local paths.
+- When extending the S3 smoke, prefer environment-driven updates to Foundry's AWS JSON config such as endpoint or path-style overrides. That keeps S3-compatible provider testing realistic without adding fake module-level storage settings.
 - If a Playwright browser install is missing, install it explicitly with `npx playwright install <browser>` before diagnosing runtime behavior.
 - Enable the module's `Verbose logging` setting when diagnosing failures; the browser console output is intentionally detailed and high-signal.
 - Keep automated tests aligned with real Foundry behavior, not idealized behavior.
@@ -94,6 +99,7 @@
 - For canvas rendering assertions, document data alone is not always enough. In Firefox, inspect rendered mesh/texture state rather than assuming `placeable.width` matches the visible mesh.
 - When a manual Playwright debugging session hangs, clean up stale Playwright Firefox/Nightly processes before retrying. Do not leave orphaned browser processes running.
 - Use the dedicated clipboard QA Foundry users when possible to avoid session collisions during browser testing.
+- When permission or ownership behavior is under test, prefer the dedicated `permissions.spec.js` flows and keep the QA-user role seeding working. Do not assume the browser client can create or demote users on demand.
 - After changing paste routing, extraction logic, upload behavior, or note/chat behavior, run the smoke suite.
 - After changing SVG handling, upload naming, or browser-specific rendering behavior, run at least one targeted Firefox smoke in addition to unit tests.
 - After changing user-facing behavior, update `README.md`, `TESTING.md`, and `test/README.md` as needed.

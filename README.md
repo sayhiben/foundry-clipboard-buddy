@@ -58,6 +58,67 @@ Repository:
 - Non-media URLs pasted into chat stay as normal text.
 - Chat also supports drag and drop plus an `Upload Chat Media` button.
 
+## Suggested README GIFs
+
+These placeholder callouts are grouped by feature area so recorded media can be dropped into the README without re-planning the structure later.
+
+### Canvas creation
+
+> INSERT `01-tile-create-large-image.gif` HERE
+> Show an empty Tiles layer, paste a large panorama or animated image, and make the mouse-position placement plus automatic tile downscaling obvious.
+
+> INSERT `02-token-create-backed-actor.gif` HERE
+> Show an empty Tokens layer, paste a portrait asset, then open the created token or actor sheet to prove the pasted token is grid-snapped and has a backing Actor.
+
+> INSERT `03-video-on-canvas.gif` HERE
+> Show a `.webm` pasted onto the canvas, ideally first on Tiles and optionally then on Tokens, so autoplaying muted video support is visible.
+
+### Canvas replacement
+
+> INSERT `04-token-replace-in-place.gif` HERE
+> Start with an existing token selected, paste very different art, and make it obvious that only the texture changes while size and position stay the same.
+
+> INSERT `05-tile-replace-multi.gif` HERE
+> Select two tiles and paste once so the README shows multi-selection replacement and in-place preservation clearly.
+
+> INSERT `06-direct-media-url-canvas.gif` HERE
+> Paste a direct media URL onto the canvas to show URL download plus normal create or replace behavior.
+
+### Text notes
+
+> INSERT `07-standalone-note-from-text.gif` HERE
+> Paste plain text onto open map space to show standalone Journal-backed note creation.
+
+> INSERT `08-linked-note-append.gif` HERE
+> Select a token or tile, paste text twice, and show the same linked note being reused with appended content.
+
+### Chat
+
+> INSERT `09-chat-image-and-video.gif` HERE
+> Focus chat, paste an image, then paste a video, so the README shows chat-only routing and inline media previews.
+
+> INSERT `10-chat-drag-drop-and-upload.gif` HERE
+> Drag media into chat, then use the `Upload Chat Media` button to show the non-clipboard chat entry points.
+
+> INSERT `11-direct-media-url-chat.gif` HERE
+> Paste a direct media URL into chat so readers can see that remote media can become a normal uploaded chat post.
+
+### Scene controls and fallbacks
+
+> INSERT `12-scene-paste-prompt-fallback.gif` HERE
+> Click `Paste Media`, let the manual paste prompt appear, paste into it, and show the prompt closing after successful creation.
+
+> INSERT `13-scene-upload-tool.gif` HERE
+> Use the scene `Upload Media` button so the fallback path is visible without relying on clipboard permissions.
+
+> INSERT `14-hidden-mode.gif` HERE
+> Hold `Ctrl` or `Cmd` with `Caps Lock`, paste new canvas media, and show the created tile or token as hidden.
+
+### Admin and configuration
+
+> INSERT `15-upload-destination-config.gif` HERE
+> Open the Upload destination settings, change the target folder or source, then paste media so the README captures the storage configuration workflow.
+
 ## Supported Input Types
 
 - Images, including animated formats such as `.gif` and `.webp`
@@ -66,7 +127,12 @@ Repository:
 - Clipboard payloads that expose media through `text/uri-list`, `text/plain`, or HTML media tags
 - Plain text for contextual note creation
 
-The module scans all available clipboard items, not just the first one.
+When the browser exposes multiple `ClipboardItem` entries through `navigator.clipboard.read()`, the module scans all of them instead of assuming the first entry is the useful one.
+
+That means:
+- it can find media in a later clipboard item even if an earlier one only contains text or another unsupported payload
+- it checks the current clipboard snapshot, not clipboard history
+- it stops at the first usable media or text result and does not paste multiple clipboard items at once
 
 ## Quick Start
 
@@ -94,6 +160,8 @@ Use these when:
 `Upload Media` works as a file-picker fallback.
 Unlike normal canvas paste, these explicit scene tools do not defer to Foundry's copied-object buffer.
 
+The "scan all clipboard items" behavior matters most for the direct-read path used by `Paste Media`. Normal keyboard paste still follows the browser's native `paste` event and uses whatever the browser exposes through `event.clipboardData`.
+
 ### Hidden mode
 
 When pasting media from the keyboard, Caps Lock can be used to create newly pasted tiles or tokens as hidden.
@@ -103,7 +171,8 @@ When pasting media from the keyboard, Caps Lock can be used to create newly past
 Open Foundry's Game Settings and look for the module settings/menu:
 
 - `Upload destination`
-  World-level storage target for pasted media. Supports User Data, The Forge, Amazon S3, and other picker-provided sources.
+  World-level storage target for pasted media. Supports User Data, The Forge, Foundry-configured S3-compatible storage, and other picker-provided sources.
+  The module reads the live endpoint or base URL from Foundry's server-side S3 configuration, so providers like Cloudflare R2 or MinIO work as long as Foundry itself is configured for them.
 - `Minimum role for canvas media paste`
   Lowest Foundry role allowed to create or replace tiles and tokens from pasted media.
 - `Minimum role for canvas text paste`

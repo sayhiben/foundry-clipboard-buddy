@@ -6,6 +6,7 @@ const {
   clearActiveLayerClipboardObjects,
   clearCanvasMousePosition,
   cleanupClipboardRun,
+  closeUploadDestinationConfig,
   controlPlaceable,
   controlPlaceables,
   createTile,
@@ -25,12 +26,16 @@ const {
   getNoteDocument,
   getSafeCanvasPoint,
   getStateSnapshot,
+  getUploadDestinationSummary,
   getTileDocument,
   getTokenDocument,
   invokeSceneTool,
   loginToFoundry,
+  openUploadDestinationConfig,
   releaseAllControlledPlaceables,
   restoreClipboardRead,
+  restoreModuleSettings,
+  setModuleSettings,
   setActiveLayerClipboardObjects,
   setCanvasMousePosition,
   stubClipboardRead,
@@ -85,6 +90,13 @@ async function captureClipboardErrors(page) {
 
 async function getClipboardErrors(page) {
   return page.evaluate(() => window.__clipboardErrorMessages || []);
+}
+
+async function rerenderChat(page) {
+  await page.evaluate(() => {
+    ui.chat?.render?.(true);
+  });
+  await focusChatInput(page);
 }
 
 async function getPlaceableTextNoteFlag(page, documentName, id) {
@@ -1462,6 +1474,10 @@ test("leaves the original url text in chat when a direct media url download is b
 
 test("scene upload still works when copied objects are present and falls back to canvas center", async ({page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "enable-scene-paste-tool": true,
+    "enable-scene-upload-tool": true,
+  });
   try {
     const dimensions = await getCanvasDimensions(page);
     await clearCanvasMousePosition(page);
@@ -1482,6 +1498,7 @@ test("scene upload still works when copied objects are present and falls back to
     expect(tile.x).toBeCloseTo(dimensions.width / 2, 0);
     expect(tile.y).toBeCloseTo(dimensions.height / 2, 0);
   } finally {
+    await restoreModuleSettings(page, previousSettings);
     await clearActiveLayerClipboardObjects(page, "Tile");
     await cleanupClipboardRun(page, run);
   }
@@ -1489,6 +1506,10 @@ test("scene upload still works when copied objects are present and falls back to
 
 test("scene paste reads later async clipboard items, ignores copied objects, and falls back to canvas center", async ({page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "enable-scene-paste-tool": true,
+    "enable-scene-upload-tool": true,
+  });
   try {
     const dimensions = await getCanvasDimensions(page);
     await clearCanvasMousePosition(page);
@@ -1500,7 +1521,15 @@ test("scene paste reads later async clipboard items, ignores copied objects, and
     ]);
 
     const before = await getStateSnapshot(page);
-    await invokeSceneTool(page, "tiles", "clipboard-image-paste");
+    await page.evaluate(() => {
+      ui.controls.initialize({control: "tiles"});
+      ui.controls.render(true);
+    });
+    await page.evaluate(() => {
+      const button = document.querySelector('[data-tool="clipboard-image-paste"]');
+      if (!button) throw new Error("Could not find the scene Paste Media button.");
+      button.click();
+    });
 
     await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
     const after = await getStateSnapshot(page);
@@ -1512,6 +1541,7 @@ test("scene paste reads later async clipboard items, ignores copied objects, and
     expect(after.notes.length).toBe(before.notes.length);
     expect(after.journals.length).toBe(before.journals.length);
   } finally {
+    await restoreModuleSettings(page, previousSettings);
     await clearActiveLayerClipboardObjects(page, "Tile");
     await restoreClipboardRead(page).catch(() => {});
     await cleanupClipboardRun(page, run);
@@ -1520,13 +1550,21 @@ test("scene paste reads later async clipboard items, ignores copied objects, and
 
 test("scene paste button falls back to a manual paste prompt when direct reads cannot access media", async ({page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "enable-scene-paste-tool": true,
+    "enable-scene-upload-tool": true,
+  });
   try {
     await clearCanvasMousePosition(page);
     await page.evaluate(() => canvas.tiles.activate());
     await stubClipboardRead(page, [{}]);
 
     const before = await getStateSnapshot(page);
-    await page.click('[data-tool="clipboard-image-paste"]');
+    await page.evaluate(() => {
+      const button = document.querySelector('[data-tool="clipboard-image-paste"]');
+      if (!button) throw new Error("Could not find the scene Paste Media button.");
+      button.click();
+    });
 
     await expect(page.locator("#clipboard-image-scene-paste-target")).toBeVisible();
     await dispatchFilePaste(page, {
@@ -1538,6 +1576,7 @@ test("scene paste button falls back to a manual paste prompt when direct reads c
     await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
     await expect(page.locator("#clipboard-image-scene-paste-prompt")).toHaveCount(0);
   } finally {
+    await restoreModuleSettings(page, previousSettings);
     await restoreClipboardRead(page).catch(() => {});
     await cleanupClipboardRun(page, run);
   }
@@ -1547,6 +1586,10 @@ test("scene paste button supports Finder-copied files on macOS via the prompt fa
   test.skip(process.platform !== "darwin", "Finder clipboard integration is only available on macOS.");
 
   const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "enable-scene-paste-tool": true,
+    "enable-scene-upload-tool": true,
+  });
   try {
     await clearCanvasMousePosition(page);
     await focusCanvas(page);
@@ -1557,13 +1600,18 @@ test("scene paste button supports Finder-copied files on macOS via the prompt fa
     ]);
 
     const before = await getStateSnapshot(page);
-    await page.click('[data-tool="clipboard-image-paste"]');
+    await page.evaluate(() => {
+      const button = document.querySelector('[data-tool="clipboard-image-paste"]');
+      if (!button) throw new Error("Could not find the scene Paste Media button.");
+      button.click();
+    });
     await expect(page.locator("#clipboard-image-scene-paste-target")).toBeVisible();
     await page.keyboard.press("Meta+V");
 
     await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
     await expect(page.locator("#clipboard-image-scene-paste-prompt")).toHaveCount(0);
   } finally {
+    await restoreModuleSettings(page, previousSettings);
     await cleanupClipboardRun(page, run);
   }
 });
@@ -1586,6 +1634,181 @@ test("uses the chat upload button to post media", async ({page}, testInfo) => {
     expect(message.content).toContain("clipboard-image-chat-message");
     expect(message.content).toContain("Open full media");
   } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("shows the configured S3 endpoint in the upload destination config and hides it for non-s3 sources", async ({page}) => {
+  const previousSettings = await setModuleSettings(page, {
+    "image-location-source": "s3",
+    "image-location": "worlds/clipboard-image-v13-test/pasted_images",
+    "image-location-bucket": "foundry-store",
+  });
+
+  try {
+    const expectedEndpoint = await page.evaluate(() => {
+      const endpoint = game.data.files?.s3?.endpoint;
+      if (!endpoint) return "";
+      if (typeof endpoint === "string") return endpoint;
+      return endpoint.href || endpoint.url || `${endpoint}`;
+    });
+
+    await openUploadDestinationConfig(page);
+    const app = page.locator("#clipboard-image-destination-config");
+    const sourceSelect = app.locator('select[name="source"]');
+    const bucketGroup = app.locator(".clipboard-image-s3-bucket");
+    const endpointGroup = app.locator(".clipboard-image-s3-endpoint");
+    const endpointField = app.locator('[data-role="s3-endpoint"]');
+
+    await expect(bucketGroup).toBeVisible();
+    await expect(endpointGroup).toBeVisible();
+    await expect(endpointField).toHaveValue(expectedEndpoint);
+    await expect.poll(() => getUploadDestinationSummary(page)).toContain("S3-Compatible Storage / foundry-store");
+
+    await sourceSelect.selectOption("data");
+    await expect(bucketGroup).toBeHidden();
+    await expect(endpointGroup).toBeHidden();
+    await expect.poll(() => getUploadDestinationSummary(page)).toContain("User Data");
+
+    await sourceSelect.selectOption("auto");
+    await expect.poll(() => getUploadDestinationSummary(page)).toContain("Automatic");
+  } finally {
+    await closeUploadDestinationConfig(page);
+    await restoreModuleSettings(page, previousSettings);
+  }
+});
+
+test("fails cleanly when S3-compatible storage is selected without a bucket", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo, {
+    source: "s3",
+    bucket: "",
+  });
+
+  try {
+    await captureClipboardErrors(page);
+    const mouse = await getSafeCanvasPoint(page, 0);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => canvas.tiles.activate());
+
+    const before = await getStateSnapshot(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-token.png",
+      mimeType: "image/png",
+    });
+
+    await expect.poll(async () => (await getClipboardErrors(page)).length, {
+      timeout: 10_000,
+    }).toBeGreaterThan(0);
+
+    const after = await getStateSnapshot(page);
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect((await getClipboardErrors(page)).some(message => message.toLowerCase().includes("bucket"))).toBe(true);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("feature toggles disable canvas create and replace flows without rerouting", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "enable-token-creation": false,
+    "enable-tile-creation": false,
+    "enable-token-replacement": false,
+    "enable-tile-replacement": false,
+  });
+
+  try {
+    const tokenPosition = await getSafeCanvasPoint(page, 0);
+    const tilePosition = await getSafeCanvasPoint(page, 1);
+    const token = await createToken(page, {
+      name: `${run.prefix} Token`,
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: tokenPosition.x,
+      y: tokenPosition.y,
+    });
+    const tile = await createTile(page, {
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: tilePosition.x,
+      y: tilePosition.y,
+      width: 160,
+      height: 160,
+    });
+
+    await focusCanvas(page);
+    await page.evaluate(() => canvas.tokens.activate());
+    const beforeTokenCreate = await getStateSnapshot(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-token.png",
+      mimeType: "image/png",
+    });
+    await page.waitForTimeout(300);
+    const afterTokenCreate = await getStateSnapshot(page);
+    expect(afterTokenCreate.tokens.length).toBe(beforeTokenCreate.tokens.length);
+
+    await page.evaluate(() => canvas.tiles.activate());
+    const beforeTileCreate = await getStateSnapshot(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-token.png",
+      mimeType: "image/png",
+    });
+    await page.waitForTimeout(300);
+    const afterTileCreate = await getStateSnapshot(page);
+    expect(afterTileCreate.tiles.length).toBe(beforeTileCreate.tiles.length);
+
+    await page.evaluate(() => canvas.tokens.activate());
+    await controlPlaceable(page, "Token", token.id);
+    const beforeToken = await getTokenDocument(page, token.id);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-panorama.svg",
+      mimeType: "image/svg+xml",
+    });
+    await page.waitForTimeout(300);
+    expect(await getTokenDocument(page, token.id)).toEqual(beforeToken);
+
+    await page.evaluate(() => canvas.tiles.activate());
+    await controlPlaceable(page, "Tile", tile.id);
+    const beforeTile = await getTileDocument(page, tile.id);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-portrait.svg",
+      mimeType: "image/svg+xml",
+    });
+    await page.waitForTimeout(300);
+    expect(await getTileDocument(page, tile.id)).toEqual(beforeTile);
+  } finally {
+    await restoreModuleSettings(page, previousSettings);
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("chat feature toggles disable media posting and the upload button", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "enable-chat-media": false,
+    "enable-chat-upload-button": false,
+  });
+
+  try {
+    await rerenderChat(page);
+    await expect(page.locator(".clipboard-image-chat-upload")).toHaveCount(0);
+
+    const before = await getStateSnapshot(page);
+    await dispatchFilePaste(page, {
+      targetSelector: await focusChatInput(page),
+      filename: "test-token.png",
+      mimeType: "image/png",
+    });
+    await page.waitForTimeout(300);
+    const after = await getStateSnapshot(page);
+    expect(after.messages.length).toBe(before.messages.length);
+  } finally {
+    await restoreModuleSettings(page, previousSettings);
+    await rerenderChat(page);
     await cleanupClipboardRun(page, run);
   }
 });

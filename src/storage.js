@@ -50,7 +50,7 @@ function _clipboardGetSourceLabel(source) {
     case CLIPBOARD_IMAGE_SOURCE_DATA:
       return "User Data";
     case CLIPBOARD_IMAGE_SOURCE_S3:
-      return "Amazon S3";
+      return "S3-Compatible Storage";
     case CLIPBOARD_IMAGE_SOURCE_FORGE:
       return "The Forge";
     default:
@@ -84,6 +84,15 @@ function _clipboardGetStoredBucket() {
   return game.settings.get(CLIPBOARD_IMAGE_MODULE_ID, "image-location-bucket")?.trim() || "";
 }
 
+function _clipboardGetConfiguredS3Endpoint() {
+  const endpoint = game?.data?.files?.s3?.endpoint;
+  if (!endpoint) return "";
+  if (typeof endpoint === "string") return endpoint.trim();
+  if (typeof endpoint?.href === "string") return endpoint.href.trim();
+  if (typeof endpoint?.url === "string") return endpoint.url.trim();
+  return `${endpoint}`.trim();
+}
+
 function _clipboardGetTargetFolder() {
   return game.settings.get(CLIPBOARD_IMAGE_MODULE_ID, "image-location")?.trim() || CLIPBOARD_IMAGE_DEFAULT_FOLDER;
 }
@@ -103,6 +112,7 @@ function _clipboardGetUploadDestination(overrides = {}) {
     source: resolvedSource,
     target,
     bucket,
+    endpoint: resolvedSource === CLIPBOARD_IMAGE_SOURCE_S3 ? _clipboardGetConfiguredS3Endpoint() : "",
   };
 }
 
@@ -129,7 +139,7 @@ function _clipboardDescribeDestination(destination) {
 
 function _clipboardAssertUploadDestination(destination) {
   if (destination.source === CLIPBOARD_IMAGE_SOURCE_S3 && !destination.bucket) {
-    throw new Error("Amazon S3 destinations require a bucket selection");
+    throw new Error("S3-compatible destinations require a bucket selection");
   }
 }
 
@@ -141,7 +151,7 @@ async function _clipboardCreateFolderIfMissing(destination) {
   });
 
   if (destination.source === CLIPBOARD_IMAGE_SOURCE_S3) {
-    _clipboardLog("debug", "Skipping directory creation for S3 destination", {
+    _clipboardLog("debug", "Skipping directory creation for S3-compatible destination", {
       destination: _clipboardDescribeDestinationForLog(destination),
     });
     return;
@@ -297,6 +307,7 @@ module.exports = {
   _clipboardGetSourceChoices,
   _clipboardCanSelectSource,
   _clipboardGetStoredBucket,
+  _clipboardGetConfiguredS3Endpoint,
   _clipboardGetTargetFolder,
   _clipboardGetUploadDestination,
   _clipboardGetFilePickerOptions,
