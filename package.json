@@ -1,7 +1,7 @@
 {
   "name": "foundry-paste-eater",
-  "version": "0.5.0",
-  "description": "Paste media and contextual text from Clipboard into Tiles, Tokens, Notes, or Chat",
+  "version": "1.0.0",
+  "description": "Paste media, URLs, and contextual text into tiles, tokens, notes, and chat.",
   "main": "foundry-paste-eater.js",
   "scripts": {
     "build:runtime": "node scripts/build-runtime.js",
@@ -39,7 +39,10 @@
     "token",
     "chat"
   ],
-  "author": "JeansenVaars (Saif Ellafi)",
+  "author": {
+    "name": "sayhiben",
+    "url": "https://github.com/sayhiben"
+  },
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/sayhiben/foundry-paste-eater/issues"

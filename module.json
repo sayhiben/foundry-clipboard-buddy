@@ -3,12 +3,16 @@
 	"title": "Foundry Paste Eater",
 	"authors": [
 		{
+			"name": "sayhiben",
+			"url": "https://github.com/sayhiben"
+		},
+		{
 			"name": "Saif Addin Ellafi",
 			"discord": "JeansenVaars#2857"
 		}
 	],
-	"description": "Paste media and contextual text from Clipboard into Tiles, Tokens, Notes, or Chat",
-	"version": "0.5.0",
+	"description": "Paste media, URLs, and contextual text into tiles, tokens, notes, and chat.",
+	"version": "1.0.0",
 	"compatibility": {
 		"minimum": "13",
 		"verified": "13.351",
@@ -19,6 +23,6 @@
 	"styles": [ "foundry-paste-eater.css" ],
 	"url": "https://github.com/sayhiben/foundry-paste-eater",
 	"manifest": "https://github.com/sayhiben/foundry-paste-eater/releases/latest/download/module.json",
-	"download": "https://github.com/sayhiben/foundry-paste-eater/releases/download/0.5.0/foundry-paste-eater_0.5.0.zip",
+	"download": "https://github.com/sayhiben/foundry-paste-eater/releases/download/1.0.0/foundry-paste-eater_1.0.0.zip",
 	"changelog": "https://github.com/sayhiben/foundry-paste-eater/blob/main/CHANGELOG.md"
 }

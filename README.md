@@ -279,7 +279,7 @@ When an actual module error is raised:
 
 This fork builds on the original Foundry Paste Eater work and the people who helped shape it.
 
-- Original Foundry Paste Eater concept and upstream work by JeansenVaars
+- Original upstream project and early Paste Eater work by JeansenVaars
 - Thanks to @theripper93 for early design guidance
 - Thanks to @vttom for help with Forge-related behavior
 - Thanks to the Foundry VTT Discord community for issue reports and feedback

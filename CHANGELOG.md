@@ -1,4 +1,4 @@
-### Unreleased
+### 1.0.0
 * Route module errors through a shared reporting pipeline that alerts the acting user, relays richer details plus a logfile link to connected GMs, and auto-downloads verbose logfiles for debugging clients
 * Add client-side verbose browser-console logging for clipboard parsing, upload, paste routing, and create vs replace diagnostics
 * Expand the Playwright smoke suite with edge-case coverage for mixed clipboard payloads, non-media URL note fallback, HTML media URLs, hidden paste mode, scene-control paste, and copied-object priority
