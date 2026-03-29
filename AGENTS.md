@@ -66,9 +66,11 @@
 - The Playwright config coverage now lives in `test/playwright/config.spec.js`. Keep behavior-setting flows there instead of bloating `smoke.spec.js` with every settings permutation.
 - The Playwright permission coverage lives in `test/playwright/permissions.spec.js`, not only in `smoke.spec.js`. Keep multi-user browser flows isolated from the single-page smoke setup when they need separate GM and player sessions.
 - Browser-level error reporting coverage now lives in `test/playwright/error-reporting.spec.js`. Keep player alert, GM relay, and verbose-log download assertions there instead of bloating the main smoke file.
+- Setting-focused browser coverage now lives in `test/playwright/config.spec.js`, while setting-registration and persistence assertions live in `test/unit/ui-and-hooks.spec.js`. When adding a new setting, update both the smoke coverage and the registration audit instead of relying on only one layer.
 - In this local Foundry setup, browser-driven user creation or role changes are not reliable. The Playwright harness seeds the existing `Clipboard QA` users directly through the world user store, with `Clipboard QA 2` and `Clipboard QA 3` acting as Players.
 - Player media-upload tests need a destination folder that already exists. Pre-create the upload directory as GM before exercising player chat-media or token-replacement uploads, or the failure will come from Foundry's directory-creation rules rather than the module policy layer.
 - The Playwright harness now recovers if the test world has no active scene. It waits for `game.ready`, activates an existing scene or creates a throwaway one, and only then waits for `canvas.ready`. Do not assume the local world will always boot with an active scene already selected.
+- In this local setup, an expired AWS session often surfaces as a blank or `null` S3 endpoint in the destination UI and `Failed to determine S3 endpoint` server logs. Reauthenticate with `aws login`, refresh Foundry's AWS JSON config from the current CLI session, and restart Foundry before treating it as a module regression.
 
 ## Coding Style & Maintainability
 - Use JavaScript with 2-space indentation and keep style consistent with the files under `src/`.
@@ -92,7 +94,10 @@
 - Use the Playwright smoke suite for stable automatable flows.
 - Use `TESTING.md` for manual QA cases that still matter: browser permission prompts, Safari/iOS/Android behavior, Forge/S3 integration, and visual animation/video validation.
 - Read `test/README.md` before changing the suite; it documents required env vars and current scope.
+- When changing settings behavior, exercise both layers: unit coverage for registration/defaults/policy and Playwright coverage for the live Configure Settings and world-behavior path.
 - When debugging browser tests, headed Chromium is often more reliable than headless Foundry in this environment.
+- Headless Chromium in this local Foundry setup needs two workarounds: use Playwright's full `chromium` channel instead of `chrome-headless-shell`, and keep the software-WebGL launch flags (`--use-angle=swiftshader`, `--enable-webgl`, `--ignore-gpu-blocklist`). Without them, Foundry either crashes in PIXI with a `getExtension` error before the join form appears or stalls at 90% loading after login.
+- On macOS, headed Playwright browsers steal typing focus. Prefer headless for unattended runs, and only switch to headed when you need visual canvas or browser-permission debugging.
 - When debugging Firefox-specific rendering or SVG behavior, run a targeted headed Firefox smoke. Chrome passing does not prove Firefox correctness here.
 - The opt-in S3 smoke refreshes Foundry-side AWS session credentials from the current AWS CLI session before it runs. Keep that preflight working, and prefer explicit env overrides over hardcoding local paths.
 - When extending the S3 smoke, prefer environment-driven updates to Foundry's AWS JSON config such as endpoint or path-style overrides. That keeps S3-compatible provider testing realistic without adding fake module-level storage settings.
@@ -108,6 +113,7 @@
 - After changing paste routing, extraction logic, upload behavior, or note/chat behavior, run the smoke suite.
 - After changing SVG handling, upload naming, or browser-specific rendering behavior, run at least one targeted Firefox smoke in addition to unit tests.
 - After changing user-facing behavior, update `README.md`, `TESTING.md`, and `test/README.md` as needed.
+- After changing settings or permissions, do at least one live manual pass in addition to automated coverage so the Foundry settings UI and notifications are exercised end to end.
 
 ## Suggested Verification Sequence
 - `npm run lint`
@@ -125,6 +131,16 @@
 - Keep commits scoped to one concern where practical.
 - If behavior changes, include docs and tests in the same branch/PR when possible.
 - For PRs, include behavior summary, impacted Foundry version(s), and screenshots/GIFs for visible canvas/chat changes when relevant.
+- For README/demo GIF capture on this machine, Gifox works only after macOS Accessibility is granted and Chrome's `View > Developer > Allow JavaScript from Apple Events` is enabled. Window selection starts recording immediately here, so be ready to drive the demo as soon as the target window is clicked.
+
+## Release Notes
+- This fork publishes releases from `sayhiben/foundry-clipboard-buddy`, while `gh` may still default to the old upstream repo. Use `gh ... --repo sayhiben/foundry-clipboard-buddy` for release commands instead of relying on defaults.
+- If `gh release create` complains about missing `workflow` scope when creating a tag, push the tag with git first and then run `gh release create --verify-tag` against the existing tag.
+- Build the release asset with `npm run zip` before creating the GitHub release, and attach the generated `foundry-clipboard-buddy_<version>.zip`.
+
+## Local Auth Notes
+- In this environment, you are allowed to refresh local AWS authentication yourself. If the AWS CLI session is expired, run `aws login`, then refresh any Foundry-side AWS JSON config that mirrors the current CLI session before rerunning S3 checks.
+- In this environment, you are also allowed to refresh GitHub CLI permissions yourself. If `gh` is missing a required scope such as `workflow`, run `gh auth refresh -h github.com -s <scope>` instead of stopping to ask the user.
 
 ## Security & Browser Notes
 - Clipboard API support depends on browser security context and trusted origin rules.

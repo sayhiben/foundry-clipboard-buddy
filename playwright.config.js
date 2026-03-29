@@ -7,6 +7,15 @@ const headless = process.env.PW_HEADLESS === "true"
   : process.env.PW_HEADLESS === "false"
     ? false
     : defaultHeadless;
+const chromiumHeadlessArgs = headless && browserName === "chromium"
+  ? [
+    "--use-angle=swiftshader",
+    "--enable-unsafe-swiftshader",
+    "--enable-webgl",
+    "--ignore-gpu-blocklist",
+  ]
+  : [];
+const chromiumHeadlessChannel = headless && browserName === "chromium" ? "chromium" : undefined;
 
 module.exports = defineConfig({
   testDir: "./test/playwright",
@@ -24,6 +33,7 @@ module.exports = defineConfig({
   use: {
     baseURL: process.env.FOUNDRY_URL || process.env.FOUNDRY_JOIN_URL || process.env.FOUNDRY_BASE_URL || "http://127.0.0.1:30000",
     headless,
+    launchOptions: chromiumHeadlessArgs.length ? {args: chromiumHeadlessArgs} : undefined,
     viewport: {width: 1600, height: 1000},
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
@@ -33,7 +43,10 @@ module.exports = defineConfig({
   projects: [
     {
       name: browserName,
-      use: {browserName},
+      use: {
+        browserName,
+        channel: chromiumHeadlessChannel,
+      },
     },
   ],
   workers: 1,

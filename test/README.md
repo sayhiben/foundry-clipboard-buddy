@@ -59,7 +59,7 @@ The suite uses these environment variables:
 - `PW_BROWSER`
   Browser name for the Playwright project. Defaults to `chromium`.
 - `PW_HEADLESS`
-  Set to `true` to force headless. Local default is headed because Foundry and PIXI are more reliable there; CI still defaults to headless.
+  Set to `true` to force headless. Local default is headed because Foundry and PIXI are more reliable there; CI still defaults to headless. The local Playwright config now runs headless Chromium through the full `chromium` channel with software-WebGL flags so Foundry can initialize without the PIXI `getExtension` crash or the `chrome-headless-shell` 90% loading stall.
 - `FOUNDRY_S3_BUCKET`
   Optional bucket name for the opt-in S3-compatible storage smoke spec in `test/playwright/s3.spec.js`.
 - `FOUNDRY_S3_REFRESH`
@@ -125,6 +125,7 @@ npm run test:smoke:s3
 - If the local world boots without an active scene, the Playwright harness now activates an existing scene or creates a temporary one before continuing so `canvas.ready` can succeed.
 - The permissions smoke spec reseeds the local QA users from Foundry's world user store before it runs. The expected local roles are `Gamemaster` and `Clipboard QA 1` as GMs, with `Clipboard QA 2` and `Clipboard QA 3` as Players.
 - Local Playwright runs default to headed Chromium because Foundry's graphics stack is not reliable under headless Chromium in this environment.
+- When local headless Chromium is necessary, keep both parts of the workaround in `playwright.config.js`: use the full `chromium` channel and keep the software-WebGL launch flags. Removing either one reintroduces a Foundry bootstrap failure in this environment.
 - Keyboard paste coverage follows the browser's native `paste` event. The module's explicit `Paste Media` scene tool is the only path that still depends on `navigator.clipboard.read()`.
 - Uploaded media files remain in the configured `playwright` upload subfolders. They are isolated by test run id but are not automatically deleted from disk.
 - Player media-upload smoke paths need an upload folder that already exists. The harness now pre-creates those folders as GM before player-upload tests run.
