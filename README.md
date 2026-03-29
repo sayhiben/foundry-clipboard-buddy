@@ -2,9 +2,7 @@
 
 # Foundry Clipboard Buddy
 
-Foundry Clipboard Buddy is an independently maintained fork of Clipboard Image for Foundry VTT.
-
-It lets you paste or upload media and contextual text into:
+Foundry Clipboard Buddy lets you paste or upload media and contextual text into:
 - Tiles
 - Tokens
 - Scene notes
@@ -38,9 +36,9 @@ Repository:
 
 - If one or more tokens are selected, pasted media replaces their texture in place.
 - If one or more tiles are selected, pasted media replaces their texture in place.
-- If nothing is selected and the Tokens layer is active, pasted media creates a new token snapped to the grid with a backing world Actor so it can be edited normally afterward.
-- If nothing is selected on other canvas layers, pasted media creates a new tile at the mouse position.
-- On a fresh scene, Foundry usually opens on the Tokens layer, so paste will create a token until you switch to Tile Controls.
+- If nothing is selected, new media uses the configured empty-canvas target. By default that is the active layer, which means the Tokens layer creates a token and other layers create a tile.
+- New pasted tokens create a backing world Actor by default so they can be opened and edited normally afterward.
+- On a fresh scene, Foundry usually opens on the Tokens layer, so default settings will create a token until you switch to Tile Controls or change the module target setting.
 - Normal keyboard or browser canvas paste respects Foundry's copied-object buffer before creating module content.
 - Large pasted images are scaled down for tile creation.
 - Video tiles are created muted, looping, and autoplaying.
@@ -106,6 +104,40 @@ Open Foundry's Game Settings and look for the module settings/menu:
 
 - `Upload destination`
   World-level storage target for pasted media. Supports User Data, The Forge, Amazon S3, and other picker-provided sources.
+- `Minimum role for canvas media paste`
+  Lowest Foundry role allowed to create or replace tiles and tokens from pasted media.
+- `Minimum role for canvas text paste`
+  Lowest Foundry role allowed to create or update Journal-backed scene notes from pasted text.
+- `Minimum role for chat media paste`
+  Lowest Foundry role allowed to post pasted or uploaded media into chat.
+- `Allow non-GMs to use scene controls`
+  Lets non-GM users who meet the canvas-media role requirement see the Clipboard Image scene-control buttons.
+- `Enable chat media handling`
+  Master toggle for chat media paste, drag/drop, and upload behavior.
+- `Enable chat upload button`
+  Controls whether the explicit `Upload Chat Media` button appears.
+- `Allow token creation from pasted media`
+  Allows new token creation when media targets token placement.
+- `Allow tile creation from pasted media`
+  Allows new tile creation when media targets tile placement.
+- `Allow token art replacement`
+  Allows pasted media to replace selected token art. Non-GMs are limited to tokens they can actually update, which is typically actor ownership.
+- `Allow tile art replacement`
+  Allows pasted media to replace selected tile art.
+- `Enable scene Paste Media tool`
+  Controls whether the explicit scene-control paste button is shown.
+- `Enable scene Upload Media tool`
+  Controls whether the explicit scene-control upload button is shown.
+- `Default empty-canvas paste target`
+  Chooses whether new canvas media follows the active layer, always creates tiles, or always creates tokens.
+- `Create backing Actors for pasted tokens`
+  Keeps newly pasted tokens editable through a normal token sheet.
+- `Chat media display`
+  Chooses between full preview, thumbnail preview, or link-only chat posts.
+- `Canvas text paste mode`
+  Currently supports Journal-backed scene notes or fully disabling canvas text paste.
+- `Scene Paste Media prompt mode`
+  Chooses whether the explicit scene-control paste button uses automatic browser behavior, always opens the manual paste prompt, or only uses direct clipboard reads.
 - `Verbose logging`
   Client-level debugging setting that writes detailed clipboard-image diagnostics to the browser console.
 

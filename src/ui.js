@@ -28,12 +28,24 @@ const {
   _clipboardCanPasteToContext,
 } = require("./context");
 const {
+  CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS,
+  CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER,
+} = require("./constants");
+const {
+  _clipboardCanUseChatMedia,
+  _clipboardCanUseChatUploadButton,
+  _clipboardCanUseScenePasteTool,
+  _clipboardCanUseSceneUploadTool,
+  _clipboardGetScenePastePromptMode,
+} = require("./settings");
+const {
   _clipboardExecutePasteWorkflow,
   _clipboardHandleImageInput,
   _clipboardHandleChatImageInput,
   _clipboardHandleImageInputWithTextFallback,
   _clipboardHandleTextInput,
   _clipboardHasPasteConflict,
+  _clipboardHandleScenePasteAction,
   _clipboardHandleSceneUploadAction,
   _clipboardHandleChatUploadAction,
 } = require("./workflows");
@@ -55,7 +67,7 @@ function _clipboardAddSceneControlButtons(controls) {
       icon: "fa-solid fa-paste",
       order,
       button: true,
-      visible: game.user.isGM,
+      visible: _clipboardCanUseScenePasteTool(),
       onClick: onPasteClick,
       onChange: onPasteClick,
     };
@@ -65,7 +77,7 @@ function _clipboardAddSceneControlButtons(controls) {
       icon: "fa-solid fa-file-image",
       order: order + 1,
       button: true,
-      visible: game.user.isGM,
+      visible: _clipboardCanUseSceneUploadTool(),
       onClick: onUploadClick,
       onChange: onUploadClick,
     };
@@ -153,7 +165,7 @@ function _clipboardOpenScenePastePrompt() {
         placeholder="Press Cmd+V / Ctrl+V here if direct clipboard read does not complete."
       ></textarea>
       <div class="clipboard-image-scene-paste-actions">
-        <button type="button" data-action="upload">Upload Media</button>
+        ${_clipboardCanUseSceneUploadTool() ? '<button type="button" data-action="upload">Upload Media</button>' : ""}
         <button type="button" data-action="cancel">Cancel</button>
       </div>
     </div>
@@ -222,8 +234,18 @@ async function _clipboardTryScenePastePromptDirectRead(prompt) {
 }
 
 function _clipboardHandleScenePasteToolClick() {
+  if (!_clipboardCanUseScenePasteTool()) return false;
+
+  const promptMode = _clipboardGetScenePastePromptMode();
+  if (promptMode === CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER) {
+    return _clipboardHandleScenePasteAction();
+  }
+
   const prompt = _clipboardOpenScenePastePrompt();
-  void _clipboardTryScenePastePromptDirectRead(prompt);
+  if (promptMode !== CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS) {
+    void _clipboardTryScenePastePromptDirectRead(prompt);
+  }
+  return true;
 }
 
 function _clipboardToggleChatDropTarget(root, active) {
@@ -231,6 +253,7 @@ function _clipboardToggleChatDropTarget(root, active) {
 }
 
 function _clipboardOnChatDragOver(event) {
+  if (!_clipboardCanUseChatMedia()) return;
   const root = event.currentTarget;
   const blob = _clipboardExtractImageBlobFromDataTransfer(event.dataTransfer);
   if (!blob) return;
@@ -247,6 +270,7 @@ function _clipboardOnChatDragLeave(event) {
 }
 
 function _clipboardOnChatDrop(event) {
+  if (!_clipboardCanUseChatMedia()) return;
   const root = event.currentTarget;
   _clipboardToggleChatDropTarget(root, false);
 
@@ -265,6 +289,7 @@ function _clipboardOnChatDrop(event) {
 }
 
 function _clipboardAttachChatUploadButton(root) {
+  if (!_clipboardCanUseChatUploadButton()) return;
   if (root.querySelector(`[data-action="${CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION}"]`)) return;
 
   const form = root.matches("form") ? root : (root.querySelector("form") || root.closest("form"));
@@ -340,6 +365,7 @@ function _clipboardOnPaste(event) {
   const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
   if (imageInput) {
     if (_clipboardGetChatRootFromTarget(event.target)) {
+      if (!_clipboardCanUseChatMedia()) return;
       if (_clipboardHasPasteConflict({respectCopiedObjects: false})) return;
 
       _clipboardConsumePasteEvent(event);

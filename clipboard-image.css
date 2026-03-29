@@ -20,6 +20,16 @@
   background: rgba(0, 0, 0, 0.15);
 }
 
+.clipboard-image-chat-full-preview {
+  display: block;
+  max-width: min(540px, 100%);
+  max-height: 540px;
+  object-fit: contain;
+  border: 1px solid var(--color-border-light-primary);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
 .clipboard-image-chat-message figcaption {
   font-size: var(--font-size-12);
 }

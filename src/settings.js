@@ -3,8 +3,181 @@ const {
   CLIPBOARD_IMAGE_DEFAULT_FOLDER,
   CLIPBOARD_IMAGE_SOURCE_AUTO,
   CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING,
+  CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING,
+  CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING,
+  CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING,
+  CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING,
+  CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING,
+  CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING,
+  CLIPBOARD_IMAGE_ENABLE_TOKEN_CREATION_SETTING,
+  CLIPBOARD_IMAGE_ENABLE_TILE_CREATION_SETTING,
+  CLIPBOARD_IMAGE_ENABLE_TOKEN_REPLACEMENT_SETTING,
+  CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING,
+  CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING,
+  CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING,
+  CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING,
+  CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING,
+  CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING,
+  CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING,
+  CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING,
+  CLIPBOARD_IMAGE_ROLE_PLAYER,
+  CLIPBOARD_IMAGE_ROLE_TRUSTED,
+  CLIPBOARD_IMAGE_ROLE_ASSISTANT,
+  CLIPBOARD_IMAGE_ROLE_GAMEMASTER,
+  CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER,
+  CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE,
+  CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN,
+  CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW,
+  CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL,
+  CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY,
+  CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES,
+  CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED,
+  CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO,
+  CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS,
+  CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER,
 } = require("./constants");
 const {ClipboardImageDestinationConfig} = require("./config-app");
+
+function _clipboardGetRoleChoices() {
+  return {
+    [CLIPBOARD_IMAGE_ROLE_PLAYER]: "Player",
+    [CLIPBOARD_IMAGE_ROLE_TRUSTED]: "Trusted Player",
+    [CLIPBOARD_IMAGE_ROLE_ASSISTANT]: "Assistant GM",
+    [CLIPBOARD_IMAGE_ROLE_GAMEMASTER]: "Gamemaster",
+  };
+}
+
+function _clipboardGetRoleValue(roleKey) {
+  return CONST?.USER_ROLES?.[roleKey] ?? CONST?.USER_ROLES?.PLAYER ?? 1;
+}
+
+function _clipboardGetCurrentUserRole() {
+  if (typeof game?.user?.role === "number") return game.user.role;
+  if (game?.user?.isGM) return _clipboardGetRoleValue(CLIPBOARD_IMAGE_ROLE_GAMEMASTER);
+  return _clipboardGetRoleValue(CLIPBOARD_IMAGE_ROLE_PLAYER);
+}
+
+function _clipboardGetSetting(key) {
+  return game.settings.get(CLIPBOARD_IMAGE_MODULE_ID, key);
+}
+
+function _clipboardSettingEnabled(key) {
+  return Boolean(_clipboardGetSetting(key));
+}
+
+function _clipboardGetConfiguredMinimumRole(settingKey) {
+  const configuredRole = _clipboardGetSetting(settingKey);
+  if (typeof configuredRole === "string" && configuredRole.trim()) return configuredRole;
+  return CLIPBOARD_IMAGE_ROLE_PLAYER;
+}
+
+function _clipboardUserMeetsMinimumRole(settingKey) {
+  return _clipboardGetCurrentUserRole() >= _clipboardGetRoleValue(_clipboardGetConfiguredMinimumRole(settingKey));
+}
+
+function _clipboardCanUseCanvasMedia() {
+  return _clipboardUserMeetsMinimumRole(CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING);
+}
+
+function _clipboardCanUseCanvasText() {
+  return _clipboardUserMeetsMinimumRole(CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING) &&
+    _clipboardGetCanvasTextPasteMode() !== CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED;
+}
+
+function _clipboardCanUseChatMedia() {
+  return _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING) &&
+    _clipboardUserMeetsMinimumRole(CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING);
+}
+
+function _clipboardCanUseChatUploadButton() {
+  return _clipboardCanUseChatMedia() &&
+    _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING);
+}
+
+function _clipboardCanUseSceneControls() {
+  if (game.user?.isGM) return true;
+  return _clipboardSettingEnabled(CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING) &&
+    _clipboardCanUseCanvasMedia();
+}
+
+function _clipboardCanUseScenePasteTool() {
+  return _clipboardCanUseSceneControls() &&
+    _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING);
+}
+
+function _clipboardCanUseSceneUploadTool() {
+  return _clipboardCanUseSceneControls() &&
+    _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING);
+}
+
+function _clipboardGetDefaultEmptyCanvasTarget() {
+  const configuredTarget = _clipboardGetSetting(CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING);
+  if (
+    configuredTarget === CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE ||
+    configuredTarget === CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN
+  ) {
+    return configuredTarget;
+  }
+
+  return CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER;
+}
+
+function _clipboardShouldCreateBackingActors() {
+  return _clipboardSettingEnabled(CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING);
+}
+
+function _clipboardGetChatMediaDisplayMode() {
+  const configuredMode = _clipboardGetSetting(CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING);
+  if (
+    configuredMode === CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW ||
+    configuredMode === CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY
+  ) {
+    return configuredMode;
+  }
+
+  return CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL;
+}
+
+function _clipboardGetCanvasTextPasteMode() {
+  const configuredMode = _clipboardGetSetting(CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING);
+  if (configuredMode === CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED) {
+    return configuredMode;
+  }
+
+  return CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES;
+}
+
+function _clipboardGetScenePastePromptMode() {
+  const configuredMode = _clipboardGetSetting(CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING);
+  if (
+    configuredMode === CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS ||
+    configuredMode === CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER
+  ) {
+    return configuredMode;
+  }
+
+  return CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO;
+}
+
+function _clipboardCanCreateTokens() {
+  return _clipboardCanUseCanvasMedia() &&
+    _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_TOKEN_CREATION_SETTING);
+}
+
+function _clipboardCanCreateTiles() {
+  return _clipboardCanUseCanvasMedia() &&
+    _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_TILE_CREATION_SETTING);
+}
+
+function _clipboardCanReplaceTokens() {
+  return _clipboardCanUseCanvasMedia() &&
+    _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_TOKEN_REPLACEMENT_SETTING);
+}
+
+function _clipboardCanReplaceTiles() {
+  return _clipboardCanUseCanvasMedia() &&
+    _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING);
+}
 
 function _clipboardRegisterSettings() {
   game.settings.registerMenu(CLIPBOARD_IMAGE_MODULE_ID, "upload-destination", {
@@ -51,8 +224,206 @@ function _clipboardRegisterSettings() {
     type: Boolean,
     default: false,
   });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING, {
+    name: "Minimum role for canvas media paste",
+    hint: "Lowest Foundry role allowed to create or replace tiles and tokens from pasted media.",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: _clipboardGetRoleChoices(),
+    default: CLIPBOARD_IMAGE_ROLE_PLAYER,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING, {
+    name: "Minimum role for canvas text paste",
+    hint: "Lowest Foundry role allowed to create or update Journal-backed scene notes from pasted text.",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: _clipboardGetRoleChoices(),
+    default: CLIPBOARD_IMAGE_ROLE_PLAYER,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING, {
+    name: "Minimum role for chat media paste",
+    hint: "Lowest Foundry role allowed to post pasted/uploaded media into chat.",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: _clipboardGetRoleChoices(),
+    default: CLIPBOARD_IMAGE_ROLE_PLAYER,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING, {
+    name: "Allow non-GMs to use scene controls",
+    hint: "Show Clipboard Image scene control buttons to non-GM users who meet the canvas media role requirement.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING, {
+    name: "Enable chat media handling",
+    hint: "Allow pasted, dropped, and uploaded media in chat.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING, {
+    name: "Enable chat upload button",
+    hint: "Show the Upload Chat Media button next to the chat input when chat media handling is enabled.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_TOKEN_CREATION_SETTING, {
+    name: "Allow token creation from pasted media",
+    hint: "Create a new token when pasted media targets token creation.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_TILE_CREATION_SETTING, {
+    name: "Allow tile creation from pasted media",
+    hint: "Create a new tile when pasted media targets tile creation.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_TOKEN_REPLACEMENT_SETTING, {
+    name: "Allow token art replacement",
+    hint: "Allow pasted media to replace the selected tokens. Non-GMs are limited to tokens they can update.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING, {
+    name: "Allow tile art replacement",
+    hint: "Allow pasted media to replace the selected tiles.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING, {
+    name: "Enable scene Paste Media tool",
+    hint: "Show the Paste Media scene control button.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING, {
+    name: "Enable scene Upload Media tool",
+    hint: "Show the Upload Media scene control button.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING, {
+    name: "Default empty-canvas paste target",
+    hint: "Choose which placeable type should be created when pasted media is not replacing an existing tile or token.",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: {
+      [CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER]: "Active layer",
+      [CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE]: "Tile",
+      [CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN]: "Token",
+    },
+    default: CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING, {
+    name: "Create backing Actors for pasted tokens",
+    hint: "Generate an Actor for each newly pasted token so the token can be opened and edited normally.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING, {
+    name: "Chat media display",
+    hint: "Choose how pasted media is rendered in chat messages.",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: {
+      [CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW]: "Full preview",
+      [CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL]: "Thumbnail",
+      [CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY]: "Link only",
+    },
+    default: CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING, {
+    name: "Canvas text paste mode",
+    hint: "Choose how pasted plain text behaves on the canvas.",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: {
+      [CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES]: "Scene notes",
+      [CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED]: "Disabled",
+    },
+    default: CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING, {
+    name: "Scene Paste Media prompt mode",
+    hint: "Control whether the scene Paste Media tool uses direct clipboard reads, the manual paste prompt, or the current browser-dependent auto behavior.",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: {
+      [CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO]: "Auto",
+      [CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS]: "Always show prompt",
+      [CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER]: "Never show prompt",
+    },
+    default: CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO,
+  });
 }
 
 module.exports = {
+  _clipboardGetRoleChoices,
+  _clipboardGetRoleValue,
+  _clipboardGetCurrentUserRole,
+  _clipboardGetSetting,
+  _clipboardSettingEnabled,
+  _clipboardGetConfiguredMinimumRole,
+  _clipboardUserMeetsMinimumRole,
+  _clipboardCanUseCanvasMedia,
+  _clipboardCanUseCanvasText,
+  _clipboardCanUseChatMedia,
+  _clipboardCanUseChatUploadButton,
+  _clipboardCanUseSceneControls,
+  _clipboardCanUseScenePasteTool,
+  _clipboardCanUseSceneUploadTool,
+  _clipboardGetDefaultEmptyCanvasTarget,
+  _clipboardShouldCreateBackingActors,
+  _clipboardGetChatMediaDisplayMode,
+  _clipboardGetCanvasTextPasteMode,
+  _clipboardGetScenePastePromptMode,
+  _clipboardCanCreateTokens,
+  _clipboardCanCreateTiles,
+  _clipboardCanReplaceTokens,
+  _clipboardCanReplaceTiles,
   _clipboardRegisterSettings,
 };

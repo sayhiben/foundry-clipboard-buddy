@@ -5,6 +5,19 @@ const {
   _clipboardScaleTokenDimensions,
 } = require("./media");
 const {_clipboardGetHiddenMode} = require("./state");
+const {
+  CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER,
+  CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE,
+  CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN,
+} = require("./constants");
+const {
+  _clipboardCanCreateTokens,
+  _clipboardCanCreateTiles,
+  _clipboardCanReplaceTokens,
+  _clipboardCanReplaceTiles,
+  _clipboardGetDefaultEmptyCanvasTarget,
+  _clipboardShouldCreateBackingActors,
+} = require("./settings");
 
 function _clipboardHasCopiedObjects() {
   const layer = canvas?.activeLayer;
@@ -28,6 +41,47 @@ function _clipboardGetCanvasCenter() {
 
 function _clipboardGetTokenPosition(mousePos) {
   return canvas?.grid?.getTopLeftPoint?.(mousePos) || mousePos;
+}
+
+function _clipboardCanUserModifyDocument(document, action = "update") {
+  if (!document) return false;
+  if (game.user?.isGM) return true;
+
+  if (typeof document.canUserModify === "function") {
+    return Boolean(document.canUserModify(game.user, action));
+  }
+
+  if (typeof document.testUserPermission === "function") {
+    return Boolean(document.testUserPermission(game.user, "OWNER"));
+  }
+
+  if (typeof document.isOwner === "boolean") {
+    return document.isOwner;
+  }
+
+  return false;
+}
+
+function _clipboardCanReplaceDocument(documentName, document) {
+  if (documentName === "Token") {
+    if (!_clipboardCanReplaceTokens()) return false;
+    if (game.user?.isGM) return true;
+
+    return _clipboardCanUserModifyDocument(document, "update") ||
+      _clipboardCanUserModifyDocument(document?.actor, "update");
+  }
+
+  if (documentName === "Tile") {
+    return _clipboardCanReplaceTiles() &&
+      _clipboardCanUserModifyDocument(document, "update");
+  }
+
+  return false;
+}
+
+function _clipboardCanCreateDocument(documentName) {
+  if (documentName === "Token") return _clipboardCanCreateTokens();
+  return _clipboardCanCreateTiles();
 }
 
 function _clipboardGetPastedDocumentName(path) {
@@ -146,17 +200,19 @@ const CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES = {
     createData: async ({path, imgWidth, imgHeight, mousePos, mediaKind}) => {
       const snappedPosition = _clipboardGetTokenPosition(mousePos);
       const dimensions = _clipboardScaleTokenDimensions(imgWidth, imgHeight);
-      const actor = await _clipboardCreatePastedTokenActor({
-        path,
-        mediaKind,
-        width: dimensions.width,
-        height: dimensions.height,
-      });
+      const createBackingActors = _clipboardShouldCreateBackingActors();
+      let actor = null;
+      if (createBackingActors) {
+        actor = await _clipboardCreatePastedTokenActor({
+          path,
+          mediaKind,
+          width: dimensions.width,
+          height: dimensions.height,
+        });
+      }
 
-      return [{
-        actorId: actor.id,
-        actorLink: false,
-        name: actor.name || _clipboardGetPastedDocumentName(path),
+      const tokenData = {
+        name: actor?.name || _clipboardGetPastedDocumentName(path),
         texture: {
           src: path,
         },
@@ -166,7 +222,13 @@ const CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES = {
         y: snappedPosition.y,
         hidden: _clipboardGetHiddenMode(),
         locked: false,
-      }];
+      };
+      if (actor?.id) {
+        tokenData.actorId = actor.id;
+        tokenData.actorLink = false;
+      }
+
+      return [tokenData];
     },
   },
   Tile: {
@@ -207,7 +269,19 @@ function _clipboardGetActiveDocumentName() {
   return canvas?.activeLayer === canvas?.tokens ? "Token" : "Tile";
 }
 
-function _clipboardGetPlaceableStrategy(documentName = _clipboardGetActiveDocumentName()) {
+function _clipboardGetCreateDocumentName(activeDocumentName = _clipboardGetActiveDocumentName()) {
+  switch (_clipboardGetDefaultEmptyCanvasTarget()) {
+    case CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN:
+      return "Token";
+    case CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE:
+      return "Tile";
+    case CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER:
+    default:
+      return activeDocumentName;
+  }
+}
+
+function _clipboardGetPlaceableStrategy(documentName = _clipboardGetCreateDocumentName()) {
   return CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES[documentName] || CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES.Tile;
 }
 
@@ -217,9 +291,13 @@ function _clipboardGetReplacementTarget(activeDocumentName = _clipboardGetActive
     const documents = strategy.getControlledDocuments();
     if (!documents.length) continue;
 
+    const eligibleDocuments = documents.filter(document => _clipboardCanReplaceDocument(strategy.documentName, document));
+
     return {
       documentName: strategy.documentName,
-      documents,
+      documents: eligibleDocuments,
+      requestedCount: documents.length,
+      blocked: eligibleDocuments.length < 1,
     };
   }
 
@@ -228,11 +306,14 @@ function _clipboardGetReplacementTarget(activeDocumentName = _clipboardGetActive
 
 function _clipboardResolvePasteContext({fallbackToCenter = false, requireCanvasFocus = true} = {}) {
   const activeDocumentName = _clipboardGetActiveDocumentName();
+  const createDocumentName = _clipboardGetCreateDocumentName(activeDocumentName);
   const mousePos = _clipboardGetMousePosition() || (fallbackToCenter ? _clipboardGetCanvasCenter() : null);
 
   return {
     mousePos,
-    createStrategy: _clipboardGetPlaceableStrategy(activeDocumentName),
+    activeDocumentName,
+    createDocumentName,
+    createStrategy: _clipboardCanCreateDocument(createDocumentName) ? _clipboardGetPlaceableStrategy(createDocumentName) : null,
     replacementTarget: _clipboardGetReplacementTarget(activeDocumentName),
     requireCanvasFocus,
   };
@@ -255,7 +336,9 @@ function _clipboardIsMouseWithinCanvas(mousePos) {
 
 function _clipboardCanPasteToContext(context) {
   if (context.requireCanvasFocus && !_clipboardHasCanvasFocus()) return false;
-  if (context.replacementTarget) return true;
+  if (context.replacementTarget?.documents?.length) return true;
+  if (context.replacementTarget?.blocked) return false;
+  if (Object.hasOwn(context, "createStrategy") && !context.createStrategy) return false;
   return _clipboardIsMouseWithinCanvas(context.mousePos);
 }
 
@@ -295,6 +378,9 @@ module.exports = {
   _clipboardGetMousePosition,
   _clipboardGetCanvasCenter,
   _clipboardGetTokenPosition,
+  _clipboardCanUserModifyDocument,
+  _clipboardCanReplaceDocument,
+  _clipboardCanCreateDocument,
   _clipboardGetPastedDocumentName,
   _clipboardGetAvailableActorTypes,
   _clipboardGetActorDocumentClass,
@@ -302,6 +388,7 @@ module.exports = {
   _clipboardGetPastedTokenActorImage,
   _clipboardCreatePastedTokenActor,
   _clipboardGetActiveDocumentName,
+  _clipboardGetCreateDocumentName,
   _clipboardGetPlaceableStrategy,
   _clipboardGetReplacementTarget,
   _clipboardResolvePasteContext,

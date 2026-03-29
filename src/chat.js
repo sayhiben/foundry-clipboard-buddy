@@ -1,6 +1,11 @@
 const {_clipboardLog} = require("./diagnostics");
 const {_clipboardGetMediaKind} = require("./media");
 const {
+  CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW,
+  CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY,
+} = require("./constants");
+const {_clipboardGetChatMediaDisplayMode} = require("./settings");
+const {
   _clipboardGetUploadDestination,
   _clipboardCreateFolderIfMissing,
   _clipboardUploadBlob,
@@ -9,19 +14,24 @@ const {
 
 function _clipboardCreateChatMediaContent(path) {
   const mediaKind = _clipboardGetMediaKind({src: path}) || "image";
+  const displayMode = _clipboardGetChatMediaDisplayMode();
   const figure = document.createElement("figure");
   figure.className = "clipboard-image-chat-message";
 
-  if (mediaKind === "video") {
+  const previewClassName = displayMode === CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW
+    ? "clipboard-image-chat-full-preview"
+    : "clipboard-image-chat-thumbnail";
+
+  if (displayMode !== CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY && mediaKind === "video") {
     const video = document.createElement("video");
-    video.className = "clipboard-image-chat-thumbnail";
+    video.className = previewClassName;
     video.src = path;
     video.controls = true;
     video.loop = true;
     video.preload = "metadata";
     video.playsInline = true;
     figure.append(video);
-  } else {
+  } else if (displayMode !== CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY) {
     const previewLink = document.createElement("a");
     previewLink.className = "clipboard-image-chat-link";
     previewLink.href = path;
@@ -29,7 +39,7 @@ function _clipboardCreateChatMediaContent(path) {
     previewLink.rel = "noopener noreferrer";
 
     const image = document.createElement("img");
-    image.className = "clipboard-image-chat-thumbnail";
+    image.className = previewClassName;
     image.src = path;
     image.alt = "Pasted chat media";
     previewLink.append(image);

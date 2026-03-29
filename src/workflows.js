@@ -36,6 +36,13 @@ const {
   _clipboardExtractTextInput,
 } = require("./clipboard");
 const {
+  _clipboardCanUseCanvasMedia,
+  _clipboardCanUseCanvasText,
+  _clipboardCanUseChatMedia,
+  _clipboardCanUseScenePasteTool,
+  _clipboardCanUseSceneUploadTool,
+} = require("./settings");
+const {
   _clipboardEnsurePlaceableTextNote,
   _clipboardCreateStandaloneTextNote,
 } = require("./notes");
@@ -76,6 +83,7 @@ async function _clipboardApplyPasteResult(path, context, preferredDimensions = n
 
 async function _clipboardPasteBlob(blob, targetFolder, contextOptions = {}) {
   if (!canvas?.ready || !canvas.scene) return false;
+  if (!_clipboardCanUseCanvasMedia()) return false;
 
   const context = _clipboardResolvePasteContext(contextOptions);
   _clipboardLog("debug", "Resolved canvas paste context", {
@@ -98,6 +106,7 @@ async function _clipboardPasteBlob(blob, targetFolder, contextOptions = {}) {
 
 async function _clipboardPasteMediaPath(path, contextOptions = {}) {
   if (!canvas?.ready || !canvas.scene) return false;
+  if (!_clipboardCanUseCanvasMedia()) return false;
 
   const context = _clipboardResolvePasteContext(contextOptions);
   _clipboardLog("debug", "Resolved direct media URL paste context", {
@@ -245,6 +254,7 @@ async function _clipboardHandleImageInputWithTextFallback(imageInput, options = 
 
 async function _clipboardHandleChatImageBlob(blob) {
   if (!blob) return false;
+  if (!_clipboardCanUseChatMedia()) return false;
   return _clipboardPostChatImage(blob);
 }
 
@@ -271,6 +281,7 @@ async function _clipboardHandleTextInput(textInput, options = {}) {
   const text = _clipboardNormalizePastedText(textInput?.text);
   if (!text) return false;
   if (!canvas?.ready || !canvas.scene) return false;
+  if (!_clipboardCanUseCanvasText()) return false;
 
   const context = _clipboardResolvePasteContext(options.contextOptions);
   _clipboardLog("debug", "Handling pasted text", {
@@ -414,9 +425,10 @@ async function _clipboardOpenChatUploadPicker() {
 }
 
 function _clipboardHandleScenePasteAction() {
+  if (!_clipboardCanUseScenePasteTool()) return false;
   if (!navigator.clipboard?.read) {
     ui.notifications.warn("Clipboard Image: Direct clipboard reads are unavailable here. Use your browser's Paste action or the Upload Media tool instead.");
-    return;
+    return false;
   }
 
   _clipboardLog("info", "Invoked scene Paste Media action.", {
@@ -428,22 +440,27 @@ function _clipboardHandleScenePasteAction() {
   }), {
     respectCopiedObjects: false,
   });
+  return true;
 }
 
 function _clipboardHandleSceneUploadAction() {
+  if (!_clipboardCanUseSceneUploadTool()) return false;
   _clipboardLog("info", "Invoked scene Upload Media action.", {
     activeLayer: canvas?.activeLayer?.options?.name || null,
   });
   void _clipboardExecutePasteWorkflow(() => _clipboardOpenUploadPicker(), {
     respectCopiedObjects: false,
   });
+  return true;
 }
 
 function _clipboardHandleChatUploadAction() {
+  if (!_clipboardCanUseChatMedia()) return false;
   _clipboardLog("info", "Invoked chat Upload Media action.");
   void _clipboardExecutePasteWorkflow(() => _clipboardOpenChatUploadPicker(), {
     respectCopiedObjects: false,
   });
+  return true;
 }
 
 module.exports = {

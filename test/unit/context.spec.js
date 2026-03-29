@@ -149,6 +149,28 @@ describe("canvas context helpers", () => {
         globalThis.foundry.documents.Actor.create = originalCreate;
       }
     });
+
+    it("can create actorless pasted tokens when backing actors are disabled", async () => {
+      env.settingsValues.set("clipboard-image.create-backing-actors", false);
+
+      await expect(api._clipboardGetPlaceableStrategy("Token").createData({
+        path: "image.png",
+        imgWidth: 400,
+        imgHeight: 200,
+        mousePos: {x: 155, y: 245},
+        mediaKind: "image",
+      })).resolves.toEqual([{
+        name: "image",
+        texture: {src: "image.png"},
+        width: 2,
+        height: 1,
+        x: 100,
+        y: 200,
+        hidden: false,
+        locked: false,
+      }]);
+      expect(globalThis.foundry.documents.Actor.create).not.toHaveBeenCalled();
+    });
   });
 
   describe("replacement target and paste context", () => {
@@ -159,9 +181,11 @@ describe("canvas context helpers", () => {
       globalThis.canvas.tiles.controlled = [tile];
       globalThis.canvas.activeLayer = globalThis.canvas.tokens;
 
-      expect(api._clipboardGetReplacementTarget("Token")).toEqual({
+      expect(api._clipboardGetReplacementTarget("Token")).toMatchObject({
         documentName: "Token",
         documents: [token.document],
+        requestedCount: 1,
+        blocked: false,
       });
     });
 
@@ -170,9 +194,11 @@ describe("canvas context helpers", () => {
       globalThis.canvas.tiles.controlled = [tile];
       globalThis.canvas.activeLayer = globalThis.canvas.tokens;
 
-      expect(api._clipboardGetReplacementTarget("Token")).toEqual({
+      expect(api._clipboardGetReplacementTarget("Token")).toMatchObject({
         documentName: "Tile",
         documents: [tile.document],
+        requestedCount: 1,
+        blocked: false,
       });
     });
 
@@ -198,6 +224,35 @@ describe("canvas context helpers", () => {
       expect(api._clipboardResolvePasteContext({fallbackToCenter: true, requireCanvasFocus: false}).mousePos).toEqual({
         x: 500,
         y: 400,
+      });
+    });
+
+    it("uses the configured default empty-canvas target instead of the active layer", () => {
+      env.settingsValues.set("clipboard-image.default-empty-canvas-target", "token");
+      globalThis.canvas.activeLayer = globalThis.canvas.tiles;
+
+      const context = api._clipboardResolvePasteContext({requireCanvasFocus: false});
+      expect(context.createDocumentName).toBe("Token");
+      expect(context.createStrategy.documentName).toBe("Token");
+    });
+
+    it("blocks replacement when selected tokens are not user-editable", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = 1;
+      const token = env.createControlledPlaceable("Token", {
+        id: "token-a",
+        isOwner: false,
+        canUserModify: () => false,
+        actor: {isOwner: false, canUserModify: () => false},
+      });
+      globalThis.canvas.tokens.controlled = [token];
+      globalThis.canvas.activeLayer = globalThis.canvas.tokens;
+
+      expect(api._clipboardGetReplacementTarget("Token")).toMatchObject({
+        documentName: "Token",
+        documents: [],
+        requestedCount: 1,
+        blocked: true,
       });
     });
   });

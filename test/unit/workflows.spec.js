@@ -227,6 +227,16 @@ describe("paste and handler workflows", () => {
       await expect(api._clipboardHandleImageInput(null)).resolves.toBe(false);
     });
 
+    it("skips canvas media handling when the user lacks canvas media access", async () => {
+      env.settingsValues.set("clipboard-image.minimum-role-canvas-media", "ASSISTANT");
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+
+      await expect(api._clipboardHandleImageBlob(new File(["x"], "image.png", {type: "image/png"}), {
+        contextOptions: {fallbackToCenter: true},
+      })).resolves.toBe(false);
+    });
+
     it("falls back to text handling when media input resolves to non-media text", async () => {
       document.body.innerHTML = '<div class="game" tabindex="0"></div>';
       document.querySelector(".game").focus();
@@ -254,6 +264,11 @@ describe("paste and handler workflows", () => {
 
     it("posts chat image blobs", async () => {
       await expect(api._clipboardHandleChatImageBlob(new File(["x"], "chat.png", {type: "image/png"}))).resolves.toBe(true);
+    });
+
+    it("skips chat media posting when chat media handling is disabled", async () => {
+      env.settingsValues.set("clipboard-image.enable-chat-media", false);
+      await expect(api._clipboardHandleChatImageBlob(new File(["x"], "chat.png", {type: "image/png"}))).resolves.toBe(false);
     });
 
     it("posts chat image urls", async () => {
@@ -300,6 +315,11 @@ describe("paste and handler workflows", () => {
 
     it("returns false for empty text", async () => {
       await expect(api._clipboardHandleTextInput({text: " \n"})).resolves.toBe(false);
+    });
+
+    it("returns false when canvas text paste is disabled", async () => {
+      env.settingsValues.set("clipboard-image.canvas-text-paste-mode", "disabled");
+      await expect(api._clipboardHandleTextInput({text: "Disabled"})).resolves.toBe(false);
     });
 
     it("returns false when the canvas is unavailable", async () => {

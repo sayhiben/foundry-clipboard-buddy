@@ -27,6 +27,38 @@ var ClipboardImageRuntime = (() => {
       var CLIPBOARD_IMAGE_TEXT_NOTE_PAGE_NAME = "Notes";
       var CLIPBOARD_IMAGE_TEXT_NOTE_JOURNAL_PREFIX = "Pasted Note";
       var CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING = "verbose-logging";
+      var CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING = "minimum-role-canvas-media";
+      var CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING = "minimum-role-canvas-text";
+      var CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING = "minimum-role-chat-media";
+      var CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING = "allow-non-gm-scene-controls";
+      var CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING = "enable-chat-media";
+      var CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING = "enable-chat-upload-button";
+      var CLIPBOARD_IMAGE_ENABLE_TOKEN_CREATION_SETTING = "enable-token-creation";
+      var CLIPBOARD_IMAGE_ENABLE_TILE_CREATION_SETTING = "enable-tile-creation";
+      var CLIPBOARD_IMAGE_ENABLE_TOKEN_REPLACEMENT_SETTING = "enable-token-replacement";
+      var CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING = "enable-tile-replacement";
+      var CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING = "enable-scene-paste-tool";
+      var CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING = "enable-scene-upload-tool";
+      var CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING = "default-empty-canvas-target";
+      var CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING = "create-backing-actors";
+      var CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING = "chat-media-display";
+      var CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING = "canvas-text-paste-mode";
+      var CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING = "scene-paste-prompt-mode";
+      var CLIPBOARD_IMAGE_ROLE_PLAYER = "PLAYER";
+      var CLIPBOARD_IMAGE_ROLE_TRUSTED = "TRUSTED";
+      var CLIPBOARD_IMAGE_ROLE_ASSISTANT = "ASSISTANT";
+      var CLIPBOARD_IMAGE_ROLE_GAMEMASTER = "GAMEMASTER";
+      var CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER = "active-layer";
+      var CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE = "tile";
+      var CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN = "token";
+      var CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW = "full-preview";
+      var CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL = "thumbnail";
+      var CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY = "link-only";
+      var CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES = "scene-notes";
+      var CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED = "disabled";
+      var CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO = "auto";
+      var CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS = "always";
+      var CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER = "never";
       var CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT = "image/*,video/*";
       var CLIPBOARD_IMAGE_IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["apng", "avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "tif", "tiff", "webp"]);
       var CLIPBOARD_IMAGE_VIDEO_EXTENSIONS = /* @__PURE__ */ new Set(["m4v", "mp4", "mpeg", "mpg", "ogg", "ogv", "webm"]);
@@ -53,6 +85,38 @@ var ClipboardImageRuntime = (() => {
         CLIPBOARD_IMAGE_TEXT_NOTE_PAGE_NAME,
         CLIPBOARD_IMAGE_TEXT_NOTE_JOURNAL_PREFIX,
         CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING,
+        CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING,
+        CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING,
+        CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING,
+        CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING,
+        CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING,
+        CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING,
+        CLIPBOARD_IMAGE_ENABLE_TOKEN_CREATION_SETTING,
+        CLIPBOARD_IMAGE_ENABLE_TILE_CREATION_SETTING,
+        CLIPBOARD_IMAGE_ENABLE_TOKEN_REPLACEMENT_SETTING,
+        CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING,
+        CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING,
+        CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING,
+        CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING,
+        CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING,
+        CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING,
+        CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING,
+        CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING,
+        CLIPBOARD_IMAGE_ROLE_PLAYER,
+        CLIPBOARD_IMAGE_ROLE_TRUSTED,
+        CLIPBOARD_IMAGE_ROLE_ASSISTANT,
+        CLIPBOARD_IMAGE_ROLE_GAMEMASTER,
+        CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER,
+        CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE,
+        CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN,
+        CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW,
+        CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL,
+        CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY,
+        CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES,
+        CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED,
+        CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO,
+        CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS,
+        CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER,
         CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT,
         CLIPBOARD_IMAGE_IMAGE_EXTENSIONS,
         CLIPBOARD_IMAGE_VIDEO_EXTENSIONS,
@@ -438,393 +502,6 @@ var ClipboardImageRuntime = (() => {
     }
   });
 
-  // src/context.js
-  var require_context = __commonJS({
-    "src/context.js"(exports, module) {
-      var { _clipboardDescribeReplacementTarget, _clipboardLog } = require_diagnostics();
-      var {
-        _clipboardGetTileVideoData,
-        _clipboardScaleTileDimensions,
-        _clipboardScaleTokenDimensions
-      } = require_media();
-      var { _clipboardGetHiddenMode } = require_state();
-      function _clipboardHasCopiedObjects() {
-        const layer = canvas?.activeLayer;
-        return Boolean(layer?.clipboard?.objects?.length);
-      }
-      function _clipboardGetMousePosition() {
-        if (!canvas?.mousePosition) return null;
-        return {
-          x: canvas.mousePosition.x,
-          y: canvas.mousePosition.y
-        };
-      }
-      function _clipboardGetCanvasCenter() {
-        return {
-          x: canvas.dimensions.width / 2,
-          y: canvas.dimensions.height / 2
-        };
-      }
-      function _clipboardGetTokenPosition(mousePos) {
-        return canvas?.grid?.getTopLeftPoint?.(mousePos) || mousePos;
-      }
-      function _clipboardGetPastedDocumentName(path) {
-        const rawName = String(path || "").split("/").pop() || "";
-        let decodedName = rawName;
-        try {
-          decodedName = decodeURIComponent(rawName);
-        } catch (error) {
-          decodedName = rawName;
-        }
-        const withoutQuery = decodedName.split(/[?#]/, 1)[0] || decodedName;
-        const trimmedName = withoutQuery.replace(/\.[^.]+$/, "").trim();
-        const normalizedName = trimmedName.replace(/-\d{10,}$/, "").trim();
-        return normalizedName || trimmedName || "Pasted Media";
-      }
-      function _clipboardGetAvailableActorTypes() {
-        const candidates = [
-          game?.system?.documentTypes?.Actor,
-          game?.documentTypes?.Actor,
-          _clipboardGetActorDocumentClass()?.TYPES
-        ];
-        const baseDocumentType = CONST?.BASE_DOCUMENT_TYPE;
-        for (const candidate of candidates) {
-          if (!Array.isArray(candidate) || !candidate.length) continue;
-          return candidate.filter((type) => type && type !== baseDocumentType);
-        }
-        return [];
-      }
-      function _clipboardGetActorDocumentClass() {
-        return foundry?.documents?.Actor || globalThis.Actor || null;
-      }
-      function _clipboardGetDefaultActorType() {
-        const defaultType = CONFIG?.Actor?.defaultType || null;
-        const availableTypes = _clipboardGetAvailableActorTypes();
-        if (defaultType && (!availableTypes.length || availableTypes.includes(defaultType))) {
-          return defaultType;
-        }
-        return availableTypes[0] || defaultType || null;
-      }
-      function _clipboardGetPastedTokenActorImage(path, mediaKind) {
-        if (mediaKind !== "video") return path;
-        return _clipboardGetActorDocumentClass()?.DEFAULT_ICON || CONST?.DEFAULT_TOKEN || "icons/svg/mystery-man.svg";
-      }
-      async function _clipboardCreatePastedTokenActor({ path, mediaKind, width, height }) {
-        const ActorDocument = _clipboardGetActorDocumentClass();
-        if (!ActorDocument?.create) {
-          throw new Error("Actor creation is unavailable for pasted tokens.");
-        }
-        const name = _clipboardGetPastedDocumentName(path);
-        const actorType = _clipboardGetDefaultActorType();
-        const actorImage = _clipboardGetPastedTokenActorImage(path, mediaKind);
-        const actorData = {
-          name,
-          img: actorImage,
-          prototypeToken: {
-            name,
-            texture: {
-              src: path
-            },
-            width,
-            height
-          }
-        };
-        if (actorType) actorData.type = actorType;
-        _clipboardLog("debug", "Creating backing actor for pasted token", {
-          actorType,
-          actorImage,
-          mediaKind,
-          name,
-          path,
-          width,
-          height
-        });
-        const actor = await ActorDocument.create(actorData);
-        if (!actor?.id) {
-          throw new Error("Failed to create a backing Actor for the pasted token.");
-        }
-        _clipboardLog("info", "Created backing actor for pasted token", {
-          actorId: actor.id,
-          actorType,
-          actorImage,
-          mediaKind,
-          name,
-          path,
-          width,
-          height
-        });
-        return actor;
-      }
-      var CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES = {
-        Token: {
-          documentName: "Token",
-          getControlledDocuments: () => (canvas?.tokens?.controlled || []).map((token) => token.document),
-          getLayer: () => canvas?.tokens,
-          createData: async ({ path, imgWidth, imgHeight, mousePos, mediaKind }) => {
-            const snappedPosition = _clipboardGetTokenPosition(mousePos);
-            const dimensions = _clipboardScaleTokenDimensions(imgWidth, imgHeight);
-            const actor = await _clipboardCreatePastedTokenActor({
-              path,
-              mediaKind,
-              width: dimensions.width,
-              height: dimensions.height
-            });
-            return [{
-              actorId: actor.id,
-              actorLink: false,
-              name: actor.name || _clipboardGetPastedDocumentName(path),
-              texture: {
-                src: path
-              },
-              width: dimensions.width,
-              height: dimensions.height,
-              x: snappedPosition.x,
-              y: snappedPosition.y,
-              hidden: _clipboardGetHiddenMode(),
-              locked: false
-            }];
-          }
-        },
-        Tile: {
-          documentName: "Tile",
-          getControlledDocuments: () => (canvas?.tiles?.controlled || []).map((tile) => tile.document),
-          getLayer: () => canvas?.tiles,
-          createData: ({ path, imgWidth, imgHeight, mousePos, mediaKind }) => {
-            const dimensions = _clipboardScaleTileDimensions(imgWidth, imgHeight, canvas.dimensions);
-            const createData = {
-              texture: {
-                src: path
-              },
-              width: dimensions.width,
-              height: dimensions.height,
-              x: mousePos.x,
-              y: mousePos.y,
-              sort: 0,
-              rotation: 0,
-              hidden: _clipboardGetHiddenMode(),
-              locked: false
-            };
-            const video = _clipboardGetTileVideoData(mediaKind);
-            if (video) createData.video = video;
-            return [createData];
-          }
-        }
-      };
-      var CLIPBOARD_IMAGE_REPLACEMENT_ORDER = {
-        Token: ["Token", "Tile"],
-        Tile: ["Tile", "Token"]
-      };
-      function _clipboardGetActiveDocumentName() {
-        return canvas?.activeLayer === canvas?.tokens ? "Token" : "Tile";
-      }
-      function _clipboardGetPlaceableStrategy(documentName = _clipboardGetActiveDocumentName()) {
-        return CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES[documentName] || CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES.Tile;
-      }
-      function _clipboardGetReplacementTarget(activeDocumentName = _clipboardGetActiveDocumentName()) {
-        for (const documentName of CLIPBOARD_IMAGE_REPLACEMENT_ORDER[activeDocumentName]) {
-          const strategy = _clipboardGetPlaceableStrategy(documentName);
-          const documents = strategy.getControlledDocuments();
-          if (!documents.length) continue;
-          return {
-            documentName: strategy.documentName,
-            documents
-          };
-        }
-        return null;
-      }
-      function _clipboardResolvePasteContext({ fallbackToCenter = false, requireCanvasFocus = true } = {}) {
-        const activeDocumentName = _clipboardGetActiveDocumentName();
-        const mousePos = _clipboardGetMousePosition() || (fallbackToCenter ? _clipboardGetCanvasCenter() : null);
-        return {
-          mousePos,
-          createStrategy: _clipboardGetPlaceableStrategy(activeDocumentName),
-          replacementTarget: _clipboardGetReplacementTarget(activeDocumentName),
-          requireCanvasFocus
-        };
-      }
-      function _clipboardHasCanvasFocus() {
-        const gameElement = document.querySelector(".game");
-        return !gameElement || document.activeElement === gameElement;
-      }
-      function _clipboardIsMouseWithinCanvas(mousePos) {
-        return Boolean(
-          mousePos && mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x <= canvas.dimensions.width && mousePos.y <= canvas.dimensions.height
-        );
-      }
-      function _clipboardCanPasteToContext(context) {
-        if (context.requireCanvasFocus && !_clipboardHasCanvasFocus()) return false;
-        if (context.replacementTarget) return true;
-        return _clipboardIsMouseWithinCanvas(context.mousePos);
-      }
-      function _clipboardPrepareCreateLayer(context) {
-        if (!context.replacementTarget) {
-          context.createStrategy.getLayer()?.activate?.();
-        }
-      }
-      async function _clipboardReplaceControlledMedia(path, replacementTarget, mediaKind) {
-        if (!replacementTarget) return false;
-        const updates = replacementTarget.documents.map((document2) => {
-          const update = {
-            _id: document2.id,
-            "texture.src": path
-          };
-          if (replacementTarget.documentName === "Tile" && mediaKind === "video") {
-            update.video = _clipboardGetTileVideoData(mediaKind);
-          }
-          return update;
-        });
-        _clipboardLog("info", "Replacing controlled media", {
-          replacementTarget: _clipboardDescribeReplacementTarget(replacementTarget),
-          mediaKind,
-          path
-        });
-        await canvas.scene.updateEmbeddedDocuments(replacementTarget.documentName, updates);
-        return true;
-      }
-      module.exports = {
-        CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES,
-        _clipboardHasCopiedObjects,
-        _clipboardGetMousePosition,
-        _clipboardGetCanvasCenter,
-        _clipboardGetTokenPosition,
-        _clipboardGetPastedDocumentName,
-        _clipboardGetAvailableActorTypes,
-        _clipboardGetActorDocumentClass,
-        _clipboardGetDefaultActorType,
-        _clipboardGetPastedTokenActorImage,
-        _clipboardCreatePastedTokenActor,
-        _clipboardGetActiveDocumentName,
-        _clipboardGetPlaceableStrategy,
-        _clipboardGetReplacementTarget,
-        _clipboardResolvePasteContext,
-        _clipboardHasCanvasFocus,
-        _clipboardIsMouseWithinCanvas,
-        _clipboardCanPasteToContext,
-        _clipboardPrepareCreateLayer,
-        _clipboardReplaceControlledMedia
-      };
-    }
-  });
-
-  // src/diagnostics.js
-  var require_diagnostics = __commonJS({
-    "src/diagnostics.js"(exports, module) {
-      var {
-        CLIPBOARD_IMAGE_MODULE_ID,
-        CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING
-      } = require_constants();
-      function _clipboardVerboseLoggingEnabled() {
-        try {
-          const settingKey = `${CLIPBOARD_IMAGE_MODULE_ID}.${CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING}`;
-          if (!game?.settings?.settings?.has?.(settingKey)) return false;
-          return Boolean(game.settings.get(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING));
-        } catch (error) {
-          return false;
-        }
-      }
-      function _clipboardSerializeError(error) {
-        if (error instanceof Error) {
-          return {
-            name: error.name,
-            message: error.message,
-            stack: error.stack
-          };
-        }
-        return error;
-      }
-      function _clipboardDescribeFile(file) {
-        if (!file) return null;
-        return {
-          name: file.name || null,
-          type: file.type || null,
-          size: file.size ?? null
-        };
-      }
-      function _clipboardDescribeDestinationForLog(destination) {
-        if (!destination) return null;
-        return {
-          storedSource: destination.storedSource,
-          source: destination.source,
-          target: destination.target,
-          bucket: destination.bucket || null
-        };
-      }
-      function _clipboardDescribeReplacementTarget(replacementTarget) {
-        if (!replacementTarget) return null;
-        return {
-          documentName: replacementTarget.documentName,
-          ids: replacementTarget.documents.map((document2) => document2.id)
-        };
-      }
-      function _clipboardDescribePasteContext(context) {
-        if (!context) return null;
-        const { _clipboardHasCanvasFocus } = require_context();
-        return {
-          mousePos: context.mousePos,
-          createDocumentName: context.createStrategy?.documentName || null,
-          replacementTarget: _clipboardDescribeReplacementTarget(context.replacementTarget),
-          requireCanvasFocus: context.requireCanvasFocus,
-          hasCanvasFocus: _clipboardHasCanvasFocus()
-        };
-      }
-      function _clipboardDescribeClipboardItems(clipItems) {
-        return (clipItems || []).map((item, index) => ({
-          index,
-          types: Array.from(item.types || [])
-        }));
-      }
-      function _clipboardDescribeDataTransfer(dataTransfer) {
-        if (!dataTransfer) return null;
-        return {
-          types: Array.from(dataTransfer.types || []),
-          files: Array.from(dataTransfer.files || []).map(_clipboardDescribeFile),
-          items: Array.from(dataTransfer.items || []).map((item) => ({
-            kind: item.kind,
-            type: item.type
-          }))
-        };
-      }
-      function _clipboardDescribeImageInput(imageInput) {
-        if (!imageInput) return null;
-        const { _clipboardGetMediaKind } = require_media();
-        if (imageInput.blob) {
-          return {
-            source: "blob",
-            ..._clipboardDescribeFile(imageInput.blob) || {},
-            mediaKind: _clipboardGetMediaKind({ blob: imageInput.blob, filename: imageInput.blob.name })
-          };
-        }
-        return {
-          source: "url",
-          url: imageInput.url || null,
-          mediaKind: _clipboardGetMediaKind({ src: imageInput.url })
-        };
-      }
-      function _clipboardLog(level, message, details) {
-        if ((level === "debug" || level === "info") && !_clipboardVerboseLoggingEnabled()) return;
-        const logger = console[level] || console.log;
-        const prefix = `Clipboard Image [${level.toUpperCase()}]: ${message}`;
-        if (details === void 0) {
-          logger(prefix);
-          return;
-        }
-        logger(prefix, details);
-      }
-      module.exports = {
-        _clipboardVerboseLoggingEnabled,
-        _clipboardSerializeError,
-        _clipboardDescribeFile,
-        _clipboardDescribeDestinationForLog,
-        _clipboardDescribeReplacementTarget,
-        _clipboardDescribePasteContext,
-        _clipboardDescribeClipboardItems,
-        _clipboardDescribeDataTransfer,
-        _clipboardDescribeImageInput,
-        _clipboardLog
-      };
-    }
-  });
-
   // src/storage.js
   var require_storage = __commonJS({
     "src/storage.js"(exports, module) {
@@ -1088,6 +765,965 @@ var ClipboardImageRuntime = (() => {
         _clipboardUploadBlob,
         _clipboardFetchImageUrl,
         _clipboardResolveImageInputBlob
+      };
+    }
+  });
+
+  // src/config-app.js
+  var require_config_app = __commonJS({
+    "src/config-app.js"(exports, module) {
+      var {
+        CLIPBOARD_IMAGE_MODULE_ID,
+        CLIPBOARD_IMAGE_DEFAULT_FOLDER,
+        CLIPBOARD_IMAGE_SOURCE_AUTO,
+        CLIPBOARD_IMAGE_SOURCE_S3,
+        CLIPBOARD_IMAGE_FILE_PICKER,
+        CLIPBOARD_IMAGE_FORM_APPLICATION
+      } = require_constants();
+      var {
+        _clipboardResolveSource,
+        _clipboardCanSelectSource,
+        _clipboardGetStoredSource,
+        _clipboardGetTargetFolder,
+        _clipboardGetStoredBucket,
+        _clipboardGetUploadDestination,
+        _clipboardDescribeDestination,
+        _clipboardGetSourceChoices
+      } = require_storage();
+      var ClipboardImageDestinationConfig = class extends CLIPBOARD_IMAGE_FORM_APPLICATION {
+        static get defaultOptions() {
+          return foundry.utils.mergeObject(super.defaultOptions, {
+            id: "clipboard-image-destination-config",
+            title: "Clipboard Image: Upload Destination",
+            template: "modules/clipboard-image/templates/upload-destination.hbs",
+            width: 520,
+            closeOnSubmit: true
+          });
+        }
+        getData() {
+          const source = _clipboardGetStoredSource();
+          const target = _clipboardGetTargetFolder();
+          const bucket = _clipboardGetStoredBucket();
+          const destination = _clipboardGetUploadDestination({ storedSource: source, target, bucket });
+          return {
+            bucket,
+            destinationSummary: _clipboardDescribeDestination(destination),
+            isS3: destination.storedSource === CLIPBOARD_IMAGE_SOURCE_S3,
+            source,
+            sourceChoices: _clipboardGetSourceChoices(source),
+            target
+          };
+        }
+        activateListeners(html) {
+          super.activateListeners(html);
+          const sourceField = html.find('[name="source"]');
+          const targetField = html.find('[name="target"]');
+          const bucketField = html.find('[name="bucket"]');
+          sourceField.on("change", () => this._refreshFormState());
+          targetField.on("input", () => this._refreshFormState());
+          bucketField.on("input", () => this._refreshFormState());
+          html.find('[data-action="browse-destination"]').on("click", (event) => this._onBrowseDestination(event));
+          this._refreshFormState();
+        }
+        _ensureSourceOption(source) {
+          const sourceField = this.form?.elements?.source;
+          if (!sourceField || !source) return;
+          const choices = Array.from(sourceField.options).map((option2) => option2.value);
+          if (choices.includes(source)) return;
+          const option = document.createElement("option");
+          option.value = source;
+          option.text = `Custom (${source})`;
+          sourceField.add(option);
+        }
+        _refreshFormState() {
+          const form = this.form;
+          if (!form) return;
+          const storedSource = form.elements.source.value || CLIPBOARD_IMAGE_SOURCE_AUTO;
+          const target = form.elements.target.value?.trim() || CLIPBOARD_IMAGE_DEFAULT_FOLDER;
+          const bucket = storedSource === CLIPBOARD_IMAGE_SOURCE_S3 ? form.elements.bucket.value?.trim() || "" : "";
+          const destination = _clipboardGetUploadDestination({ storedSource, target, bucket });
+          const summaryField = form.querySelector('[data-role="destination-summary"]');
+          const bucketGroup = this.element.find(".clipboard-image-s3-bucket");
+          if (summaryField) summaryField.value = _clipboardDescribeDestination(destination);
+          bucketGroup.toggleClass("hidden", storedSource !== CLIPBOARD_IMAGE_SOURCE_S3);
+        }
+        _applyPickerSelection(path, picker, previousStoredSource) {
+          const form = this.form;
+          if (!form) return;
+          const selectedSource = picker.activeSource || _clipboardResolveSource(previousStoredSource);
+          if (!_clipboardCanSelectSource(selectedSource)) {
+            ui.notifications.warn("Clipboard Image: The selected file source does not support pasted uploads.");
+            return;
+          }
+          const keepAutomatic = previousStoredSource === CLIPBOARD_IMAGE_SOURCE_AUTO && selectedSource === _clipboardResolveSource(CLIPBOARD_IMAGE_SOURCE_AUTO);
+          const bucket = selectedSource === CLIPBOARD_IMAGE_SOURCE_S3 ? picker.sources?.s3?.bucket || "" : "";
+          this._ensureSourceOption(selectedSource);
+          form.elements.source.value = keepAutomatic ? CLIPBOARD_IMAGE_SOURCE_AUTO : selectedSource;
+          form.elements.target.value = path || picker.target || form.elements.target.value;
+          form.elements.bucket.value = bucket;
+          this._refreshFormState();
+        }
+        _onBrowseDestination(event) {
+          event.preventDefault();
+          const form = this.form;
+          if (!form) return;
+          const previousStoredSource = form.elements.source.value || CLIPBOARD_IMAGE_SOURCE_AUTO;
+          const activeSource = _clipboardResolveSource(previousStoredSource);
+          const currentTarget = form.elements.target.value?.trim() || CLIPBOARD_IMAGE_DEFAULT_FOLDER;
+          const currentBucket = form.elements.bucket.value?.trim() || "";
+          const picker = new CLIPBOARD_IMAGE_FILE_PICKER({
+            activeSource,
+            button: event.currentTarget,
+            callback: (path) => this._applyPickerSelection(path, picker, previousStoredSource),
+            current: currentTarget,
+            field: form.elements.target,
+            type: "folder"
+          });
+          if (activeSource === CLIPBOARD_IMAGE_SOURCE_S3) {
+            picker.sources.s3 = picker.sources.s3 || { target: currentTarget };
+            picker.sources.s3.bucket = currentBucket || picker.sources.s3.bucket;
+            picker.sources.s3.target = currentTarget;
+          }
+          void picker.render(true);
+        }
+        async _updateObject(_event, formData) {
+          const source = formData.source?.trim() || CLIPBOARD_IMAGE_SOURCE_AUTO;
+          const target = formData.target?.trim() || CLIPBOARD_IMAGE_DEFAULT_FOLDER;
+          const bucket = source === CLIPBOARD_IMAGE_SOURCE_S3 ? formData.bucket?.trim() || "" : "";
+          await game.settings.set(CLIPBOARD_IMAGE_MODULE_ID, "image-location-source", source);
+          await game.settings.set(CLIPBOARD_IMAGE_MODULE_ID, "image-location", target);
+          await game.settings.set(CLIPBOARD_IMAGE_MODULE_ID, "image-location-bucket", bucket);
+        }
+      };
+      module.exports = {
+        ClipboardImageDestinationConfig
+      };
+    }
+  });
+
+  // src/settings.js
+  var require_settings = __commonJS({
+    "src/settings.js"(exports, module) {
+      var {
+        CLIPBOARD_IMAGE_MODULE_ID,
+        CLIPBOARD_IMAGE_DEFAULT_FOLDER,
+        CLIPBOARD_IMAGE_SOURCE_AUTO,
+        CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING,
+        CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING,
+        CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING,
+        CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING,
+        CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING,
+        CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING,
+        CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING,
+        CLIPBOARD_IMAGE_ENABLE_TOKEN_CREATION_SETTING,
+        CLIPBOARD_IMAGE_ENABLE_TILE_CREATION_SETTING,
+        CLIPBOARD_IMAGE_ENABLE_TOKEN_REPLACEMENT_SETTING,
+        CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING,
+        CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING,
+        CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING,
+        CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING,
+        CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING,
+        CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING,
+        CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING,
+        CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING,
+        CLIPBOARD_IMAGE_ROLE_PLAYER,
+        CLIPBOARD_IMAGE_ROLE_TRUSTED,
+        CLIPBOARD_IMAGE_ROLE_ASSISTANT,
+        CLIPBOARD_IMAGE_ROLE_GAMEMASTER,
+        CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER,
+        CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE,
+        CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN,
+        CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW,
+        CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL,
+        CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY,
+        CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES,
+        CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED,
+        CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO,
+        CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS,
+        CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER
+      } = require_constants();
+      var { ClipboardImageDestinationConfig } = require_config_app();
+      function _clipboardGetRoleChoices() {
+        return {
+          [CLIPBOARD_IMAGE_ROLE_PLAYER]: "Player",
+          [CLIPBOARD_IMAGE_ROLE_TRUSTED]: "Trusted Player",
+          [CLIPBOARD_IMAGE_ROLE_ASSISTANT]: "Assistant GM",
+          [CLIPBOARD_IMAGE_ROLE_GAMEMASTER]: "Gamemaster"
+        };
+      }
+      function _clipboardGetRoleValue(roleKey) {
+        return CONST?.USER_ROLES?.[roleKey] ?? CONST?.USER_ROLES?.PLAYER ?? 1;
+      }
+      function _clipboardGetCurrentUserRole() {
+        if (typeof game?.user?.role === "number") return game.user.role;
+        if (game?.user?.isGM) return _clipboardGetRoleValue(CLIPBOARD_IMAGE_ROLE_GAMEMASTER);
+        return _clipboardGetRoleValue(CLIPBOARD_IMAGE_ROLE_PLAYER);
+      }
+      function _clipboardGetSetting(key) {
+        return game.settings.get(CLIPBOARD_IMAGE_MODULE_ID, key);
+      }
+      function _clipboardSettingEnabled(key) {
+        return Boolean(_clipboardGetSetting(key));
+      }
+      function _clipboardGetConfiguredMinimumRole(settingKey) {
+        const configuredRole = _clipboardGetSetting(settingKey);
+        if (typeof configuredRole === "string" && configuredRole.trim()) return configuredRole;
+        return CLIPBOARD_IMAGE_ROLE_PLAYER;
+      }
+      function _clipboardUserMeetsMinimumRole(settingKey) {
+        return _clipboardGetCurrentUserRole() >= _clipboardGetRoleValue(_clipboardGetConfiguredMinimumRole(settingKey));
+      }
+      function _clipboardCanUseCanvasMedia() {
+        return _clipboardUserMeetsMinimumRole(CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING);
+      }
+      function _clipboardCanUseCanvasText() {
+        return _clipboardUserMeetsMinimumRole(CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING) && _clipboardGetCanvasTextPasteMode() !== CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED;
+      }
+      function _clipboardCanUseChatMedia() {
+        return _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING) && _clipboardUserMeetsMinimumRole(CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING);
+      }
+      function _clipboardCanUseChatUploadButton() {
+        return _clipboardCanUseChatMedia() && _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING);
+      }
+      function _clipboardCanUseSceneControls() {
+        if (game.user?.isGM) return true;
+        return _clipboardSettingEnabled(CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING) && _clipboardCanUseCanvasMedia();
+      }
+      function _clipboardCanUseScenePasteTool() {
+        return _clipboardCanUseSceneControls() && _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING);
+      }
+      function _clipboardCanUseSceneUploadTool() {
+        return _clipboardCanUseSceneControls() && _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING);
+      }
+      function _clipboardGetDefaultEmptyCanvasTarget() {
+        const configuredTarget = _clipboardGetSetting(CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING);
+        if (configuredTarget === CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE || configuredTarget === CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN) {
+          return configuredTarget;
+        }
+        return CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER;
+      }
+      function _clipboardShouldCreateBackingActors() {
+        return _clipboardSettingEnabled(CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING);
+      }
+      function _clipboardGetChatMediaDisplayMode() {
+        const configuredMode = _clipboardGetSetting(CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING);
+        if (configuredMode === CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW || configuredMode === CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY) {
+          return configuredMode;
+        }
+        return CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL;
+      }
+      function _clipboardGetCanvasTextPasteMode() {
+        const configuredMode = _clipboardGetSetting(CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING);
+        if (configuredMode === CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED) {
+          return configuredMode;
+        }
+        return CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES;
+      }
+      function _clipboardGetScenePastePromptMode() {
+        const configuredMode = _clipboardGetSetting(CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING);
+        if (configuredMode === CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS || configuredMode === CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER) {
+          return configuredMode;
+        }
+        return CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO;
+      }
+      function _clipboardCanCreateTokens() {
+        return _clipboardCanUseCanvasMedia() && _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_TOKEN_CREATION_SETTING);
+      }
+      function _clipboardCanCreateTiles() {
+        return _clipboardCanUseCanvasMedia() && _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_TILE_CREATION_SETTING);
+      }
+      function _clipboardCanReplaceTokens() {
+        return _clipboardCanUseCanvasMedia() && _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_TOKEN_REPLACEMENT_SETTING);
+      }
+      function _clipboardCanReplaceTiles() {
+        return _clipboardCanUseCanvasMedia() && _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING);
+      }
+      function _clipboardRegisterSettings() {
+        game.settings.registerMenu(CLIPBOARD_IMAGE_MODULE_ID, "upload-destination", {
+          name: "Upload destination",
+          label: "Configure",
+          hint: "Choose the file store and folder used for pasted images. Supports User Data, The Forge, and Amazon S3 through Foundry's native file picker.",
+          icon: "fa-solid fa-folder-tree",
+          type: ClipboardImageDestinationConfig,
+          restricted: true
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, "image-location", {
+          name: "Pasted image location",
+          hint: "Folder where clipboard images are saved.",
+          scope: "world",
+          config: false,
+          type: String,
+          default: CLIPBOARD_IMAGE_DEFAULT_FOLDER
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, "image-location-source", {
+          name: "Pasted image source",
+          hint: "File source where clipboard images are saved.",
+          scope: "world",
+          config: false,
+          type: String,
+          default: CLIPBOARD_IMAGE_SOURCE_AUTO
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, "image-location-bucket", {
+          name: "Pasted image S3 bucket",
+          hint: "S3 bucket used when clipboard images are saved to Amazon S3.",
+          scope: "world",
+          config: false,
+          type: String,
+          default: ""
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING, {
+          name: "Verbose logging",
+          hint: "Log detailed clipboard-image diagnostics to the browser console for debugging.",
+          scope: "client",
+          config: true,
+          type: Boolean,
+          default: false
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING, {
+          name: "Minimum role for canvas media paste",
+          hint: "Lowest Foundry role allowed to create or replace tiles and tokens from pasted media.",
+          scope: "world",
+          config: true,
+          type: String,
+          choices: _clipboardGetRoleChoices(),
+          default: CLIPBOARD_IMAGE_ROLE_PLAYER
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING, {
+          name: "Minimum role for canvas text paste",
+          hint: "Lowest Foundry role allowed to create or update Journal-backed scene notes from pasted text.",
+          scope: "world",
+          config: true,
+          type: String,
+          choices: _clipboardGetRoleChoices(),
+          default: CLIPBOARD_IMAGE_ROLE_PLAYER
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING, {
+          name: "Minimum role for chat media paste",
+          hint: "Lowest Foundry role allowed to post pasted/uploaded media into chat.",
+          scope: "world",
+          config: true,
+          type: String,
+          choices: _clipboardGetRoleChoices(),
+          default: CLIPBOARD_IMAGE_ROLE_PLAYER
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING, {
+          name: "Allow non-GMs to use scene controls",
+          hint: "Show Clipboard Image scene control buttons to non-GM users who meet the canvas media role requirement.",
+          scope: "world",
+          config: true,
+          type: Boolean,
+          default: false
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING, {
+          name: "Enable chat media handling",
+          hint: "Allow pasted, dropped, and uploaded media in chat.",
+          scope: "world",
+          config: true,
+          type: Boolean,
+          default: true
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING, {
+          name: "Enable chat upload button",
+          hint: "Show the Upload Chat Media button next to the chat input when chat media handling is enabled.",
+          scope: "world",
+          config: true,
+          type: Boolean,
+          default: true
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_TOKEN_CREATION_SETTING, {
+          name: "Allow token creation from pasted media",
+          hint: "Create a new token when pasted media targets token creation.",
+          scope: "world",
+          config: true,
+          type: Boolean,
+          default: true
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_TILE_CREATION_SETTING, {
+          name: "Allow tile creation from pasted media",
+          hint: "Create a new tile when pasted media targets tile creation.",
+          scope: "world",
+          config: true,
+          type: Boolean,
+          default: true
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_TOKEN_REPLACEMENT_SETTING, {
+          name: "Allow token art replacement",
+          hint: "Allow pasted media to replace the selected tokens. Non-GMs are limited to tokens they can update.",
+          scope: "world",
+          config: true,
+          type: Boolean,
+          default: true
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING, {
+          name: "Allow tile art replacement",
+          hint: "Allow pasted media to replace the selected tiles.",
+          scope: "world",
+          config: true,
+          type: Boolean,
+          default: true
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING, {
+          name: "Enable scene Paste Media tool",
+          hint: "Show the Paste Media scene control button.",
+          scope: "world",
+          config: true,
+          type: Boolean,
+          default: true
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING, {
+          name: "Enable scene Upload Media tool",
+          hint: "Show the Upload Media scene control button.",
+          scope: "world",
+          config: true,
+          type: Boolean,
+          default: true
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING, {
+          name: "Default empty-canvas paste target",
+          hint: "Choose which placeable type should be created when pasted media is not replacing an existing tile or token.",
+          scope: "world",
+          config: true,
+          type: String,
+          choices: {
+            [CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER]: "Active layer",
+            [CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE]: "Tile",
+            [CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN]: "Token"
+          },
+          default: CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING, {
+          name: "Create backing Actors for pasted tokens",
+          hint: "Generate an Actor for each newly pasted token so the token can be opened and edited normally.",
+          scope: "world",
+          config: true,
+          type: Boolean,
+          default: true
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING, {
+          name: "Chat media display",
+          hint: "Choose how pasted media is rendered in chat messages.",
+          scope: "world",
+          config: true,
+          type: String,
+          choices: {
+            [CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW]: "Full preview",
+            [CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL]: "Thumbnail",
+            [CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY]: "Link only"
+          },
+          default: CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING, {
+          name: "Canvas text paste mode",
+          hint: "Choose how pasted plain text behaves on the canvas.",
+          scope: "world",
+          config: true,
+          type: String,
+          choices: {
+            [CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES]: "Scene notes",
+            [CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED]: "Disabled"
+          },
+          default: CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES
+        });
+        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING, {
+          name: "Scene Paste Media prompt mode",
+          hint: "Control whether the scene Paste Media tool uses direct clipboard reads, the manual paste prompt, or the current browser-dependent auto behavior.",
+          scope: "world",
+          config: true,
+          type: String,
+          choices: {
+            [CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO]: "Auto",
+            [CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS]: "Always show prompt",
+            [CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER]: "Never show prompt"
+          },
+          default: CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO
+        });
+      }
+      module.exports = {
+        _clipboardGetRoleChoices,
+        _clipboardGetRoleValue,
+        _clipboardGetCurrentUserRole,
+        _clipboardGetSetting,
+        _clipboardSettingEnabled,
+        _clipboardGetConfiguredMinimumRole,
+        _clipboardUserMeetsMinimumRole,
+        _clipboardCanUseCanvasMedia,
+        _clipboardCanUseCanvasText,
+        _clipboardCanUseChatMedia,
+        _clipboardCanUseChatUploadButton,
+        _clipboardCanUseSceneControls,
+        _clipboardCanUseScenePasteTool,
+        _clipboardCanUseSceneUploadTool,
+        _clipboardGetDefaultEmptyCanvasTarget,
+        _clipboardShouldCreateBackingActors,
+        _clipboardGetChatMediaDisplayMode,
+        _clipboardGetCanvasTextPasteMode,
+        _clipboardGetScenePastePromptMode,
+        _clipboardCanCreateTokens,
+        _clipboardCanCreateTiles,
+        _clipboardCanReplaceTokens,
+        _clipboardCanReplaceTiles,
+        _clipboardRegisterSettings
+      };
+    }
+  });
+
+  // src/context.js
+  var require_context = __commonJS({
+    "src/context.js"(exports, module) {
+      var { _clipboardDescribeReplacementTarget, _clipboardLog } = require_diagnostics();
+      var {
+        _clipboardGetTileVideoData,
+        _clipboardScaleTileDimensions,
+        _clipboardScaleTokenDimensions
+      } = require_media();
+      var { _clipboardGetHiddenMode } = require_state();
+      var {
+        CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER,
+        CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE,
+        CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN
+      } = require_constants();
+      var {
+        _clipboardCanCreateTokens,
+        _clipboardCanCreateTiles,
+        _clipboardCanReplaceTokens,
+        _clipboardCanReplaceTiles,
+        _clipboardGetDefaultEmptyCanvasTarget,
+        _clipboardShouldCreateBackingActors
+      } = require_settings();
+      function _clipboardHasCopiedObjects() {
+        const layer = canvas?.activeLayer;
+        return Boolean(layer?.clipboard?.objects?.length);
+      }
+      function _clipboardGetMousePosition() {
+        if (!canvas?.mousePosition) return null;
+        return {
+          x: canvas.mousePosition.x,
+          y: canvas.mousePosition.y
+        };
+      }
+      function _clipboardGetCanvasCenter() {
+        return {
+          x: canvas.dimensions.width / 2,
+          y: canvas.dimensions.height / 2
+        };
+      }
+      function _clipboardGetTokenPosition(mousePos) {
+        return canvas?.grid?.getTopLeftPoint?.(mousePos) || mousePos;
+      }
+      function _clipboardCanUserModifyDocument(document2, action = "update") {
+        if (!document2) return false;
+        if (game.user?.isGM) return true;
+        if (typeof document2.canUserModify === "function") {
+          return Boolean(document2.canUserModify(game.user, action));
+        }
+        if (typeof document2.testUserPermission === "function") {
+          return Boolean(document2.testUserPermission(game.user, "OWNER"));
+        }
+        if (typeof document2.isOwner === "boolean") {
+          return document2.isOwner;
+        }
+        return false;
+      }
+      function _clipboardCanReplaceDocument(documentName, document2) {
+        if (documentName === "Token") {
+          if (!_clipboardCanReplaceTokens()) return false;
+          if (game.user?.isGM) return true;
+          return _clipboardCanUserModifyDocument(document2, "update") || _clipboardCanUserModifyDocument(document2?.actor, "update");
+        }
+        if (documentName === "Tile") {
+          return _clipboardCanReplaceTiles() && _clipboardCanUserModifyDocument(document2, "update");
+        }
+        return false;
+      }
+      function _clipboardCanCreateDocument(documentName) {
+        if (documentName === "Token") return _clipboardCanCreateTokens();
+        return _clipboardCanCreateTiles();
+      }
+      function _clipboardGetPastedDocumentName(path) {
+        const rawName = String(path || "").split("/").pop() || "";
+        let decodedName = rawName;
+        try {
+          decodedName = decodeURIComponent(rawName);
+        } catch (error) {
+          decodedName = rawName;
+        }
+        const withoutQuery = decodedName.split(/[?#]/, 1)[0] || decodedName;
+        const trimmedName = withoutQuery.replace(/\.[^.]+$/, "").trim();
+        const normalizedName = trimmedName.replace(/-\d{10,}$/, "").trim();
+        return normalizedName || trimmedName || "Pasted Media";
+      }
+      function _clipboardGetAvailableActorTypes() {
+        const candidates = [
+          game?.system?.documentTypes?.Actor,
+          game?.documentTypes?.Actor,
+          _clipboardGetActorDocumentClass()?.TYPES
+        ];
+        const baseDocumentType = CONST?.BASE_DOCUMENT_TYPE;
+        for (const candidate of candidates) {
+          if (!Array.isArray(candidate) || !candidate.length) continue;
+          return candidate.filter((type) => type && type !== baseDocumentType);
+        }
+        return [];
+      }
+      function _clipboardGetActorDocumentClass() {
+        return foundry?.documents?.Actor || globalThis.Actor || null;
+      }
+      function _clipboardGetDefaultActorType() {
+        const defaultType = CONFIG?.Actor?.defaultType || null;
+        const availableTypes = _clipboardGetAvailableActorTypes();
+        if (defaultType && (!availableTypes.length || availableTypes.includes(defaultType))) {
+          return defaultType;
+        }
+        return availableTypes[0] || defaultType || null;
+      }
+      function _clipboardGetPastedTokenActorImage(path, mediaKind) {
+        if (mediaKind !== "video") return path;
+        return _clipboardGetActorDocumentClass()?.DEFAULT_ICON || CONST?.DEFAULT_TOKEN || "icons/svg/mystery-man.svg";
+      }
+      async function _clipboardCreatePastedTokenActor({ path, mediaKind, width, height }) {
+        const ActorDocument = _clipboardGetActorDocumentClass();
+        if (!ActorDocument?.create) {
+          throw new Error("Actor creation is unavailable for pasted tokens.");
+        }
+        const name = _clipboardGetPastedDocumentName(path);
+        const actorType = _clipboardGetDefaultActorType();
+        const actorImage = _clipboardGetPastedTokenActorImage(path, mediaKind);
+        const actorData = {
+          name,
+          img: actorImage,
+          prototypeToken: {
+            name,
+            texture: {
+              src: path
+            },
+            width,
+            height
+          }
+        };
+        if (actorType) actorData.type = actorType;
+        _clipboardLog("debug", "Creating backing actor for pasted token", {
+          actorType,
+          actorImage,
+          mediaKind,
+          name,
+          path,
+          width,
+          height
+        });
+        const actor = await ActorDocument.create(actorData);
+        if (!actor?.id) {
+          throw new Error("Failed to create a backing Actor for the pasted token.");
+        }
+        _clipboardLog("info", "Created backing actor for pasted token", {
+          actorId: actor.id,
+          actorType,
+          actorImage,
+          mediaKind,
+          name,
+          path,
+          width,
+          height
+        });
+        return actor;
+      }
+      var CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES = {
+        Token: {
+          documentName: "Token",
+          getControlledDocuments: () => (canvas?.tokens?.controlled || []).map((token) => token.document),
+          getLayer: () => canvas?.tokens,
+          createData: async ({ path, imgWidth, imgHeight, mousePos, mediaKind }) => {
+            const snappedPosition = _clipboardGetTokenPosition(mousePos);
+            const dimensions = _clipboardScaleTokenDimensions(imgWidth, imgHeight);
+            const createBackingActors = _clipboardShouldCreateBackingActors();
+            let actor = null;
+            if (createBackingActors) {
+              actor = await _clipboardCreatePastedTokenActor({
+                path,
+                mediaKind,
+                width: dimensions.width,
+                height: dimensions.height
+              });
+            }
+            const tokenData = {
+              name: actor?.name || _clipboardGetPastedDocumentName(path),
+              texture: {
+                src: path
+              },
+              width: dimensions.width,
+              height: dimensions.height,
+              x: snappedPosition.x,
+              y: snappedPosition.y,
+              hidden: _clipboardGetHiddenMode(),
+              locked: false
+            };
+            if (actor?.id) {
+              tokenData.actorId = actor.id;
+              tokenData.actorLink = false;
+            }
+            return [tokenData];
+          }
+        },
+        Tile: {
+          documentName: "Tile",
+          getControlledDocuments: () => (canvas?.tiles?.controlled || []).map((tile) => tile.document),
+          getLayer: () => canvas?.tiles,
+          createData: ({ path, imgWidth, imgHeight, mousePos, mediaKind }) => {
+            const dimensions = _clipboardScaleTileDimensions(imgWidth, imgHeight, canvas.dimensions);
+            const createData = {
+              texture: {
+                src: path
+              },
+              width: dimensions.width,
+              height: dimensions.height,
+              x: mousePos.x,
+              y: mousePos.y,
+              sort: 0,
+              rotation: 0,
+              hidden: _clipboardGetHiddenMode(),
+              locked: false
+            };
+            const video = _clipboardGetTileVideoData(mediaKind);
+            if (video) createData.video = video;
+            return [createData];
+          }
+        }
+      };
+      var CLIPBOARD_IMAGE_REPLACEMENT_ORDER = {
+        Token: ["Token", "Tile"],
+        Tile: ["Tile", "Token"]
+      };
+      function _clipboardGetActiveDocumentName() {
+        return canvas?.activeLayer === canvas?.tokens ? "Token" : "Tile";
+      }
+      function _clipboardGetCreateDocumentName(activeDocumentName = _clipboardGetActiveDocumentName()) {
+        switch (_clipboardGetDefaultEmptyCanvasTarget()) {
+          case CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN:
+            return "Token";
+          case CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE:
+            return "Tile";
+          case CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER:
+          default:
+            return activeDocumentName;
+        }
+      }
+      function _clipboardGetPlaceableStrategy(documentName = _clipboardGetCreateDocumentName()) {
+        return CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES[documentName] || CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES.Tile;
+      }
+      function _clipboardGetReplacementTarget(activeDocumentName = _clipboardGetActiveDocumentName()) {
+        for (const documentName of CLIPBOARD_IMAGE_REPLACEMENT_ORDER[activeDocumentName]) {
+          const strategy = _clipboardGetPlaceableStrategy(documentName);
+          const documents = strategy.getControlledDocuments();
+          if (!documents.length) continue;
+          const eligibleDocuments = documents.filter((document2) => _clipboardCanReplaceDocument(strategy.documentName, document2));
+          return {
+            documentName: strategy.documentName,
+            documents: eligibleDocuments,
+            requestedCount: documents.length,
+            blocked: eligibleDocuments.length < 1
+          };
+        }
+        return null;
+      }
+      function _clipboardResolvePasteContext({ fallbackToCenter = false, requireCanvasFocus = true } = {}) {
+        const activeDocumentName = _clipboardGetActiveDocumentName();
+        const createDocumentName = _clipboardGetCreateDocumentName(activeDocumentName);
+        const mousePos = _clipboardGetMousePosition() || (fallbackToCenter ? _clipboardGetCanvasCenter() : null);
+        return {
+          mousePos,
+          activeDocumentName,
+          createDocumentName,
+          createStrategy: _clipboardCanCreateDocument(createDocumentName) ? _clipboardGetPlaceableStrategy(createDocumentName) : null,
+          replacementTarget: _clipboardGetReplacementTarget(activeDocumentName),
+          requireCanvasFocus
+        };
+      }
+      function _clipboardHasCanvasFocus() {
+        const gameElement = document.querySelector(".game");
+        return !gameElement || document.activeElement === gameElement;
+      }
+      function _clipboardIsMouseWithinCanvas(mousePos) {
+        return Boolean(
+          mousePos && mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x <= canvas.dimensions.width && mousePos.y <= canvas.dimensions.height
+        );
+      }
+      function _clipboardCanPasteToContext(context) {
+        if (context.requireCanvasFocus && !_clipboardHasCanvasFocus()) return false;
+        if (context.replacementTarget?.documents?.length) return true;
+        if (context.replacementTarget?.blocked) return false;
+        if (Object.hasOwn(context, "createStrategy") && !context.createStrategy) return false;
+        return _clipboardIsMouseWithinCanvas(context.mousePos);
+      }
+      function _clipboardPrepareCreateLayer(context) {
+        if (!context.replacementTarget) {
+          context.createStrategy.getLayer()?.activate?.();
+        }
+      }
+      async function _clipboardReplaceControlledMedia(path, replacementTarget, mediaKind) {
+        if (!replacementTarget) return false;
+        const updates = replacementTarget.documents.map((document2) => {
+          const update = {
+            _id: document2.id,
+            "texture.src": path
+          };
+          if (replacementTarget.documentName === "Tile" && mediaKind === "video") {
+            update.video = _clipboardGetTileVideoData(mediaKind);
+          }
+          return update;
+        });
+        _clipboardLog("info", "Replacing controlled media", {
+          replacementTarget: _clipboardDescribeReplacementTarget(replacementTarget),
+          mediaKind,
+          path
+        });
+        await canvas.scene.updateEmbeddedDocuments(replacementTarget.documentName, updates);
+        return true;
+      }
+      module.exports = {
+        CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES,
+        _clipboardHasCopiedObjects,
+        _clipboardGetMousePosition,
+        _clipboardGetCanvasCenter,
+        _clipboardGetTokenPosition,
+        _clipboardCanUserModifyDocument,
+        _clipboardCanReplaceDocument,
+        _clipboardCanCreateDocument,
+        _clipboardGetPastedDocumentName,
+        _clipboardGetAvailableActorTypes,
+        _clipboardGetActorDocumentClass,
+        _clipboardGetDefaultActorType,
+        _clipboardGetPastedTokenActorImage,
+        _clipboardCreatePastedTokenActor,
+        _clipboardGetActiveDocumentName,
+        _clipboardGetCreateDocumentName,
+        _clipboardGetPlaceableStrategy,
+        _clipboardGetReplacementTarget,
+        _clipboardResolvePasteContext,
+        _clipboardHasCanvasFocus,
+        _clipboardIsMouseWithinCanvas,
+        _clipboardCanPasteToContext,
+        _clipboardPrepareCreateLayer,
+        _clipboardReplaceControlledMedia
+      };
+    }
+  });
+
+  // src/diagnostics.js
+  var require_diagnostics = __commonJS({
+    "src/diagnostics.js"(exports, module) {
+      var {
+        CLIPBOARD_IMAGE_MODULE_ID,
+        CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING
+      } = require_constants();
+      function _clipboardVerboseLoggingEnabled() {
+        try {
+          const settingKey = `${CLIPBOARD_IMAGE_MODULE_ID}.${CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING}`;
+          if (!game?.settings?.settings?.has?.(settingKey)) return false;
+          return Boolean(game.settings.get(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING));
+        } catch (error) {
+          return false;
+        }
+      }
+      function _clipboardSerializeError(error) {
+        if (error instanceof Error) {
+          return {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+          };
+        }
+        return error;
+      }
+      function _clipboardDescribeFile(file) {
+        if (!file) return null;
+        return {
+          name: file.name || null,
+          type: file.type || null,
+          size: file.size ?? null
+        };
+      }
+      function _clipboardDescribeDestinationForLog(destination) {
+        if (!destination) return null;
+        return {
+          storedSource: destination.storedSource,
+          source: destination.source,
+          target: destination.target,
+          bucket: destination.bucket || null
+        };
+      }
+      function _clipboardDescribeReplacementTarget(replacementTarget) {
+        if (!replacementTarget) return null;
+        return {
+          documentName: replacementTarget.documentName,
+          ids: replacementTarget.documents.map((document2) => document2.id),
+          requestedCount: replacementTarget.requestedCount ?? replacementTarget.documents.length,
+          blocked: Boolean(replacementTarget.blocked)
+        };
+      }
+      function _clipboardDescribePasteContext(context) {
+        if (!context) return null;
+        const { _clipboardHasCanvasFocus } = require_context();
+        return {
+          mousePos: context.mousePos,
+          createDocumentName: context.createStrategy?.documentName || context.createDocumentName || null,
+          replacementTarget: _clipboardDescribeReplacementTarget(context.replacementTarget),
+          requireCanvasFocus: context.requireCanvasFocus,
+          hasCanvasFocus: _clipboardHasCanvasFocus()
+        };
+      }
+      function _clipboardDescribeClipboardItems(clipItems) {
+        return (clipItems || []).map((item, index) => ({
+          index,
+          types: Array.from(item.types || [])
+        }));
+      }
+      function _clipboardDescribeDataTransfer(dataTransfer) {
+        if (!dataTransfer) return null;
+        return {
+          types: Array.from(dataTransfer.types || []),
+          files: Array.from(dataTransfer.files || []).map(_clipboardDescribeFile),
+          items: Array.from(dataTransfer.items || []).map((item) => ({
+            kind: item.kind,
+            type: item.type
+          }))
+        };
+      }
+      function _clipboardDescribeImageInput(imageInput) {
+        if (!imageInput) return null;
+        const { _clipboardGetMediaKind } = require_media();
+        if (imageInput.blob) {
+          return {
+            source: "blob",
+            ..._clipboardDescribeFile(imageInput.blob) || {},
+            mediaKind: _clipboardGetMediaKind({ blob: imageInput.blob, filename: imageInput.blob.name })
+          };
+        }
+        return {
+          source: "url",
+          url: imageInput.url || null,
+          mediaKind: _clipboardGetMediaKind({ src: imageInput.url })
+        };
+      }
+      function _clipboardLog(level, message, details) {
+        if ((level === "debug" || level === "info") && !_clipboardVerboseLoggingEnabled()) return;
+        const logger = console[level] || console.log;
+        const prefix = `Clipboard Image [${level.toUpperCase()}]: ${message}`;
+        if (details === void 0) {
+          logger(prefix);
+          return;
+        }
+        logger(prefix, details);
+      }
+      module.exports = {
+        _clipboardVerboseLoggingEnabled,
+        _clipboardSerializeError,
+        _clipboardDescribeFile,
+        _clipboardDescribeDestinationForLog,
+        _clipboardDescribeReplacementTarget,
+        _clipboardDescribePasteContext,
+        _clipboardDescribeClipboardItems,
+        _clipboardDescribeDataTransfer,
+        _clipboardDescribeImageInput,
+        _clipboardLog
       };
     }
   });
@@ -1675,6 +2311,11 @@ var ClipboardImageRuntime = (() => {
       var { _clipboardLog } = require_diagnostics();
       var { _clipboardGetMediaKind } = require_media();
       var {
+        CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW,
+        CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY
+      } = require_constants();
+      var { _clipboardGetChatMediaDisplayMode } = require_settings();
+      var {
         _clipboardGetUploadDestination,
         _clipboardCreateFolderIfMissing,
         _clipboardUploadBlob,
@@ -1682,25 +2323,27 @@ var ClipboardImageRuntime = (() => {
       } = require_storage();
       function _clipboardCreateChatMediaContent(path) {
         const mediaKind = _clipboardGetMediaKind({ src: path }) || "image";
+        const displayMode = _clipboardGetChatMediaDisplayMode();
         const figure = document.createElement("figure");
         figure.className = "clipboard-image-chat-message";
-        if (mediaKind === "video") {
+        const previewClassName = displayMode === CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW ? "clipboard-image-chat-full-preview" : "clipboard-image-chat-thumbnail";
+        if (displayMode !== CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY && mediaKind === "video") {
           const video = document.createElement("video");
-          video.className = "clipboard-image-chat-thumbnail";
+          video.className = previewClassName;
           video.src = path;
           video.controls = true;
           video.loop = true;
           video.preload = "metadata";
           video.playsInline = true;
           figure.append(video);
-        } else {
+        } else if (displayMode !== CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY) {
           const previewLink = document.createElement("a");
           previewLink.className = "clipboard-image-chat-link";
           previewLink.href = path;
           previewLink.target = "_blank";
           previewLink.rel = "noopener noreferrer";
           const image = document.createElement("img");
-          image.className = "clipboard-image-chat-thumbnail";
+          image.className = previewClassName;
           image.src = path;
           image.alt = "Pasted chat media";
           previewLink.append(image);
@@ -1786,6 +2429,13 @@ var ClipboardImageRuntime = (() => {
         _clipboardExtractTextInput
       } = require_clipboard();
       var {
+        _clipboardCanUseCanvasMedia,
+        _clipboardCanUseCanvasText,
+        _clipboardCanUseChatMedia,
+        _clipboardCanUseScenePasteTool,
+        _clipboardCanUseSceneUploadTool
+      } = require_settings();
+      var {
         _clipboardEnsurePlaceableTextNote,
         _clipboardCreateStandaloneTextNote
       } = require_notes();
@@ -1823,6 +2473,7 @@ var ClipboardImageRuntime = (() => {
       }
       async function _clipboardPasteBlob(blob, targetFolder, contextOptions = {}) {
         if (!canvas?.ready || !canvas.scene) return false;
+        if (!_clipboardCanUseCanvasMedia()) return false;
         const context = _clipboardResolvePasteContext(contextOptions);
         _clipboardLog("debug", "Resolved canvas paste context", {
           context: _clipboardDescribePasteContext(context),
@@ -1842,6 +2493,7 @@ var ClipboardImageRuntime = (() => {
       }
       async function _clipboardPasteMediaPath(path, contextOptions = {}) {
         if (!canvas?.ready || !canvas.scene) return false;
+        if (!_clipboardCanUseCanvasMedia()) return false;
         const context = _clipboardResolvePasteContext(contextOptions);
         _clipboardLog("debug", "Resolved direct media URL paste context", {
           context: _clipboardDescribePasteContext(context),
@@ -1961,6 +2613,7 @@ var ClipboardImageRuntime = (() => {
       }
       async function _clipboardHandleChatImageBlob(blob) {
         if (!blob) return false;
+        if (!_clipboardCanUseChatMedia()) return false;
         return _clipboardPostChatImage(blob);
       }
       async function _clipboardHandleChatImageInput(imageInput) {
@@ -1985,6 +2638,7 @@ var ClipboardImageRuntime = (() => {
         const text = _clipboardNormalizePastedText(textInput?.text);
         if (!text) return false;
         if (!canvas?.ready || !canvas.scene) return false;
+        if (!_clipboardCanUseCanvasText()) return false;
         const context = _clipboardResolvePasteContext(options.contextOptions);
         _clipboardLog("debug", "Handling pasted text", {
           textLength: text.length,
@@ -2107,9 +2761,10 @@ var ClipboardImageRuntime = (() => {
         });
       }
       function _clipboardHandleScenePasteAction() {
+        if (!_clipboardCanUseScenePasteTool()) return false;
         if (!navigator.clipboard?.read) {
           ui.notifications.warn("Clipboard Image: Direct clipboard reads are unavailable here. Use your browser's Paste action or the Upload Media tool instead.");
-          return;
+          return false;
         }
         _clipboardLog("info", "Invoked scene Paste Media action.", {
           activeLayer: canvas?.activeLayer?.options?.name || null
@@ -2120,20 +2775,25 @@ var ClipboardImageRuntime = (() => {
         }), {
           respectCopiedObjects: false
         });
+        return true;
       }
       function _clipboardHandleSceneUploadAction() {
+        if (!_clipboardCanUseSceneUploadTool()) return false;
         _clipboardLog("info", "Invoked scene Upload Media action.", {
           activeLayer: canvas?.activeLayer?.options?.name || null
         });
         void _clipboardExecutePasteWorkflow(() => _clipboardOpenUploadPicker(), {
           respectCopiedObjects: false
         });
+        return true;
       }
       function _clipboardHandleChatUploadAction() {
+        if (!_clipboardCanUseChatMedia()) return false;
         _clipboardLog("info", "Invoked chat Upload Media action.");
         void _clipboardExecutePasteWorkflow(() => _clipboardOpenChatUploadPicker(), {
           respectCopiedObjects: false
         });
+        return true;
       }
       module.exports = {
         _clipboardApplyPasteResult,
@@ -2196,12 +2856,24 @@ var ClipboardImageRuntime = (() => {
         _clipboardCanPasteToContext
       } = require_context();
       var {
+        CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS,
+        CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER
+      } = require_constants();
+      var {
+        _clipboardCanUseChatMedia,
+        _clipboardCanUseChatUploadButton,
+        _clipboardCanUseScenePasteTool,
+        _clipboardCanUseSceneUploadTool,
+        _clipboardGetScenePastePromptMode
+      } = require_settings();
+      var {
         _clipboardExecutePasteWorkflow,
         _clipboardHandleImageInput,
         _clipboardHandleChatImageInput,
         _clipboardHandleImageInputWithTextFallback,
         _clipboardHandleTextInput,
         _clipboardHasPasteConflict,
+        _clipboardHandleScenePasteAction,
         _clipboardHandleSceneUploadAction,
         _clipboardHandleChatUploadAction
       } = require_workflows();
@@ -2220,7 +2892,7 @@ var ClipboardImageRuntime = (() => {
             icon: "fa-solid fa-paste",
             order,
             button: true,
-            visible: game.user.isGM,
+            visible: _clipboardCanUseScenePasteTool(),
             onClick: onPasteClick,
             onChange: onPasteClick
           };
@@ -2230,7 +2902,7 @@ var ClipboardImageRuntime = (() => {
             icon: "fa-solid fa-file-image",
             order: order + 1,
             button: true,
-            visible: game.user.isGM,
+            visible: _clipboardCanUseSceneUploadTool(),
             onClick: onUploadClick,
             onChange: onUploadClick
           };
@@ -2304,7 +2976,7 @@ var ClipboardImageRuntime = (() => {
         placeholder="Press Cmd+V / Ctrl+V here if direct clipboard read does not complete."
       ></textarea>
       <div class="clipboard-image-scene-paste-actions">
-        <button type="button" data-action="upload">Upload Media</button>
+        ${_clipboardCanUseSceneUploadTool() ? '<button type="button" data-action="upload">Upload Media</button>' : ""}
         <button type="button" data-action="cancel">Cancel</button>
       </div>
     </div>
@@ -2361,13 +3033,22 @@ var ClipboardImageRuntime = (() => {
         return false;
       }
       function _clipboardHandleScenePasteToolClick() {
+        if (!_clipboardCanUseScenePasteTool()) return false;
+        const promptMode = _clipboardGetScenePastePromptMode();
+        if (promptMode === CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER) {
+          return _clipboardHandleScenePasteAction();
+        }
         const prompt = _clipboardOpenScenePastePrompt();
-        void _clipboardTryScenePastePromptDirectRead(prompt);
+        if (promptMode !== CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS) {
+          void _clipboardTryScenePastePromptDirectRead(prompt);
+        }
+        return true;
       }
       function _clipboardToggleChatDropTarget(root, active) {
         root.classList.toggle("clipboard-image-chat-drop-target", active);
       }
       function _clipboardOnChatDragOver(event) {
+        if (!_clipboardCanUseChatMedia()) return;
         const root = event.currentTarget;
         const blob = _clipboardExtractImageBlobFromDataTransfer(event.dataTransfer);
         if (!blob) return;
@@ -2381,6 +3062,7 @@ var ClipboardImageRuntime = (() => {
         _clipboardToggleChatDropTarget(root, false);
       }
       function _clipboardOnChatDrop(event) {
+        if (!_clipboardCanUseChatMedia()) return;
         const root = event.currentTarget;
         _clipboardToggleChatDropTarget(root, false);
         const mediaInput = _clipboardExtractImageInputFromDataTransfer(event.dataTransfer);
@@ -2396,6 +3078,7 @@ var ClipboardImageRuntime = (() => {
         });
       }
       function _clipboardAttachChatUploadButton(root) {
+        if (!_clipboardCanUseChatUploadButton()) return;
         if (root.querySelector(`[data-action="${CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION}"]`)) return;
         const form = root.matches("form") ? root : root.querySelector("form") || root.closest("form");
         if (!form) return;
@@ -2460,6 +3143,7 @@ var ClipboardImageRuntime = (() => {
         const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
         if (imageInput) {
           if (_clipboardGetChatRootFromTarget(event.target)) {
+            if (!_clipboardCanUseChatMedia()) return;
             if (_clipboardHasPasteConflict({ respectCopiedObjects: false })) return;
             _clipboardConsumePasteEvent(event);
             void _clipboardExecutePasteWorkflow(() => _clipboardHandleChatImageInputWithTextFallback(imageInput, event.target), {
@@ -2527,196 +3211,6 @@ var ClipboardImageRuntime = (() => {
     }
   });
 
-  // src/config-app.js
-  var require_config_app = __commonJS({
-    "src/config-app.js"(exports, module) {
-      var {
-        CLIPBOARD_IMAGE_MODULE_ID,
-        CLIPBOARD_IMAGE_DEFAULT_FOLDER,
-        CLIPBOARD_IMAGE_SOURCE_AUTO,
-        CLIPBOARD_IMAGE_SOURCE_S3,
-        CLIPBOARD_IMAGE_FILE_PICKER,
-        CLIPBOARD_IMAGE_FORM_APPLICATION
-      } = require_constants();
-      var {
-        _clipboardResolveSource,
-        _clipboardCanSelectSource,
-        _clipboardGetStoredSource,
-        _clipboardGetTargetFolder,
-        _clipboardGetStoredBucket,
-        _clipboardGetUploadDestination,
-        _clipboardDescribeDestination,
-        _clipboardGetSourceChoices
-      } = require_storage();
-      var ClipboardImageDestinationConfig = class extends CLIPBOARD_IMAGE_FORM_APPLICATION {
-        static get defaultOptions() {
-          return foundry.utils.mergeObject(super.defaultOptions, {
-            id: "clipboard-image-destination-config",
-            title: "Clipboard Image: Upload Destination",
-            template: "modules/clipboard-image/templates/upload-destination.hbs",
-            width: 520,
-            closeOnSubmit: true
-          });
-        }
-        getData() {
-          const source = _clipboardGetStoredSource();
-          const target = _clipboardGetTargetFolder();
-          const bucket = _clipboardGetStoredBucket();
-          const destination = _clipboardGetUploadDestination({ storedSource: source, target, bucket });
-          return {
-            bucket,
-            destinationSummary: _clipboardDescribeDestination(destination),
-            isS3: destination.storedSource === CLIPBOARD_IMAGE_SOURCE_S3,
-            source,
-            sourceChoices: _clipboardGetSourceChoices(source),
-            target
-          };
-        }
-        activateListeners(html) {
-          super.activateListeners(html);
-          const sourceField = html.find('[name="source"]');
-          const targetField = html.find('[name="target"]');
-          const bucketField = html.find('[name="bucket"]');
-          sourceField.on("change", () => this._refreshFormState());
-          targetField.on("input", () => this._refreshFormState());
-          bucketField.on("input", () => this._refreshFormState());
-          html.find('[data-action="browse-destination"]').on("click", (event) => this._onBrowseDestination(event));
-          this._refreshFormState();
-        }
-        _ensureSourceOption(source) {
-          const sourceField = this.form?.elements?.source;
-          if (!sourceField || !source) return;
-          const choices = Array.from(sourceField.options).map((option2) => option2.value);
-          if (choices.includes(source)) return;
-          const option = document.createElement("option");
-          option.value = source;
-          option.text = `Custom (${source})`;
-          sourceField.add(option);
-        }
-        _refreshFormState() {
-          const form = this.form;
-          if (!form) return;
-          const storedSource = form.elements.source.value || CLIPBOARD_IMAGE_SOURCE_AUTO;
-          const target = form.elements.target.value?.trim() || CLIPBOARD_IMAGE_DEFAULT_FOLDER;
-          const bucket = storedSource === CLIPBOARD_IMAGE_SOURCE_S3 ? form.elements.bucket.value?.trim() || "" : "";
-          const destination = _clipboardGetUploadDestination({ storedSource, target, bucket });
-          const summaryField = form.querySelector('[data-role="destination-summary"]');
-          const bucketGroup = this.element.find(".clipboard-image-s3-bucket");
-          if (summaryField) summaryField.value = _clipboardDescribeDestination(destination);
-          bucketGroup.toggleClass("hidden", storedSource !== CLIPBOARD_IMAGE_SOURCE_S3);
-        }
-        _applyPickerSelection(path, picker, previousStoredSource) {
-          const form = this.form;
-          if (!form) return;
-          const selectedSource = picker.activeSource || _clipboardResolveSource(previousStoredSource);
-          if (!_clipboardCanSelectSource(selectedSource)) {
-            ui.notifications.warn("Clipboard Image: The selected file source does not support pasted uploads.");
-            return;
-          }
-          const keepAutomatic = previousStoredSource === CLIPBOARD_IMAGE_SOURCE_AUTO && selectedSource === _clipboardResolveSource(CLIPBOARD_IMAGE_SOURCE_AUTO);
-          const bucket = selectedSource === CLIPBOARD_IMAGE_SOURCE_S3 ? picker.sources?.s3?.bucket || "" : "";
-          this._ensureSourceOption(selectedSource);
-          form.elements.source.value = keepAutomatic ? CLIPBOARD_IMAGE_SOURCE_AUTO : selectedSource;
-          form.elements.target.value = path || picker.target || form.elements.target.value;
-          form.elements.bucket.value = bucket;
-          this._refreshFormState();
-        }
-        _onBrowseDestination(event) {
-          event.preventDefault();
-          const form = this.form;
-          if (!form) return;
-          const previousStoredSource = form.elements.source.value || CLIPBOARD_IMAGE_SOURCE_AUTO;
-          const activeSource = _clipboardResolveSource(previousStoredSource);
-          const currentTarget = form.elements.target.value?.trim() || CLIPBOARD_IMAGE_DEFAULT_FOLDER;
-          const currentBucket = form.elements.bucket.value?.trim() || "";
-          const picker = new CLIPBOARD_IMAGE_FILE_PICKER({
-            activeSource,
-            button: event.currentTarget,
-            callback: (path) => this._applyPickerSelection(path, picker, previousStoredSource),
-            current: currentTarget,
-            field: form.elements.target,
-            type: "folder"
-          });
-          if (activeSource === CLIPBOARD_IMAGE_SOURCE_S3) {
-            picker.sources.s3 = picker.sources.s3 || { target: currentTarget };
-            picker.sources.s3.bucket = currentBucket || picker.sources.s3.bucket;
-            picker.sources.s3.target = currentTarget;
-          }
-          void picker.render(true);
-        }
-        async _updateObject(_event, formData) {
-          const source = formData.source?.trim() || CLIPBOARD_IMAGE_SOURCE_AUTO;
-          const target = formData.target?.trim() || CLIPBOARD_IMAGE_DEFAULT_FOLDER;
-          const bucket = source === CLIPBOARD_IMAGE_SOURCE_S3 ? formData.bucket?.trim() || "" : "";
-          await game.settings.set(CLIPBOARD_IMAGE_MODULE_ID, "image-location-source", source);
-          await game.settings.set(CLIPBOARD_IMAGE_MODULE_ID, "image-location", target);
-          await game.settings.set(CLIPBOARD_IMAGE_MODULE_ID, "image-location-bucket", bucket);
-        }
-      };
-      module.exports = {
-        ClipboardImageDestinationConfig
-      };
-    }
-  });
-
-  // src/settings.js
-  var require_settings = __commonJS({
-    "src/settings.js"(exports, module) {
-      var {
-        CLIPBOARD_IMAGE_MODULE_ID,
-        CLIPBOARD_IMAGE_DEFAULT_FOLDER,
-        CLIPBOARD_IMAGE_SOURCE_AUTO,
-        CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING
-      } = require_constants();
-      var { ClipboardImageDestinationConfig } = require_config_app();
-      function _clipboardRegisterSettings() {
-        game.settings.registerMenu(CLIPBOARD_IMAGE_MODULE_ID, "upload-destination", {
-          name: "Upload destination",
-          label: "Configure",
-          hint: "Choose the file store and folder used for pasted images. Supports User Data, The Forge, and Amazon S3 through Foundry's native file picker.",
-          icon: "fa-solid fa-folder-tree",
-          type: ClipboardImageDestinationConfig,
-          restricted: true
-        });
-        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, "image-location", {
-          name: "Pasted image location",
-          hint: "Folder where clipboard images are saved.",
-          scope: "world",
-          config: false,
-          type: String,
-          default: CLIPBOARD_IMAGE_DEFAULT_FOLDER
-        });
-        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, "image-location-source", {
-          name: "Pasted image source",
-          hint: "File source where clipboard images are saved.",
-          scope: "world",
-          config: false,
-          type: String,
-          default: CLIPBOARD_IMAGE_SOURCE_AUTO
-        });
-        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, "image-location-bucket", {
-          name: "Pasted image S3 bucket",
-          hint: "S3 bucket used when clipboard images are saved to Amazon S3.",
-          scope: "world",
-          config: false,
-          type: String,
-          default: ""
-        });
-        game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING, {
-          name: "Verbose logging",
-          hint: "Log detailed clipboard-image diagnostics to the browser console for debugging.",
-          scope: "client",
-          config: true,
-          type: Boolean,
-          default: false
-        });
-      }
-      module.exports = {
-        _clipboardRegisterSettings
-      };
-    }
-  });
-
   // src/index.js
   var require_index = __commonJS({
     "src/index.js"(exports, module) {
@@ -2732,12 +3226,12 @@ var ClipboardImageRuntime = (() => {
       var workflows = require_workflows();
       var uiHandlers = require_ui();
       var { ClipboardImageDestinationConfig } = require_config_app();
-      var { _clipboardRegisterSettings } = require_settings();
+      var settings = require_settings();
       var state = require_state();
       document.addEventListener("keydown", uiHandlers._clipboardOnKeydown);
       document.addEventListener("paste", uiHandlers._clipboardOnPaste);
       Hooks.once("init", function() {
-        _clipboardRegisterSettings();
+        settings._clipboardRegisterSettings();
         Hooks.on("getSceneControlButtons", uiHandlers._clipboardAddSceneControlButtons);
         Hooks.on("renderChatInput", uiHandlers._clipboardOnRenderChatInput);
         diagnostics._clipboardLog("info", "Initializing clipboard-image module.", {
@@ -2751,8 +3245,8 @@ var ClipboardImageRuntime = (() => {
           verboseLogging: diagnostics._clipboardVerboseLoggingEnabled()
         });
         if (game.user.isGM && !navigator.clipboard?.read) {
-          ui.notifications.info("Clipboard Image: Direct clipboard reads are unavailable here. Browser paste events and Upload Media scene controls are still available.");
-          diagnostics._clipboardLog("info", "Direct clipboard reads are unavailable; paste-event and upload fallbacks remain available.");
+          ui.notifications.info("Clipboard Image: Direct clipboard reads are unavailable here. Browser paste events and upload fallbacks are still available where enabled.");
+          diagnostics._clipboardLog("info", "Direct clipboard reads are unavailable; paste-event and upload fallbacks remain available where enabled.");
         }
       });
       module.exports = {
@@ -2768,7 +3262,7 @@ var ClipboardImageRuntime = (() => {
           ...chat,
           ...workflows,
           ...uiHandlers,
-          _clipboardRegisterSettings,
+          ...settings,
           ...state,
           constants: {
             CLIPBOARD_IMAGE_MODULE_ID: constants.CLIPBOARD_IMAGE_MODULE_ID,
@@ -2786,6 +3280,38 @@ var ClipboardImageRuntime = (() => {
             CLIPBOARD_IMAGE_TEXT_NOTE_PAGE_NAME: constants.CLIPBOARD_IMAGE_TEXT_NOTE_PAGE_NAME,
             CLIPBOARD_IMAGE_TEXT_NOTE_JOURNAL_PREFIX: constants.CLIPBOARD_IMAGE_TEXT_NOTE_JOURNAL_PREFIX,
             CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING: constants.CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING,
+            CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING: constants.CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING,
+            CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING: constants.CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING,
+            CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING: constants.CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING,
+            CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING: constants.CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING,
+            CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING: constants.CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING,
+            CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING: constants.CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING,
+            CLIPBOARD_IMAGE_ENABLE_TOKEN_CREATION_SETTING: constants.CLIPBOARD_IMAGE_ENABLE_TOKEN_CREATION_SETTING,
+            CLIPBOARD_IMAGE_ENABLE_TILE_CREATION_SETTING: constants.CLIPBOARD_IMAGE_ENABLE_TILE_CREATION_SETTING,
+            CLIPBOARD_IMAGE_ENABLE_TOKEN_REPLACEMENT_SETTING: constants.CLIPBOARD_IMAGE_ENABLE_TOKEN_REPLACEMENT_SETTING,
+            CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING: constants.CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING,
+            CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING: constants.CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING,
+            CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING: constants.CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING,
+            CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING: constants.CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING,
+            CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING: constants.CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING,
+            CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING: constants.CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING,
+            CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING: constants.CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING,
+            CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING: constants.CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING,
+            CLIPBOARD_IMAGE_ROLE_PLAYER: constants.CLIPBOARD_IMAGE_ROLE_PLAYER,
+            CLIPBOARD_IMAGE_ROLE_TRUSTED: constants.CLIPBOARD_IMAGE_ROLE_TRUSTED,
+            CLIPBOARD_IMAGE_ROLE_ASSISTANT: constants.CLIPBOARD_IMAGE_ROLE_ASSISTANT,
+            CLIPBOARD_IMAGE_ROLE_GAMEMASTER: constants.CLIPBOARD_IMAGE_ROLE_GAMEMASTER,
+            CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER: constants.CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER,
+            CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE: constants.CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE,
+            CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN: constants.CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN,
+            CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW: constants.CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW,
+            CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL: constants.CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL,
+            CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY: constants.CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY,
+            CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES: constants.CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES,
+            CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED: constants.CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED,
+            CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO: constants.CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO,
+            CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS: constants.CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS,
+            CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER: constants.CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER,
             CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT: constants.CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT,
             CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS: constants.CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS
           }

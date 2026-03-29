@@ -136,6 +136,30 @@ describe("ui and hook integration helpers", () => {
       api._clipboardCloseScenePastePrompt(prompt);
     });
 
+    it("supports always-show prompt mode for the scene paste tool", async () => {
+      env.settingsValues.set("clipboard-image.scene-paste-prompt-mode", "always");
+      api._clipboardHandleScenePasteToolClick();
+      await flush();
+
+      expect(window.navigator.clipboard.read).not.toHaveBeenCalled();
+      expect(api._clipboardGetScenePastePrompt()).toBeTruthy();
+      api._clipboardCloseScenePastePrompt();
+    });
+
+    it("supports direct-read-only scene paste tool mode", async () => {
+      env.settingsValues.set("clipboard-image.scene-paste-prompt-mode", "never");
+      const restoreImage = withMockImage();
+      window.navigator.clipboard.read.mockResolvedValueOnce([
+        {types: ["image/png"], getType: async () => new Blob(["x"], {type: "image/png"})},
+      ]);
+
+      expect(api._clipboardHandleScenePasteToolClick()).toBe(true);
+      await flush();
+
+      expect(api._clipboardGetScenePastePrompt()).toBeNull();
+      restoreImage();
+    });
+
     it("handles media pasted into the scene paste prompt", async () => {
       const restoreImage = withMockImage();
       const prompt = api._clipboardOpenScenePastePrompt();
@@ -344,6 +368,19 @@ describe("ui and hook integration helpers", () => {
       expect(api._clipboardCreateChatMediaContent("https://example.com/file.webm")).toContain("video");
     });
 
+    it("supports link-only chat media display", () => {
+      env.settingsValues.set("clipboard-image.chat-media-display", "link-only");
+      const content = api._clipboardCreateChatMediaContent("https://example.com/file.png");
+      expect(content).not.toContain("<img");
+      expect(content).toContain("Open full media");
+    });
+
+    it("supports full-preview chat media display", () => {
+      env.settingsValues.set("clipboard-image.chat-media-display", "full-preview");
+      expect(api._clipboardCreateChatMediaContent("https://example.com/file.png"))
+        .toContain("clipboard-image-chat-full-preview");
+    });
+
     it("creates chat messages directly", async () => {
       env.settingsRegistry.set("clipboard-image.verbose-logging", {});
       env.settingsValues.set("clipboard-image.verbose-logging", true);
@@ -374,6 +411,19 @@ describe("ui and hook integration helpers", () => {
       expect(controls.tokens.tools["clipboard-image-upload"].onClick).toBeTypeOf("function");
       expect(controls.tokens.tools["clipboard-image-upload"].onChange).toBe(controls.tokens.tools["clipboard-image-upload"].onClick);
       expect(controls.walls.tools["clipboard-image-paste"]).toBeUndefined();
+    });
+
+    it("respects scene control visibility settings for non-gm users", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      env.settingsValues.set("clipboard-image.allow-non-gm-scene-controls", true);
+      env.settingsValues.set("clipboard-image.enable-scene-paste-tool", false);
+
+      const controls = {tiles: {tools: {}}, tokens: {tools: {}}};
+      api._clipboardAddSceneControlButtons(controls);
+
+      expect(controls.tiles.tools["clipboard-image-paste"].visible).toBe(false);
+      expect(controls.tiles.tools["clipboard-image-upload"].visible).toBe(true);
     });
 
     it("invokes scene control callbacks", async () => {
@@ -448,6 +498,15 @@ describe("ui and hook integration helpers", () => {
       api._clipboardBindChatRoot(root);
       api._clipboardBindChatRoot(root);
       expect(root.getAttribute("data-clipboard-image-chat-root")).toBe("true");
+    });
+
+    it("omits the chat upload button when that feature is disabled", () => {
+      env.settingsValues.set("clipboard-image.enable-chat-upload-button", false);
+      const root = document.createElement("form");
+      document.body.append(root);
+
+      api._clipboardAttachChatUploadButton(root);
+      expect(root.querySelector('[data-action="clipboard-image-chat-upload"]')).toBeNull();
     });
 
     it("binds chat roots from rendered chat input elements", () => {
@@ -947,7 +1006,7 @@ describe("ui and hook integration helpers", () => {
 
       secondEnv.onceHandlers.ready();
       expect(globalThis.ui.notifications.info).toHaveBeenCalledWith(
-        "Clipboard Image: Direct clipboard reads are unavailable here. Browser paste events and Upload Media scene controls are still available."
+        "Clipboard Image: Direct clipboard reads are unavailable here. Browser paste events and upload fallbacks are still available where enabled."
       );
     });
 
@@ -964,7 +1023,7 @@ describe("ui and hook integration helpers", () => {
 
       thirdEnv.onceHandlers.ready();
       expect(globalThis.ui.notifications.info).not.toHaveBeenCalledWith(
-        "Clipboard Image: Direct clipboard reads are unavailable here. Browser paste events and Upload Media scene controls are still available."
+        "Clipboard Image: Direct clipboard reads are unavailable here. Browser paste events and upload fallbacks are still available where enabled."
       );
     });
   });

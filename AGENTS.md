@@ -41,8 +41,9 @@
 - Explicit scene-control `Paste Media` and `Upload Media` actions are media-only tools and do not defer to Foundry's copied-object buffer.
 - `Paste Media` is a hybrid flow: it should try direct clipboard reads first, then fall back to the manual paste prompt when browsers do not expose usable media there.
 - Replacing selected tokens or tiles must preserve size and position.
-- When the Tokens layer is active and no supported placeable is selected, pasted media creates a snapped token with a real backing Actor so the token sheet can be opened and edited normally.
-- On other layers with no supported selection, pasted media creates a tile.
+- Empty-canvas media targeting is now configurable. Default behavior follows the active layer, but tests and docs must respect the `default-empty-canvas-target` setting.
+- New pasted tokens create backing Actors by default, but that is also configurable. When the setting is disabled, tests should expect actorless tokens instead of treating that as a regression.
+- Token replacement is gated both by the module setting and by real ownership or update rights for non-GM users.
 - Non-media URLs pasted on canvas should fall back to contextual text-note behavior.
 - Non-media URLs pasted into chat should remain plain text.
 - Direct media URLs that cannot be downloaded and re-uploaded must fail clearly instead of creating broken tiles, broken tokens, or empty chat messages.
@@ -59,6 +60,8 @@
 - Uploaded media paths should use unique real filenames, not only cache-busting query strings. Firefox/PIXI can reuse stale textures when the underlying file path is reused.
 - SVG uploads should be normalized before storage when they rely on CSS style sizing or `viewBox` without explicit root `width` and `height`. Firefox is stricter here than Chrome.
 - Layer behavior is real product behavior: Tokens layer creates tokens, other layers create tiles, and selected placeables are replaced in place. Keep docs and tests explicit about that.
+- Role gates and feature toggles should disable workflows cleanly. Do not silently reroute a disabled token paste into tile creation, or vice versa.
+- Scene-control visibility is no longer a simple `isGM` check. It depends on both the world settings and the current user's configured role.
 
 ## Coding Style & Maintainability
 - Use JavaScript with 2-space indentation and keep style consistent with the files under `src/`.
@@ -69,6 +72,7 @@
 - Prefer shared helpers over duplicating picker/upload flow logic between scene and chat paths.
 - Keep logging routed through `_clipboardLog`; do not add new raw `console.*` calls unless there is a strong reason.
 - When adding structured log output, prefer the existing `_clipboardDescribe...` helpers or add similarly scoped helpers.
+- Keep permission and feature-policy logic centralized in `src/settings.js` or another dedicated policy seam. Do not scatter direct `game.settings.get(...)` checks throughout unrelated modules.
 - Keep modules domain-driven. Avoid reintroducing a single giant runtime file or a generic `utils.js` dumping ground.
 - Keep UI/event wiring thin. Prefer moving real behavior into `src/workflows.js`, `src/storage.js`, `src/notes.js`, `src/chat.js`, or similarly focused modules.
 - Put browser-specific media normalization close to upload boundaries. The current SVG normalization belongs in `src/media.js` and `src/storage.js`, not scattered across create paths.
@@ -82,9 +86,11 @@
 - Read `test/README.md` before changing the suite; it documents required env vars and current scope.
 - When debugging browser tests, headed Chromium is often more reliable than headless Foundry in this environment.
 - When debugging Firefox-specific rendering or SVG behavior, run a targeted headed Firefox smoke. Chrome passing does not prove Firefox correctness here.
+- The opt-in S3 smoke refreshes Foundry-side AWS session credentials from the current AWS CLI session before it runs. Keep that preflight working, and prefer explicit env overrides over hardcoding local paths.
 - If a Playwright browser install is missing, install it explicitly with `npx playwright install <browser>` before diagnosing runtime behavior.
 - Enable the module's `Verbose logging` setting when diagnosing failures; the browser console output is intentionally detailed and high-signal.
 - Keep automated tests aligned with real Foundry behavior, not idealized behavior.
+- When adding a new setting, add at least one unit test that proves the enabled path and one that proves the disabled or restricted path.
 - For canvas rendering assertions, document data alone is not always enough. In Firefox, inspect rendered mesh/texture state rather than assuming `placeable.width` matches the visible mesh.
 - When a manual Playwright debugging session hangs, clean up stale Playwright Firefox/Nightly processes before retrying. Do not leave orphaned browser processes running.
 - Use the dedicated clipboard QA Foundry users when possible to avoid session collisions during browser testing.

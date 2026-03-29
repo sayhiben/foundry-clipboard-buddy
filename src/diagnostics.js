@@ -52,6 +52,8 @@ function _clipboardDescribeReplacementTarget(replacementTarget) {
   return {
     documentName: replacementTarget.documentName,
     ids: replacementTarget.documents.map(document => document.id),
+    requestedCount: replacementTarget.requestedCount ?? replacementTarget.documents.length,
+    blocked: Boolean(replacementTarget.blocked),
   };
 }
 
@@ -62,7 +64,7 @@ function _clipboardDescribePasteContext(context) {
 
   return {
     mousePos: context.mousePos,
-    createDocumentName: context.createStrategy?.documentName || null,
+    createDocumentName: context.createStrategy?.documentName || context.createDocumentName || null,
     replacementTarget: _clipboardDescribeReplacementTarget(context.replacementTarget),
     requireCanvasFocus: context.requireCanvasFocus,
     hasCanvasFocus: _clipboardHasCanvasFocus(),

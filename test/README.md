@@ -27,7 +27,7 @@ The suite is designed to cover the browser-driven flows that can be validated ag
 
 It intentionally does not try to replace all manual QA. Browser permission prompts, real `navigator.clipboard.read()` behavior, Safari/iOS/Android specifics, remote-host CORS failures, Forge integration, and visual animation/video playback still belong in manual testing.
 
-Amazon S3 is covered separately by an opt-in smoke spec when you provide a live bucket and a Foundry server that is already configured for S3.
+Amazon S3 is covered separately by an opt-in smoke spec when you provide a live bucket and a Foundry server that is already configured for S3. The S3 smoke now tries to refresh the Foundry-side AWS session from your current AWS CLI credentials before it starts.
 
 ## Prerequisites
 
@@ -59,6 +59,14 @@ The suite uses these environment variables:
   Set to `true` to force headless. Local default is headed because Foundry and PIXI are more reliable there; CI still defaults to headless.
 - `FOUNDRY_S3_BUCKET`
   Optional bucket name for the opt-in Amazon S3 smoke spec in `test/playwright/s3.spec.js`.
+- `FOUNDRY_S3_REFRESH`
+  Optional. Defaults to `true`. Set to `false` to disable the pre-test refresh of Foundry's S3 credentials from the AWS CLI session.
+- `FOUNDRY_S3_AWS_CONFIG_PATH`
+  Optional explicit path to the Foundry AWS JSON config file that should be refreshed before the S3 smoke runs.
+- `FOUNDRY_DOCKER_CONTAINER`
+  Optional Docker container name or id for the running Foundry server. If omitted, the S3 smoke tries to auto-detect a container that exposes the current Foundry port and a bind-mounted `/data` directory.
+- `FOUNDRY_S3_RESTART_COMMAND`
+  Optional shell command to restart Foundry after the S3 config file is refreshed. This is useful when your Foundry server is not running in Docker.
 
 Examples:
 
@@ -96,7 +104,7 @@ npm run test:smoke:s3
 - `npm run test:headed`
   Run the smoke suite in a headed browser explicitly.
 - `npm run test:smoke:s3`
-  Run the opt-in Amazon S3 smoke spec against a Foundry instance that is already configured with server-side S3 credentials.
+  Run the opt-in Amazon S3 smoke spec. By default it refreshes the Foundry-side AWS session from `aws configure export-credentials --format process`, updates the configured Foundry AWS JSON file, and restarts the Foundry server when it can auto-detect a Dockerized `/data` mount or when you provide an explicit restart command.
 - `npm test`
   Run the unit suite and coverage checks without launching Foundry.
 - `npm run test:install`
@@ -111,5 +119,7 @@ npm run test:smoke:s3
 - Keyboard paste coverage follows the browser's native `paste` event. The module's explicit `Paste Media` scene tool is the only path that still depends on `navigator.clipboard.read()`.
 - Uploaded media files remain in the configured `playwright` upload subfolders. They are isolated by test run id but are not automatically deleted from disk.
 - The optional Amazon S3 smoke spec deletes the uploaded S3 prefix after it verifies the object landed in the configured bucket.
+- The Amazon S3 smoke now checks browser render success as well as upload success. Your bucket needs CORS for media `GET` and `HEAD` requests or Foundry may create the tile document but fail to render the texture.
+- The S3 smoke refresh only updates the Foundry-side AWS config file and restarts the Foundry server. It does not change repository files.
 - The tests drive Foundry through real DOM `paste` and file-upload paths and assert against Foundry document state through `canvas.scene`, `game.messages`, and `game.journal`.
 - Each test temporarily enables the module's `Verbose logging` setting and relays `Clipboard Image [...]` browser-console lines into the Playwright output, which makes failures much easier to diagnose.

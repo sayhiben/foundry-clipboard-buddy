@@ -104,7 +104,11 @@ function createPlaceableDocument(documentName, data = {}) {
     y: data.y ?? 0,
     width: data.width ?? 1,
     height: data.height ?? 1,
+    actor: data.actor || null,
+    isOwner: data.isOwner ?? true,
     object: data.object || null,
+    canUserModify: data.canUserModify || vi.fn(() => data.isOwner ?? true),
+    testUserPermission: data.testUserPermission || vi.fn(() => data.isOwner ?? true),
     getFlag: vi.fn((scope, key) => flags.get(scope)?.[key] ?? null),
     setFlag: vi.fn(async (scope, key, value) => {
       const scopedFlags = flags.get(scope) || {};
@@ -137,6 +141,23 @@ function loadRuntime(options = {}) {
     ["clipboard-image.image-location", "pasted_images"],
     ["clipboard-image.image-location-bucket", ""],
     ["clipboard-image.verbose-logging", false],
+    ["clipboard-image.minimum-role-canvas-media", "PLAYER"],
+    ["clipboard-image.minimum-role-canvas-text", "PLAYER"],
+    ["clipboard-image.minimum-role-chat-media", "PLAYER"],
+    ["clipboard-image.allow-non-gm-scene-controls", false],
+    ["clipboard-image.enable-chat-media", true],
+    ["clipboard-image.enable-chat-upload-button", true],
+    ["clipboard-image.enable-token-creation", true],
+    ["clipboard-image.enable-tile-creation", true],
+    ["clipboard-image.enable-token-replacement", true],
+    ["clipboard-image.enable-tile-replacement", true],
+    ["clipboard-image.enable-scene-paste-tool", true],
+    ["clipboard-image.enable-scene-upload-tool", true],
+    ["clipboard-image.default-empty-canvas-target", "active-layer"],
+    ["clipboard-image.create-backing-actors", true],
+    ["clipboard-image.chat-media-display", "thumbnail"],
+    ["clipboard-image.canvas-text-paste-mode", "scene-notes"],
+    ["clipboard-image.scene-paste-prompt-mode", "auto"],
   ]);
   const settingsRegistry = new Map();
   const journalEntries = new Map();
@@ -270,6 +291,7 @@ function loadRuntime(options = {}) {
     user: {
       id: "user-1",
       isGM: true,
+      role: 4,
     },
     settings: {
       settings: settingsRegistry,
@@ -311,6 +333,13 @@ function loadRuntime(options = {}) {
   globalThis.CONST = {
     DEFAULT_TOKEN: "icons/svg/mystery-man.svg",
     BASE_DOCUMENT_TYPE: "base",
+    USER_ROLES: {
+      NONE: 0,
+      PLAYER: 1,
+      TRUSTED: 2,
+      ASSISTANT: 3,
+      GAMEMASTER: 4,
+    },
     JOURNAL_ENTRY_PAGE_FORMATS: {
       HTML: 9,
     },

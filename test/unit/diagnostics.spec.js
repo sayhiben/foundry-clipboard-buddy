@@ -64,6 +64,8 @@ describe("diagnostics and settings helpers", () => {
       expect(api._clipboardDescribeReplacementTarget(replacementTarget)).toEqual({
         documentName: "Tile",
         ids: ["a", "b"],
+        requestedCount: 2,
+        blocked: false,
       });
 
       expect(api._clipboardDescribePasteContext({

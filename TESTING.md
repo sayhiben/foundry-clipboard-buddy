@@ -64,6 +64,7 @@ These flows should stay true across the test matrix:
 5. Existing token or tile replacements must preserve position and dimensions.
 6. New uploads should respect the configured upload destination.
 7. Failed clipboard or remote-download paths should fail clearly without leaving partial scene state behind.
+8. Settings and permission gates should disable features cleanly instead of rerouting paste into a different target unexpectedly.
 
 ## Release Checklist
 
@@ -202,7 +203,40 @@ These flows should stay true across the test matrix:
 5. On an untrusted origin or raw IP address, test explicit paste and upload actions.
    Expected: clipboard-read restrictions fail gracefully while browser paste gestures or uploads still work where supported.
 
-### 11. Regression Watchlist
+### 11. Settings And Permission Gates
+
+1. Raise `Minimum role for canvas media paste` above the current user's role and try canvas media paste.
+   Expected: no token or tile is created or replaced.
+2. Raise `Minimum role for canvas text paste` above the current user's role and try canvas text paste.
+   Expected: no Journal note is created or updated.
+3. Raise `Minimum role for chat media paste` above the current user's role and try chat media paste and chat upload.
+   Expected: no chat media post is created and the chat upload button is hidden if chat media handling is disabled.
+4. Disable token creation and paste media with no selection while token creation would otherwise be targeted.
+   Expected: the paste is ignored rather than silently creating a tile.
+5. Disable tile creation and paste media with no selection while tile creation would otherwise be targeted.
+   Expected: the paste is ignored rather than silently creating a token.
+6. Disable token replacement and paste onto selected tokens.
+   Expected: selected tokens are not changed.
+7. Disable tile replacement and paste onto selected tiles.
+   Expected: selected tiles are not changed.
+8. Log in as a player who owns one token and try selected-token replacement.
+   Expected: owned tokens can still be replaced when token replacement is enabled.
+9. As that same player, try replacing a token or tile the player does not own.
+   Expected: the paste does not replace that placeable.
+10. Toggle `Allow non-GMs to use scene controls`.
+   Expected: scene-control buttons hide or appear accordingly for eligible non-GM users.
+11. Toggle `Default empty-canvas paste target` between active layer, tile, and token.
+   Expected: new pasted media follows the configured target consistently.
+12. Toggle `Create backing Actors for pasted tokens`.
+   Expected: when enabled, newly pasted tokens open normally for editing; when disabled, pasted tokens are actorless.
+13. Toggle `Chat media display`.
+   Expected: chat posts switch between full preview, thumbnail preview, and link-only output.
+14. Toggle `Canvas text paste mode` to `Disabled`.
+   Expected: plain text canvas paste no longer creates scene notes.
+15. Toggle `Scene Paste Media prompt mode` between `Auto`, `Always show prompt`, and `Never show prompt`.
+   Expected: the explicit scene-control paste button follows the configured behavior.
+
+### 12. Regression Watchlist
 
 Review the browser console while testing and confirm:
 - With `Verbose logging` enabled, clipboard-image logs clearly describe clipboard parsing, upload destination, media download, paste routing, and create vs replace outcomes
@@ -212,6 +246,7 @@ Review the browser console while testing and confirm:
 - Selected-placeable replacement never resizes or repositions existing tokens or tiles
 - Contextual text paste never creates duplicate note pins for the same linked placeable unless intended
 - Upload destination changes apply to new uploads without breaking prior assets
+- Feature toggles disable the intended workflow without redirecting paste into some other create path
 - If `vtta-tokenizer` is open, media paste is still suppressed as intended
 
 ## Suggested Test Passes

@@ -10,14 +10,14 @@ const chat = require("./chat");
 const workflows = require("./workflows");
 const uiHandlers = require("./ui");
 const {ClipboardImageDestinationConfig} = require("./config-app");
-const {_clipboardRegisterSettings} = require("./settings");
+const settings = require("./settings");
 const state = require("./state");
 
 document.addEventListener("keydown", uiHandlers._clipboardOnKeydown);
 document.addEventListener("paste", uiHandlers._clipboardOnPaste);
 
 Hooks.once("init", function() {
-  _clipboardRegisterSettings();
+  settings._clipboardRegisterSettings();
   Hooks.on("getSceneControlButtons", uiHandlers._clipboardAddSceneControlButtons);
   Hooks.on("renderChatInput", uiHandlers._clipboardOnRenderChatInput);
   diagnostics._clipboardLog("info", "Initializing clipboard-image module.", {
@@ -32,8 +32,8 @@ Hooks.once("ready", function() {
     verboseLogging: diagnostics._clipboardVerboseLoggingEnabled(),
   });
   if (game.user.isGM && !navigator.clipboard?.read) {
-    ui.notifications.info("Clipboard Image: Direct clipboard reads are unavailable here. Browser paste events and Upload Media scene controls are still available.");
-    diagnostics._clipboardLog("info", "Direct clipboard reads are unavailable; paste-event and upload fallbacks remain available.");
+    ui.notifications.info("Clipboard Image: Direct clipboard reads are unavailable here. Browser paste events and upload fallbacks are still available where enabled.");
+    diagnostics._clipboardLog("info", "Direct clipboard reads are unavailable; paste-event and upload fallbacks remain available where enabled.");
   }
 });
 
@@ -50,7 +50,7 @@ module.exports = {
     ...chat,
     ...workflows,
     ...uiHandlers,
-    _clipboardRegisterSettings,
+    ...settings,
     ...state,
     constants: {
       CLIPBOARD_IMAGE_MODULE_ID: constants.CLIPBOARD_IMAGE_MODULE_ID,
@@ -68,6 +68,38 @@ module.exports = {
       CLIPBOARD_IMAGE_TEXT_NOTE_PAGE_NAME: constants.CLIPBOARD_IMAGE_TEXT_NOTE_PAGE_NAME,
       CLIPBOARD_IMAGE_TEXT_NOTE_JOURNAL_PREFIX: constants.CLIPBOARD_IMAGE_TEXT_NOTE_JOURNAL_PREFIX,
       CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING: constants.CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING,
+      CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING: constants.CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING,
+      CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING: constants.CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING,
+      CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING: constants.CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING,
+      CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING: constants.CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING,
+      CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING: constants.CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING,
+      CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING: constants.CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING,
+      CLIPBOARD_IMAGE_ENABLE_TOKEN_CREATION_SETTING: constants.CLIPBOARD_IMAGE_ENABLE_TOKEN_CREATION_SETTING,
+      CLIPBOARD_IMAGE_ENABLE_TILE_CREATION_SETTING: constants.CLIPBOARD_IMAGE_ENABLE_TILE_CREATION_SETTING,
+      CLIPBOARD_IMAGE_ENABLE_TOKEN_REPLACEMENT_SETTING: constants.CLIPBOARD_IMAGE_ENABLE_TOKEN_REPLACEMENT_SETTING,
+      CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING: constants.CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING,
+      CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING: constants.CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING,
+      CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING: constants.CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING,
+      CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING: constants.CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING,
+      CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING: constants.CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING,
+      CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING: constants.CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING,
+      CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING: constants.CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING,
+      CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING: constants.CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING,
+      CLIPBOARD_IMAGE_ROLE_PLAYER: constants.CLIPBOARD_IMAGE_ROLE_PLAYER,
+      CLIPBOARD_IMAGE_ROLE_TRUSTED: constants.CLIPBOARD_IMAGE_ROLE_TRUSTED,
+      CLIPBOARD_IMAGE_ROLE_ASSISTANT: constants.CLIPBOARD_IMAGE_ROLE_ASSISTANT,
+      CLIPBOARD_IMAGE_ROLE_GAMEMASTER: constants.CLIPBOARD_IMAGE_ROLE_GAMEMASTER,
+      CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER: constants.CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER,
+      CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE: constants.CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE,
+      CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN: constants.CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN,
+      CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW: constants.CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW,
+      CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL: constants.CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL,
+      CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY: constants.CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY,
+      CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES: constants.CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES,
+      CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED: constants.CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED,
+      CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO: constants.CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO,
+      CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS: constants.CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS,
+      CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER: constants.CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER,
       CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT: constants.CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT,
       CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS: constants.CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS,
     },
