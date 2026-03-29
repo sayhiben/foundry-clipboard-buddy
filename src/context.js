@@ -40,8 +40,10 @@ function _clipboardGetPastedDocumentName(path) {
     decodedName = rawName;
   }
 
-  const trimmedName = decodedName.replace(/\.[^.]+$/, "").trim();
-  return trimmedName || "Pasted Media";
+  const withoutQuery = decodedName.split(/[?#]/, 1)[0] || decodedName;
+  const trimmedName = withoutQuery.replace(/\.[^.]+$/, "").trim();
+  const normalizedName = trimmedName.replace(/-\d{10,}$/, "").trim();
+  return normalizedName || trimmedName || "Pasted Media";
 }
 
 function _clipboardGetAvailableActorTypes() {
@@ -75,6 +77,14 @@ function _clipboardGetDefaultActorType() {
   return availableTypes[0] || defaultType || null;
 }
 
+function _clipboardGetPastedTokenActorImage(path, mediaKind) {
+  if (mediaKind !== "video") return path;
+
+  return _clipboardGetActorDocumentClass()?.DEFAULT_ICON
+    || CONST?.DEFAULT_TOKEN
+    || "icons/svg/mystery-man.svg";
+}
+
 async function _clipboardCreatePastedTokenActor({path, mediaKind, width, height}) {
   const ActorDocument = _clipboardGetActorDocumentClass();
   if (!ActorDocument?.create) {
@@ -83,9 +93,10 @@ async function _clipboardCreatePastedTokenActor({path, mediaKind, width, height}
 
   const name = _clipboardGetPastedDocumentName(path);
   const actorType = _clipboardGetDefaultActorType();
+  const actorImage = _clipboardGetPastedTokenActorImage(path, mediaKind);
   const actorData = {
     name,
-    img: path,
+    img: actorImage,
     prototypeToken: {
       name,
       texture: {
@@ -100,6 +111,7 @@ async function _clipboardCreatePastedTokenActor({path, mediaKind, width, height}
 
   _clipboardLog("debug", "Creating backing actor for pasted token", {
     actorType,
+    actorImage,
     mediaKind,
     name,
     path,
@@ -115,6 +127,7 @@ async function _clipboardCreatePastedTokenActor({path, mediaKind, width, height}
   _clipboardLog("info", "Created backing actor for pasted token", {
     actorId: actor.id,
     actorType,
+    actorImage,
     mediaKind,
     name,
     path,
@@ -286,6 +299,7 @@ module.exports = {
   _clipboardGetAvailableActorTypes,
   _clipboardGetActorDocumentClass,
   _clipboardGetDefaultActorType,
+  _clipboardGetPastedTokenActorImage,
   _clipboardCreatePastedTokenActor,
   _clipboardGetActiveDocumentName,
   _clipboardGetPlaceableStrategy,

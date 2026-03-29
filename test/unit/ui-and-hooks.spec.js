@@ -124,6 +124,181 @@ describe("ui and hook integration helpers", () => {
       restoreImage();
     });
 
+    it("opens the scene paste prompt when direct reads cannot return media", async () => {
+      window.navigator.clipboard.read.mockResolvedValueOnce([{types: []}]);
+
+      api._clipboardHandleScenePasteToolClick();
+      await flush();
+
+      const prompt = api._clipboardGetScenePastePrompt();
+      expect(prompt).toBeTruthy();
+      expect(prompt.querySelector("[data-role='message']").textContent).toContain("not exposed to direct clipboard reads");
+      api._clipboardCloseScenePastePrompt(prompt);
+    });
+
+    it("handles media pasted into the scene paste prompt", async () => {
+      const restoreImage = withMockImage();
+      const prompt = api._clipboardOpenScenePastePrompt();
+      const target = prompt.querySelector("#clipboard-image-scene-paste-target");
+      const file = new File(["x"], "prompt.png", {type: "image/png"});
+      const event = new Event("paste", {bubbles: true, cancelable: true});
+      Object.defineProperty(event, "clipboardData", {
+        configurable: true,
+        value: createDataTransfer({
+          items: [{
+            kind: "file",
+            getAsFile: () => file,
+          }],
+          files: [file],
+        }),
+      });
+
+      target.dispatchEvent(event);
+      await flush();
+
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalled();
+      expect(api._clipboardGetScenePastePrompt()).toBeNull();
+      restoreImage();
+    });
+
+    it("keeps the scene paste prompt open for unsupported pasted content", async () => {
+      const prompt = api._clipboardOpenScenePastePrompt();
+      const target = prompt.querySelector("#clipboard-image-scene-paste-target");
+      const event = new Event("paste", {bubbles: true, cancelable: true});
+      Object.defineProperty(event, "clipboardData", {
+        configurable: true,
+        value: createDataTransfer({
+          data: {"text/plain": "not-media"},
+        }),
+      });
+
+      target.dispatchEvent(event);
+      await flush();
+
+      expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith(
+        "Clipboard Image: No supported media was found in that paste."
+      );
+      expect(api._clipboardGetScenePastePrompt()).toBe(prompt);
+      api._clipboardCloseScenePastePrompt(prompt);
+    });
+
+    it("closes the scene paste prompt when paste handling returns false", async () => {
+      const prompt = api._clipboardOpenScenePastePrompt();
+      const target = prompt.querySelector("#clipboard-image-scene-paste-target");
+      const file = new File(["x"], "prompt.png", {type: "image/png"});
+      api._clipboardSetRuntimeState({locked: true});
+
+      const event = new Event("paste", {bubbles: true, cancelable: true});
+      Object.defineProperty(event, "clipboardData", {
+        configurable: true,
+        value: createDataTransfer({
+          items: [{
+            kind: "file",
+            getAsFile: () => file,
+          }],
+          files: [file],
+        }),
+      });
+
+      target.dispatchEvent(event);
+      await flush();
+
+      expect(prompt.querySelector("[data-role='message']").textContent).toContain("Paste did not create media");
+      expect(api._clipboardGetScenePastePrompt()).toBe(prompt);
+      api._clipboardSetRuntimeState({locked: false});
+      api._clipboardCloseScenePastePrompt(prompt);
+    });
+
+    it("updates the scene paste prompt when direct reads are unavailable", async () => {
+      const originalClipboard = window.navigator.clipboard;
+      Object.defineProperty(window.navigator, "clipboard", {
+        configurable: true,
+        value: {},
+      });
+
+      const prompt = api._clipboardOpenScenePastePrompt();
+      await expect(api._clipboardTryScenePastePromptDirectRead(prompt)).resolves.toBe(false);
+      expect(prompt.querySelector("[data-role='message']").textContent).toContain("Direct clipboard reads are unavailable");
+
+      api._clipboardCloseScenePastePrompt(prompt);
+      Object.defineProperty(window.navigator, "clipboard", {
+        configurable: true,
+        value: originalClipboard,
+      });
+    });
+
+    it("keeps the scene paste prompt open when direct reads return no clipboard items", async () => {
+      window.navigator.clipboard.read.mockResolvedValueOnce([]);
+
+      const prompt = api._clipboardOpenScenePastePrompt();
+      await expect(api._clipboardTryScenePastePromptDirectRead(prompt)).resolves.toBe(false);
+      expect(prompt.querySelector("[data-role='message']").textContent).toContain("did not return usable media");
+      api._clipboardCloseScenePastePrompt(prompt);
+    });
+
+    it("closes the scene paste prompt when direct read media succeeds", async () => {
+      const restoreImage = withMockImage();
+      window.navigator.clipboard.read.mockResolvedValueOnce([
+        {types: ["image/png"], getType: async () => new Blob(["x"], {type: "image/png"})},
+      ]);
+
+      const prompt = api._clipboardOpenScenePastePrompt();
+      await expect(api._clipboardTryScenePastePromptDirectRead(prompt)).resolves.toBe(true);
+      expect(api._clipboardGetScenePastePrompt()).toBeNull();
+      restoreImage();
+    });
+
+    it("keeps the scene paste prompt open when direct read media cannot be applied", async () => {
+      const restoreImage = withMockImage();
+      window.navigator.clipboard.read.mockResolvedValueOnce([
+        {types: ["image/png"], getType: async () => new Blob(["x"], {type: "image/png"})},
+      ]);
+      api._clipboardSetRuntimeState({locked: true});
+
+      const prompt = api._clipboardOpenScenePastePrompt();
+      await expect(api._clipboardTryScenePastePromptDirectRead(prompt)).resolves.toBe(false);
+      expect(prompt.querySelector("[data-role='message']").textContent).toContain("did not create media");
+      expect(api._clipboardGetScenePastePrompt()).toBe(prompt);
+
+      api._clipboardSetRuntimeState({locked: false});
+      api._clipboardCloseScenePastePrompt(prompt);
+      restoreImage();
+    });
+
+    it("allows the scene paste prompt buttons to upload or cancel", async () => {
+      let restoreClick = setInputClickBehavior(input => {
+        Object.defineProperty(input, "files", {
+          configurable: true,
+          value: [new File(["x"], "picked.png", {type: "image/png"})],
+        });
+        input.dispatchEvent(new Event("change"));
+      });
+      const restoreImage = withMockImage();
+      const prompt = api._clipboardOpenScenePastePrompt();
+      prompt.querySelector('[data-action="upload"]').click();
+      await flush();
+      restoreClick();
+      restoreImage();
+      expect(api._clipboardGetScenePastePrompt()).toBeNull();
+
+      restoreClick = setInputClickBehavior(() => {
+        window.dispatchEvent(new Event("focus"));
+      });
+      const secondPrompt = api._clipboardOpenScenePastePrompt();
+      secondPrompt.querySelector('[data-action="cancel"]').click();
+      await flush();
+      restoreClick();
+      expect(api._clipboardGetScenePastePrompt()).toBeNull();
+    });
+
+    it("reuses the existing scene paste prompt and supports overlay dismissal", () => {
+      const prompt = api._clipboardOpenScenePastePrompt();
+      expect(api._clipboardOpenScenePastePrompt()).toBe(prompt);
+
+      prompt.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+      expect(api._clipboardGetScenePastePrompt()).toBeNull();
+    });
+
     it("runs the scene and chat upload actions", async () => {
       let restoreClick = setInputClickBehavior(input => {
         Object.defineProperty(input, "files", {
@@ -180,6 +355,10 @@ describe("ui and hook integration helpers", () => {
       });
     });
 
+    it("rejects chat messages without a usable media path", async () => {
+      await expect(api._clipboardCreateChatMessage("")).rejects.toThrow("usable media path");
+    });
+
     it("adds scene control buttons to tiles and tokens", () => {
       const controls = {
         tiles: {tools: {}},
@@ -189,16 +368,21 @@ describe("ui and hook integration helpers", () => {
 
       api._clipboardAddSceneControlButtons(controls);
       expect(controls.tiles.tools["clipboard-image-paste"]).toMatchObject({title: "Paste Media", button: true});
+      expect(controls.tiles.tools["clipboard-image-paste"].onClick).toBeTypeOf("function");
+      expect(controls.tiles.tools["clipboard-image-paste"].onChange).toBe(controls.tiles.tools["clipboard-image-paste"].onClick);
       expect(controls.tokens.tools["clipboard-image-upload"]).toMatchObject({title: "Upload Media", button: true});
+      expect(controls.tokens.tools["clipboard-image-upload"].onClick).toBeTypeOf("function");
+      expect(controls.tokens.tools["clipboard-image-upload"].onChange).toBe(controls.tokens.tools["clipboard-image-upload"].onClick);
       expect(controls.walls.tools["clipboard-image-paste"]).toBeUndefined();
     });
 
     it("invokes scene control callbacks", async () => {
       const controls = {tiles: {tools: {}}, tokens: {tools: {}}};
       api._clipboardAddSceneControlButtons(controls);
-      controls.tiles.tools["clipboard-image-paste"].onChange();
-      controls.tokens.tools["clipboard-image-upload"].onChange();
+      controls.tiles.tools["clipboard-image-paste"].onClick();
+      controls.tokens.tools["clipboard-image-upload"].onClick();
       await flush();
+      api._clipboardCloseScenePastePrompt();
     });
 
     it("toggles chat drop-target styling", () => {
@@ -357,6 +541,29 @@ describe("ui and hook integration helpers", () => {
       expect(input.value).toContain("https://example.com/not-media.txt");
     });
 
+    it("falls back to the original url text when a direct media url download is blocked in chat", async () => {
+      const input = document.createElement("textarea");
+      input.value = "";
+      globalThis.fetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+      await expect(api._clipboardHandleChatImageInputWithTextFallback({
+        url: "https://example.com/file.svg",
+        text: "https://example.com/file.svg",
+      }, input)).resolves.toBe(false);
+
+      expect(input.value).toBe("https://example.com/file.svg");
+      expect(globalThis.foundry.documents.ChatMessage.create).not.toHaveBeenCalled();
+    });
+
+    it("rethrows chat media failures when the original URL cannot be inserted", async () => {
+      const target = document.createElement("div");
+      globalThis.foundry.documents.ChatMessage.create.mockRejectedValueOnce(new Error("bad"));
+
+      await expect(api._clipboardHandleChatImageInputWithTextFallback({
+        blob: new Blob(["x"], {type: "image/png"}),
+      }, target)).rejects.toThrow("bad");
+    });
+
     it("consumes paste events", () => {
       const event = {
         preventDefault: vi.fn(),
@@ -464,13 +671,9 @@ describe("ui and hook integration helpers", () => {
   });
 
   describe("keydown handling and config ui", () => {
-    it("handles the macOS meta+v paste shortcut", async () => {
+    it("tracks hidden paste mode without intercepting the browser paste shortcut", () => {
       document.body.innerHTML = '<div class="game" tabindex="0"></div>';
       document.querySelector(".game").focus();
-      const restoreImage = withMockImage();
-      window.navigator.clipboard.read.mockResolvedValueOnce([
-        {types: ["image/png"], getType: async () => new Blob(["x"], {type: "image/png"})},
-      ]);
 
       const event = {
         ctrlKey: false,
@@ -484,10 +687,9 @@ describe("ui and hook integration helpers", () => {
       };
 
       api._clipboardOnKeydown(event);
-      await flush();
-      restoreImage();
       expect(api._clipboardGetRuntimeState().hiddenMode).toBe(true);
-      expect(event.preventDefault).toHaveBeenCalled();
+      expect(event.preventDefault).not.toHaveBeenCalled();
+      expect(window.navigator.clipboard.read).not.toHaveBeenCalled();
     });
 
     it("ignores keydowns that should not trigger clipboard handling", () => {
@@ -724,33 +926,12 @@ describe("ui and hook integration helpers", () => {
       expect(globalThis.game.settings.register).toHaveBeenCalled();
     });
 
-    it("wires init hooks and keybindings", async () => {
+    it("wires init hooks without registering a custom paste keybinding", () => {
       expect(env.onceHandlers.init).toBeTypeOf("function");
       env.onceHandlers.init();
       expect(globalThis.Hooks.on).toHaveBeenCalledWith("getSceneControlButtons", api._clipboardAddSceneControlButtons);
-      expect(globalThis.game.keybindings.register).toHaveBeenCalled();
-
-      const keybinding = globalThis.game.keybindings.register.mock.calls.at(-1)[2];
-      api._clipboardSetRuntimeState({locked: true});
-      expect(keybinding.onDown()).toBe(true);
-
-      api._clipboardSetRuntimeState({locked: false});
-      document.body.innerHTML = '<div class="game" tabindex="0"></div><input id="field">';
-      document.getElementById("field").focus();
-      expect(keybinding.onDown()).toBe(false);
-
-      document.querySelector(".game").focus();
-      globalThis.canvas.activeLayer.clipboard = {objects: [1]};
-      expect(keybinding.onDown()).toBe(false);
-      globalThis.canvas.activeLayer.clipboard = {objects: []};
-
-      const restoreImage = withMockImage();
-      window.navigator.clipboard.read.mockResolvedValueOnce([
-        {types: ["image/png"], getType: async () => new Blob(["x"], {type: "image/png"})},
-      ]);
-      expect(keybinding.onDown()).toBe(true);
-      await flush();
-      restoreImage();
+      expect(globalThis.Hooks.on).toHaveBeenCalledWith("renderChatInput", api._clipboardOnRenderChatInput);
+      expect(globalThis.game.keybindings.register).not.toHaveBeenCalled();
     });
 
     it("shows the ready notification for gms when direct clipboard reads are unavailable", () => {

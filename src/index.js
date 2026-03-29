@@ -24,29 +24,6 @@ Hooks.once("init", function() {
     clipboardReadAvailable: Boolean(navigator.clipboard?.read),
     sceneControls: constants.CLIPBOARD_IMAGE_SCENE_CONTROLS,
   });
-
-  if (navigator.clipboard?.read) {
-    game.keybindings.register("clipboard-image", "paste-image", {
-      name: "Paste Clipboard Content",
-      restricted: true,
-      uneditable: [
-        {key: "KeyV", modifiers: [constants.CLIPBOARD_IMAGE_KEYBOARD_MANAGER.MODIFIER_KEYS.CONTROL]},
-      ],
-      onDown: () => {
-        if (state._clipboardGetLocked()) return true;
-        const runtimeContext = context._clipboardResolvePasteContext();
-        if (!context._clipboardCanPasteToContext(runtimeContext)) return false;
-        if (workflows._clipboardHasPasteConflict()) return false;
-
-        void workflows._clipboardExecutePasteWorkflow(() => workflows._clipboardReadAndPasteClipboardContent(), {
-          respectCopiedObjects: false,
-        });
-
-        return true;
-      },
-      precedence: CONST.KEYBINDING_PRECEDENCE.PRIORITY,
-    });
-  }
 });
 
 Hooks.once("ready", function() {

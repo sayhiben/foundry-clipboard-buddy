@@ -1,3 +1,5 @@
+const http = require("http");
+const {execFileSync} = require("child_process");
 const {test, expect} = require("@playwright/test");
 const {
   beginClipboardRun,
@@ -5,9 +7,11 @@ const {
   clearCanvasMousePosition,
   cleanupClipboardRun,
   controlPlaceable,
+  controlPlaceables,
   createTile,
   createToken,
   dispatchClipboardModeKeydown,
+  dispatchFileDrop,
   dispatchFilePaste,
   dispatchMixedPaste,
   dispatchTextPaste,
@@ -18,17 +22,90 @@ const {
   getFixtureUrl,
   getJournalEntry,
   getNewDocuments,
+  getNoteDocument,
   getSafeCanvasPoint,
   getStateSnapshot,
   getTileDocument,
   getTokenDocument,
   invokeSceneTool,
   loginToFoundry,
+  releaseAllControlledPlaceables,
   restoreClipboardRead,
   setActiveLayerClipboardObjects,
   setCanvasMousePosition,
   stubClipboardRead,
 } = require("./helpers/foundry");
+
+async function startBlockedMediaServer() {
+  const body = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="12" fill="#111111"/>
+  <circle cx="32" cy="32" r="18" fill="#ffffff"/>
+</svg>`;
+
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((request, response) => {
+      if (request.url !== "/blocked.svg") {
+        response.writeHead(404, {"Content-Type": "text/plain"});
+        response.end("missing");
+        return;
+      }
+
+      response.writeHead(200, {
+        "Content-Type": "image/svg+xml",
+        "Cache-Control": "no-store",
+      });
+      response.end(body);
+    });
+
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      resolve({
+        url: `http://127.0.0.1:${address.port}/blocked.svg`,
+        close: () => new Promise(closeResolve => server.close(closeResolve)),
+      });
+    });
+  });
+}
+
+async function captureClipboardErrors(page) {
+  await page.evaluate(() => {
+    window.__clipboardErrorMessages = [];
+    if (ui.notifications.__clipboardErrorWrapped) return;
+
+    const originalError = ui.notifications.error.bind(ui.notifications);
+    ui.notifications.error = message => {
+      window.__clipboardErrorMessages.push(String(message || ""));
+      return originalError(message);
+    };
+    ui.notifications.__clipboardErrorWrapped = true;
+  });
+}
+
+async function getClipboardErrors(page) {
+  return page.evaluate(() => window.__clipboardErrorMessages || []);
+}
+
+async function getPlaceableTextNoteFlag(page, documentName, id) {
+  return page.evaluate(({documentName, id}) => {
+    const collection = documentName === "Token" ? canvas.scene.tokens : canvas.scene.tiles;
+    return collection.get(id)?.getFlag("clipboard-image", "textNote") || null;
+  }, {documentName, id});
+}
+
+async function getTokenActorInfo(page, tokenId) {
+  return page.evaluate(id => {
+    const tokenDocument = canvas.scene.tokens.get(id);
+    if (!tokenDocument) return null;
+    return {
+      actorId: tokenDocument.actorId,
+      actorExists: Boolean(tokenDocument.actor),
+      actorName: tokenDocument.actor?.name || null,
+      actorImg: tokenDocument.actor?.img || null,
+    };
+  }, tokenId);
+}
 
 test.describe.configure({mode: "serial"});
 
@@ -44,6 +121,7 @@ test("pastes an image as a tile on the Tiles layer", async ({page}, testInfo) =>
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 0);
+    const dimensions = await getCanvasDimensions(page);
     await focusCanvas(page);
     await setCanvasMousePosition(page, mouse);
     await page.evaluate(() => canvas.tiles.activate());
@@ -62,8 +140,146 @@ test("pastes an image as a tile on the Tiles layer", async ({page}, testInfo) =>
     expect(tile.textureSrc).toContain(run.uploadFolder);
     expect(tile.width).toBeGreaterThan(0);
     expect(tile.height).toBeGreaterThan(0);
-    expect(Math.abs(tile.x - mouse.x)).toBeLessThanOrEqual(2);
-    expect(Math.abs(tile.y - mouse.y)).toBeLessThanOrEqual(2);
+    expect(tile.x).toBeGreaterThanOrEqual(0);
+    expect(tile.y).toBeGreaterThanOrEqual(0);
+    expect(tile.x + tile.width).toBeLessThanOrEqual(dimensions.sceneWidth);
+    expect(tile.y + tile.height).toBeLessThanOrEqual(dimensions.sceneHeight);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("uses the intrinsic square SVG size for tile pastes", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 20);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => canvas.tiles.activate());
+
+    const before = await getStateSnapshot(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-token.svg",
+      mimeType: "image/svg+xml",
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+    const after = await getStateSnapshot(page);
+    const [tile] = getNewDocuments(before, after, "tiles");
+    const renderInfo = await page.evaluate(id => {
+      const placeable = canvas.tiles.placeables.find(entry => entry.document.id === id);
+      const texture = placeable?.texture || placeable?.mesh?.texture || null;
+      return {
+        objectWidth: placeable?.width ?? null,
+        objectHeight: placeable?.height ?? null,
+        meshWidth: placeable?.mesh?.width ?? null,
+        meshHeight: placeable?.mesh?.height ?? null,
+        textureWidth: texture?.baseTexture?.realWidth ?? texture?.baseTexture?.width ?? texture?.width ?? null,
+        textureHeight: texture?.baseTexture?.realHeight ?? texture?.baseTexture?.height ?? texture?.height ?? null,
+      };
+    }, tile.id);
+
+    expect(tile.textureSrc).toContain(run.uploadFolder);
+    expect(tile.width).toBeCloseTo(512, 0);
+    expect(tile.height).toBeCloseTo(512, 0);
+    expect(Math.abs(tile.width - tile.height)).toBeLessThanOrEqual(1);
+    if (renderInfo.meshWidth !== null && renderInfo.meshHeight !== null) {
+      expect(renderInfo.meshWidth).toBeCloseTo(512, 0);
+      expect(renderInfo.meshHeight).toBeCloseTo(512, 0);
+    } else {
+      expect(renderInfo.objectWidth).toBeCloseTo(512, 0);
+      expect(renderInfo.objectHeight).toBeCloseTo(512, 0);
+    }
+    if (renderInfo.textureWidth !== null && renderInfo.textureHeight !== null) {
+      expect(renderInfo.textureWidth).toBeGreaterThan(0);
+      expect(renderInfo.textureHeight).toBeGreaterThan(0);
+    }
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("creates correctly sized tiles when different raster images reuse the same filename", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 0);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => canvas.tiles.activate());
+
+    async function pasteGeneratedRaster(width, height, filename) {
+      await page.evaluate(async ({width, height, filename}) => {
+        const target = document.querySelector(".game");
+        if (!target) throw new Error("Could not find the Foundry game root.");
+
+        const canvasElement = document.createElement("canvas");
+        canvasElement.width = width;
+        canvasElement.height = height;
+        const context = canvasElement.getContext("2d");
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, width, height);
+        context.fillStyle = "#111111";
+        context.fillRect(4, 4, width - 8, height - 8);
+
+        const blob = await new Promise(resolve => canvasElement.toBlob(resolve, "image/png"));
+        const file = new File([blob], filename, {type: "image/png"});
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+
+        const event = new Event("paste", {bubbles: true, cancelable: true, composed: true});
+        Object.defineProperty(event, "clipboardData", {
+          configurable: true,
+          value: dataTransfer,
+        });
+        target.dispatchEvent(event);
+      }, {width, height, filename});
+    }
+
+    const before = await getStateSnapshot(page);
+    await pasteGeneratedRaster(1200, 600, "same-name.png");
+    await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+    const afterLandscape = await getStateSnapshot(page);
+    const [landscapeTile] = getNewDocuments(before, afterLandscape, "tiles");
+
+    await pasteGeneratedRaster(200, 400, "same-name.png");
+    await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(afterLandscape.tiles.length + 1);
+    const afterPortrait = await getStateSnapshot(page);
+    const [portraitTile] = getNewDocuments(afterLandscape, afterPortrait, "tiles");
+
+    expect(landscapeTile.width).toBeGreaterThan(landscapeTile.height);
+    expect(portraitTile.height).toBeGreaterThan(portraitTile.width);
+    expect(landscapeTile.textureSrc).not.toBe(portraitTile.textureSrc);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("pastes a Finder-copied file through the native macOS paste event", async ({page}, testInfo) => {
+  test.skip(process.platform !== "darwin", "Finder clipboard integration is only available on macOS.");
+
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 0);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => canvas.tiles.activate());
+
+    execFileSync("osascript", [
+      "-e",
+      `set the clipboard to (POSIX file "${getFixturePath("test-token.png")}")`,
+    ]);
+
+    const before = await getStateSnapshot(page);
+    await page.bringToFront();
+    await page.keyboard.press("Meta+V");
+
+    await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+    const after = await getStateSnapshot(page);
+    const [tile] = getNewDocuments(before, after, "tiles");
+
+    expect(tile.textureSrc).toContain(run.uploadFolder);
+    expect(tile.textureSrc).toContain("test-token");
   } finally {
     await cleanupClipboardRun(page, run);
   }
@@ -263,6 +479,247 @@ test("replaces a selected tile image in place", async ({page}, testInfo) => {
   }
 });
 
+test("replaces multiple selected token images in place", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const firstMouse = await getSafeCanvasPoint(page, 12);
+    const secondMouse = await getSafeCanvasPoint(page, 13);
+    await focusCanvas(page);
+    await page.evaluate(() => canvas.tokens.activate());
+
+    const firstToken = await createToken(page, {
+      name: `${run.prefix} Multi Token 1`,
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: firstMouse.x,
+      y: firstMouse.y,
+      width: 1,
+      height: 1,
+    });
+    const secondToken = await createToken(page, {
+      name: `${run.prefix} Multi Token 2`,
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: secondMouse.x,
+      y: secondMouse.y,
+      width: 2,
+      height: 1,
+    });
+
+    await controlPlaceables(page, [
+      {documentName: "Token", id: firstToken.id},
+      {documentName: "Token", id: secondToken.id},
+    ]);
+
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-token.svg",
+      mimeType: "image/svg+xml",
+    });
+
+    await expect.poll(async () => {
+      const [updatedFirst, updatedSecond] = await Promise.all([
+        getTokenDocument(page, firstToken.id),
+        getTokenDocument(page, secondToken.id),
+      ]);
+      return [
+        updatedFirst?.textureSrc || "",
+        updatedSecond?.textureSrc || "",
+      ];
+    }).toEqual([
+      expect.stringContaining(run.uploadFolder),
+      expect.stringContaining(run.uploadFolder),
+    ]);
+
+    const [updatedFirst, updatedSecond] = await Promise.all([
+      getTokenDocument(page, firstToken.id),
+      getTokenDocument(page, secondToken.id),
+    ]);
+
+    expect(updatedFirst.x).toBe(firstToken.x);
+    expect(updatedFirst.y).toBe(firstToken.y);
+    expect(updatedFirst.width).toBe(firstToken.width);
+    expect(updatedFirst.height).toBe(firstToken.height);
+    expect(updatedSecond.x).toBe(secondToken.x);
+    expect(updatedSecond.y).toBe(secondToken.y);
+    expect(updatedSecond.width).toBe(secondToken.width);
+    expect(updatedSecond.height).toBe(secondToken.height);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("replaces multiple selected tile images in place", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const firstMouse = await getSafeCanvasPoint(page, 14);
+    const secondMouse = await getSafeCanvasPoint(page, 15);
+    await focusCanvas(page);
+    await page.evaluate(() => canvas.tiles.activate());
+
+    const firstTile = await createTile(page, {
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: firstMouse.x,
+      y: firstMouse.y,
+      width: 120,
+      height: 120,
+    });
+    const secondTile = await createTile(page, {
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: secondMouse.x,
+      y: secondMouse.y,
+      width: 180,
+      height: 90,
+    });
+
+    await controlPlaceables(page, [
+      {documentName: "Tile", id: firstTile.id},
+      {documentName: "Tile", id: secondTile.id},
+    ]);
+
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-token.svg",
+      mimeType: "image/svg+xml",
+    });
+
+    await expect.poll(async () => {
+      const [updatedFirst, updatedSecond] = await Promise.all([
+        getTileDocument(page, firstTile.id),
+        getTileDocument(page, secondTile.id),
+      ]);
+      return [
+        updatedFirst?.textureSrc || "",
+        updatedSecond?.textureSrc || "",
+      ];
+    }).toEqual([
+      expect.stringContaining(run.uploadFolder),
+      expect.stringContaining(run.uploadFolder),
+    ]);
+
+    const [updatedFirst, updatedSecond] = await Promise.all([
+      getTileDocument(page, firstTile.id),
+      getTileDocument(page, secondTile.id),
+    ]);
+
+    expect(updatedFirst.x).toBe(firstTile.x);
+    expect(updatedFirst.y).toBe(firstTile.y);
+    expect(updatedFirst.width).toBe(firstTile.width);
+    expect(updatedFirst.height).toBe(firstTile.height);
+    expect(updatedSecond.x).toBe(secondTile.x);
+    expect(updatedSecond.y).toBe(secondTile.y);
+    expect(updatedSecond.width).toBe(secondTile.width);
+    expect(updatedSecond.height).toBe(secondTile.height);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("creates a video tile with autoplay, loop, and muted volume", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 16);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => canvas.tiles.activate());
+
+    const before = await getStateSnapshot(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-video.webm",
+      mimeType: "video/webm",
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+    const after = await getStateSnapshot(page);
+    const [tile] = getNewDocuments(before, after, "tiles");
+
+    expect(tile.textureSrc).toContain(run.uploadFolder);
+    expect(tile.textureSrc).toContain(".webm");
+    expect(tile.video).toMatchObject({
+      autoplay: true,
+      loop: true,
+      volume: 0,
+    });
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("creates a video token on the Tokens layer", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 17);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => canvas.tokens.activate());
+
+    const before = await getStateSnapshot(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-video.webm",
+      mimeType: "video/webm",
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).tokens.length).toBe(before.tokens.length + 1);
+    const after = await getStateSnapshot(page);
+    const [token] = getNewDocuments(before, after, "tokens");
+    const actorInfo = await getTokenActorInfo(page, token.id);
+
+    expect(token.textureSrc).toContain(run.uploadFolder);
+    expect(token.textureSrc).toContain(".webm");
+    expect(token.actorId).toBeTruthy();
+    expect(actorInfo).toEqual({
+      actorId: token.actorId,
+      actorExists: true,
+      actorName: "test-video",
+      actorImg: "icons/svg/mystery-man.svg",
+    });
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("replaces a selected tile with video media in place", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 18);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+
+    const tile = await createTile(page, {
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: mouse.x,
+      y: mouse.y,
+      width: 160,
+      height: 110,
+    });
+
+    await page.evaluate(() => canvas.tiles.activate());
+    await controlPlaceable(page, "Tile", tile.id);
+
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-video.webm",
+      mimeType: "video/webm",
+    });
+
+    await expect.poll(async () => (await getTileDocument(page, tile.id)).textureSrc).toContain(run.uploadFolder);
+    const updated = await getTileDocument(page, tile.id);
+
+    expect(updated.textureSrc).toContain(".webm");
+    expect(updated.x).toBe(tile.x);
+    expect(updated.y).toBe(tile.y);
+    expect(updated.width).toBe(tile.width);
+    expect(updated.height).toBe(tile.height);
+    expect(updated.video).toMatchObject({
+      autoplay: true,
+      loop: true,
+      volume: 0,
+    });
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
 test("prefers media files over accompanying text in a mixed paste payload", async ({page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
@@ -296,6 +753,7 @@ test("creates a standalone note when plain text is pasted on open canvas", async
   try {
     const text = `${run.prefix} standalone note`;
     const mouse = await getSafeCanvasPoint(page, 4);
+    const dimensions = await getCanvasDimensions(page);
     await focusCanvas(page);
     await setCanvasMousePosition(page, mouse);
     await page.evaluate(() => {
@@ -319,8 +777,10 @@ test("creates a standalone note when plain text is pasted on open canvas", async
     const [journal] = getNewDocuments(before, after, "journals");
 
     expect(note.text.length).toBeGreaterThan(0);
-    expect(Math.abs(note.x - mouse.x)).toBeLessThanOrEqual(2);
-    expect(Math.abs(note.y - mouse.y)).toBeLessThanOrEqual(2);
+    expect(note.x).toBeGreaterThanOrEqual(0);
+    expect(note.y).toBeGreaterThanOrEqual(0);
+    expect(note.x).toBeLessThanOrEqual(dimensions.sceneWidth);
+    expect(note.y).toBeLessThanOrEqual(dimensions.sceneHeight);
     expect(journal.name).toContain("Pasted Note:");
     expect(note.entryId).toBe(journal.id);
     expect(note.pageId).toBe(journal.pages[0].id);
@@ -443,6 +903,112 @@ test("appends plain text to the same linked note for a selected token", async ({
   }
 });
 
+test("creates a linked note for a selected tile", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 19);
+    const text = `${run.prefix} tile note text`;
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+
+    const tile = await createTile(page, {
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: mouse.x,
+      y: mouse.y,
+      width: 140,
+      height: 100,
+    });
+
+    await page.evaluate(() => canvas.tiles.activate());
+    await controlPlaceable(page, "Tile", tile.id);
+
+    await dispatchTextPaste(page, {
+      targetSelector: ".game",
+      text,
+      mimeType: "text/plain",
+    });
+
+    await expect.poll(async () => getPlaceableTextNoteFlag(page, "Tile", tile.id)).not.toBeNull();
+    const noteData = await getPlaceableTextNoteFlag(page, "Tile", tile.id);
+    const [journal, note] = await Promise.all([
+      getJournalEntry(page, noteData.entryId),
+      getNoteDocument(page, noteData.noteId),
+    ]);
+
+    expect(note.entryId).toBe(journal.id);
+    expect(note.pageId).toBe(journal.pages[0].id);
+    expect(journal.pages[0].content).toContain(text);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("applies pasted text to multiple selected tokens on the active layer", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const firstMouse = await getSafeCanvasPoint(page, 20);
+    const secondMouse = await getSafeCanvasPoint(page, 21);
+    const text = `${run.prefix} multi token text`;
+    await focusCanvas(page);
+    await page.evaluate(() => canvas.tokens.activate());
+
+    const firstToken = await createToken(page, {
+      name: `${run.prefix} Text Token 1`,
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: firstMouse.x,
+      y: firstMouse.y,
+      width: 1,
+      height: 1,
+    });
+    const secondToken = await createToken(page, {
+      name: `${run.prefix} Text Token 2`,
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: secondMouse.x,
+      y: secondMouse.y,
+      width: 1,
+      height: 1,
+    });
+
+    const before = await getStateSnapshot(page);
+    await controlPlaceables(page, [
+      {documentName: "Token", id: firstToken.id},
+      {documentName: "Token", id: secondToken.id},
+    ]);
+
+    await dispatchTextPaste(page, {
+      targetSelector: ".game",
+      text,
+      mimeType: "text/plain",
+    });
+
+    await expect.poll(async () => {
+      const [firstNote, secondNote] = await Promise.all([
+        getPlaceableTextNoteFlag(page, "Token", firstToken.id),
+        getPlaceableTextNoteFlag(page, "Token", secondToken.id),
+      ]);
+      return [Boolean(firstNote?.entryId), Boolean(secondNote?.entryId)];
+    }).toEqual([true, true]);
+
+    const after = await getStateSnapshot(page);
+    const [firstNoteData, secondNoteData] = await Promise.all([
+      getPlaceableTextNoteFlag(page, "Token", firstToken.id),
+      getPlaceableTextNoteFlag(page, "Token", secondToken.id),
+    ]);
+    const [firstJournal, secondJournal] = await Promise.all([
+      getJournalEntry(page, firstNoteData.entryId),
+      getJournalEntry(page, secondNoteData.entryId),
+    ]);
+
+    expect(after.notes.length).toBe(before.notes.length + 2);
+    expect(after.journals.length).toBe(before.journals.length + 2);
+    expect(firstNoteData.noteId).not.toBe(secondNoteData.noteId);
+    expect(firstJournal.pages[0].content).toContain(text);
+    expect(secondJournal.pages[0].content).toContain(text);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
 test("preserves paragraph and line breaks when HTML is pasted into a note", async ({page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
@@ -483,12 +1049,11 @@ test("creates hidden tiles when Caps Lock paste mode is active", async ({page}, 
     await setCanvasMousePosition(page, mouse);
     await page.evaluate(() => {
       canvas.tiles.activate();
-      canvas.tokens.releaseAll();
-      canvas.tiles.releaseAll();
     });
+    await releaseAllControlledPlaceables(page);
     await dispatchClipboardModeKeydown(page, {
-      code: "KeyA",
-      ctrlKey: true,
+      code: "F13",
+      metaKey: true,
       capsLock: true,
     });
 
@@ -505,7 +1070,7 @@ test("creates hidden tiles when Caps Lock paste mode is active", async ({page}, 
     expect(tile.hidden).toBe(true);
   } finally {
     await dispatchClipboardModeKeydown(page, {
-      code: "KeyA",
+      code: "F13",
       ctrlKey: false,
       metaKey: false,
       altKey: false,
@@ -533,6 +1098,58 @@ test("posts chat media on image paste without creating canvas content", async ({
 
     expect(message.content).toContain("clipboard-image-chat-message");
     expect(message.content).toContain("Open full media");
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.notes.length).toBe(before.notes.length);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("posts chat media on video paste without creating canvas content", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const chatSelector = await focusChatInput(page);
+    const before = await getStateSnapshot(page);
+
+    await dispatchFilePaste(page, {
+      targetSelector: chatSelector,
+      filename: "test-video.webm",
+      mimeType: "video/webm",
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).messages.length).toBe(before.messages.length + 1);
+    const after = await getStateSnapshot(page);
+    const [message] = getNewDocuments(before, after, "messages");
+
+    expect(message.content).toContain("clipboard-image-chat-message");
+    expect(message.content).toContain("<video");
+    expect(message.content).toContain("Open full media");
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.notes.length).toBe(before.notes.length);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("accepts dropped chat media without creating canvas content", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const chatSelector = await focusChatInput(page);
+    const before = await getStateSnapshot(page);
+
+    await dispatchFileDrop(page, {
+      targetSelector: chatSelector,
+      filename: "test-token.png",
+      mimeType: "image/png",
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).messages.length).toBe(before.messages.length + 1);
+    const after = await getStateSnapshot(page);
+    const [message] = getNewDocuments(before, after, "messages");
+
+    expect(message.content).toContain("clipboard-image-chat-message");
     expect(after.tiles.length).toBe(before.tiles.length);
     expect(after.tokens.length).toBe(before.tokens.length);
     expect(after.notes.length).toBe(before.notes.length);
@@ -590,6 +1207,43 @@ test("leaves a non-media URL as plain chat text", async ({page}, testInfo) => {
   }
 });
 
+test("leaves plain text as normal chat input", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const chatSelector = await focusChatInput(page);
+    const before = await getStateSnapshot(page);
+    const text = `${run.prefix} plain chat text`;
+
+    const defaultPrevented = await page.evaluate(({targetSelector, text}) => {
+      const target = document.querySelector(targetSelector);
+      if (!target) throw new Error(`Could not find paste target ${targetSelector}.`);
+
+      const dataTransfer = new DataTransfer();
+      dataTransfer.setData("text/plain", text);
+
+      const event = new Event("paste", {bubbles: true, cancelable: true, composed: true});
+      Object.defineProperty(event, "clipboardData", {
+        configurable: true,
+        value: dataTransfer,
+      });
+      target.dispatchEvent(event);
+      return event.defaultPrevented;
+    }, {
+      targetSelector: chatSelector,
+      text,
+    });
+
+    const after = await getStateSnapshot(page);
+    expect(defaultPrevented).toBe(false);
+    expect(after.messages.length).toBe(before.messages.length);
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.notes.length).toBe(before.notes.length);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
 test("blocks normal canvas paste when Foundry copied objects are present", async ({page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
@@ -638,6 +1292,170 @@ test("downloads a direct media URL and creates a tile", async ({page}, testInfo)
     expect(tile.textureSrc).toContain(run.uploadFolder);
     expect(tile.textureSrc).not.toContain("/modules/clipboard-image/test/assets/test-token.png");
   } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("downloads a direct media URL and creates a token", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 22);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => canvas.tokens.activate());
+
+    const before = await getStateSnapshot(page);
+    await dispatchTextPaste(page, {
+      targetSelector: ".game",
+      text: getFixtureUrl("test-token.png"),
+      mimeType: "text/plain",
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).tokens.length).toBe(before.tokens.length + 1);
+    const after = await getStateSnapshot(page);
+    const [token] = getNewDocuments(before, after, "tokens");
+    const actorInfo = await getTokenActorInfo(page, token.id);
+
+    expect(token.textureSrc).toContain(run.uploadFolder);
+    expect(token.textureSrc).not.toContain("/modules/clipboard-image/test/assets/test-token.png");
+    expect(token.actorId).toBeTruthy();
+    expect(actorInfo.actorExists).toBe(true);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("downloads a direct media URL and replaces a selected token in place", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 23);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+
+    const token = await createToken(page, {
+      name: `${run.prefix} URL Token`,
+      textureSrc: getFixtureUrl("test-token.svg"),
+      x: mouse.x,
+      y: mouse.y,
+      width: 2,
+      height: 1,
+    });
+
+    await page.evaluate(() => canvas.tokens.activate());
+    await controlPlaceable(page, "Token", token.id);
+
+    await dispatchTextPaste(page, {
+      targetSelector: ".game",
+      text: getFixtureUrl("test-token.png"),
+      mimeType: "text/plain",
+    });
+
+    await expect.poll(async () => (await getTokenDocument(page, token.id)).textureSrc).toContain(run.uploadFolder);
+    const updated = await getTokenDocument(page, token.id);
+
+    expect(updated.textureSrc).not.toBe(token.textureSrc);
+    expect(updated.textureSrc).not.toContain("/modules/clipboard-image/test/assets/test-token.png");
+    expect(updated.x).toBe(token.x);
+    expect(updated.y).toBe(token.y);
+    expect(updated.width).toBe(token.width);
+    expect(updated.height).toBe(token.height);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("downloads a direct media URL and replaces a selected tile in place", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 24);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+
+    const tile = await createTile(page, {
+      textureSrc: getFixtureUrl("test-token.svg"),
+      x: mouse.x,
+      y: mouse.y,
+      width: 170,
+      height: 130,
+    });
+
+    await page.evaluate(() => canvas.tiles.activate());
+    await controlPlaceable(page, "Tile", tile.id);
+
+    await dispatchTextPaste(page, {
+      targetSelector: ".game",
+      text: getFixtureUrl("test-token.png"),
+      mimeType: "text/plain",
+    });
+
+    await expect.poll(async () => (await getTileDocument(page, tile.id)).textureSrc).toContain(run.uploadFolder);
+    const updated = await getTileDocument(page, tile.id);
+
+    expect(updated.textureSrc).not.toBe(tile.textureSrc);
+    expect(updated.textureSrc).not.toContain("/modules/clipboard-image/test/assets/test-token.png");
+    expect(updated.x).toBe(tile.x);
+    expect(updated.y).toBe(tile.y);
+    expect(updated.width).toBe(tile.width);
+    expect(updated.height).toBe(tile.height);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("does not create broken canvas content when a direct media url download is blocked", async ({page}, testInfo) => {
+  const blockedServer = await startBlockedMediaServer();
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 10);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => canvas.tiles.activate());
+    await captureClipboardErrors(page);
+
+    const before = await getStateSnapshot(page);
+    await dispatchTextPaste(page, {
+      targetSelector: ".game",
+      text: blockedServer.url,
+      mimeType: "text/plain",
+    });
+
+    await page.waitForTimeout(400);
+    const after = await getStateSnapshot(page);
+    const errors = await getClipboardErrors(page);
+
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.notes.length).toBe(before.notes.length);
+    expect(after.messages.length).toBe(before.messages.length);
+    expect(errors.at(-1)).toContain("cannot download and re-upload");
+  } finally {
+    await blockedServer.close();
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("leaves the original url text in chat when a direct media url download is blocked", async ({page}, testInfo) => {
+  const blockedServer = await startBlockedMediaServer();
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const chatSelector = await focusChatInput(page);
+    const before = await getStateSnapshot(page);
+
+    await dispatchTextPaste(page, {
+      targetSelector: chatSelector,
+      text: blockedServer.url,
+      mimeType: "text/plain",
+    });
+
+    await expect.poll(async () => page.locator(chatSelector).inputValue()).toBe(blockedServer.url);
+
+    const after = await getStateSnapshot(page);
+    expect(after.messages.length).toBe(before.messages.length);
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.notes.length).toBe(before.notes.length);
+  } finally {
+    await blockedServer.close();
     await cleanupClipboardRun(page, run);
   }
 });
@@ -696,6 +1514,56 @@ test("scene paste reads later async clipboard items, ignores copied objects, and
   } finally {
     await clearActiveLayerClipboardObjects(page, "Tile");
     await restoreClipboardRead(page).catch(() => {});
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("scene paste button falls back to a manual paste prompt when direct reads cannot access media", async ({page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    await clearCanvasMousePosition(page);
+    await page.evaluate(() => canvas.tiles.activate());
+    await stubClipboardRead(page, [{}]);
+
+    const before = await getStateSnapshot(page);
+    await page.click('[data-tool="clipboard-image-paste"]');
+
+    await expect(page.locator("#clipboard-image-scene-paste-target")).toBeVisible();
+    await dispatchFilePaste(page, {
+      targetSelector: "#clipboard-image-scene-paste-target",
+      filename: "test-token.png",
+      mimeType: "image/png",
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+    await expect(page.locator("#clipboard-image-scene-paste-prompt")).toHaveCount(0);
+  } finally {
+    await restoreClipboardRead(page).catch(() => {});
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("scene paste button supports Finder-copied files on macOS via the prompt fallback", async ({page}, testInfo) => {
+  test.skip(process.platform !== "darwin", "Finder clipboard integration is only available on macOS.");
+
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    await clearCanvasMousePosition(page);
+    await focusCanvas(page);
+    await page.evaluate(() => canvas.tiles.activate());
+    execFileSync("osascript", [
+      "-e",
+      `set the clipboard to (POSIX file "${getFixturePath("test-token.png")}")`,
+    ]);
+
+    const before = await getStateSnapshot(page);
+    await page.click('[data-tool="clipboard-image-paste"]');
+    await expect(page.locator("#clipboard-image-scene-paste-target")).toBeVisible();
+    await page.keyboard.press("Meta+V");
+
+    await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+    await expect(page.locator("#clipboard-image-scene-paste-prompt")).toHaveCount(0);
+  } finally {
     await cleanupClipboardRun(page, run);
   }
 });

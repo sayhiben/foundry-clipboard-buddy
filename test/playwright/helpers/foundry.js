@@ -172,11 +172,7 @@ async function beginClipboardRun(page, testInfo, options = {}) {
     };
   }, {moduleId: MODULE_ID, uploadFolder, source, bucket, verboseLogging});
 
-  await page.evaluate(() => {
-    canvas.tokens?.releaseAll?.();
-    canvas.tiles?.releaseAll?.();
-    canvas.notes?.releaseAll?.();
-  });
+  await releaseAllControlledPlaceables(page);
 
   return {
     runId,
@@ -192,10 +188,6 @@ async function cleanupClipboardRun(page, run) {
   if (!run) return;
 
   await page.evaluate(async ({moduleId, run}) => {
-    canvas.tokens?.releaseAll?.();
-    canvas.tiles?.releaseAll?.();
-    canvas.notes?.releaseAll?.();
-
     const messageIds = game.messages.contents
       .filter(message => (message.content || "").includes(run.uploadFolder) || (message.content || "").includes(run.prefix))
       .map(message => message.id);
@@ -250,6 +242,8 @@ async function cleanupClipboardRun(page, run) {
     await game.settings.set(moduleId, "image-location-bucket", run.previousSettings.bucket);
     await game.settings.set(moduleId, "verbose-logging", run.previousSettings.verboseLogging);
   }, {moduleId: MODULE_ID, run});
+
+  await releaseAllControlledPlaceables(page);
 }
 
 async function focusCanvas(page) {
@@ -260,6 +254,29 @@ async function focusCanvas(page) {
     root.focus({preventScroll: true});
   });
   await page.waitForFunction(() => document.activeElement === document.querySelector(".game"));
+}
+
+async function releaseAllControlledPlaceables(page) {
+  await page.evaluate(() => {
+    const layers = [canvas.tokens, canvas.tiles, canvas.notes].filter(Boolean);
+    for (const layer of layers) {
+      layer.releaseAll?.();
+      for (const placeable of layer.placeables || []) {
+        if (placeable.controlled) {
+          placeable.release?.();
+        }
+      }
+    }
+  });
+
+  await expect.poll(() => page.evaluate(() => ({
+    tokens: canvas.tokens?.controlled?.length || 0,
+    tiles: canvas.tiles?.controlled?.length || 0,
+    notes: canvas.notes?.controlled?.length || 0,
+  })), {
+    timeout: 5_000,
+    message: "Expected all controlled placeables to be released before continuing",
+  }).toEqual({tokens: 0, tiles: 0, notes: 0});
 }
 
 async function focusChatInput(page) {
@@ -441,11 +458,12 @@ async function invokeSceneTool(page, controlName, toolName) {
       ? control.tools
       : Object.values(control.tools || {});
     const tool = tools.find(entry => entry.name === toolName);
-    if (!tool?.onChange) {
+    const handler = tool?.onClick || tool?.onChange;
+    if (!handler) {
       throw new Error(`Could not find tool ${toolName} on control ${controlName}.`);
     }
 
-    tool.onChange(true);
+    handler(true);
   }, {controlName, toolName});
 }
 
@@ -469,6 +487,27 @@ async function dispatchFilePaste(page, {targetSelector, filename, mimeType}) {
       value: dataTransfer,
     });
     target.dispatchEvent(event);
+  }, {targetSelector, bytes, filename, mimeType});
+}
+
+async function dispatchFileDrop(page, {targetSelector, filename, mimeType}) {
+  const bytes = await readFixtureBytes(filename);
+  await page.evaluate(({targetSelector, bytes, filename, mimeType}) => {
+    const target = document.querySelector(targetSelector);
+    if (!target) throw new Error(`Could not find drop target ${targetSelector}.`);
+
+    const file = new File([new Uint8Array(bytes)], filename, {type: mimeType});
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+
+    for (const eventName of ["dragover", "drop"]) {
+      const event = new Event(eventName, {bubbles: true, cancelable: true, composed: true});
+      Object.defineProperty(event, "dataTransfer", {
+        configurable: true,
+        value: dataTransfer,
+      });
+      target.dispatchEvent(event);
+    }
   }, {targetSelector, bytes, filename, mimeType});
 }
 
@@ -735,6 +774,7 @@ module.exports = {
   createTile,
   createToken,
   dispatchClipboardModeKeydown,
+  dispatchFileDrop,
   dispatchFilePaste,
   dispatchMixedPaste,
   dispatchTextPaste,
@@ -753,6 +793,7 @@ module.exports = {
   invokeSceneTool,
   loginToFoundry,
   restoreClipboardRead,
+  releaseAllControlledPlaceables,
   setActiveLayerClipboardObjects,
   setCanvasMousePosition,
   stubClipboardRead,

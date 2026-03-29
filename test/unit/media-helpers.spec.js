@@ -120,14 +120,18 @@ describe("media helpers", () => {
     });
 
     it("creates upload files from blobs when necessary", () => {
-      const uploadFile = api._clipboardCreateUploadFile(new Blob(["x"], {type: "image/png"}));
+      const uploadFile = api._clipboardCreateUploadFile(new Blob(["x"], {type: "image/png"}), 123);
       expect(uploadFile).toBeInstanceOf(File);
-      expect(uploadFile.name).toMatch(/^pasted_image_\d+\.png$/);
+      expect(uploadFile.name).toBe("pasted_image-123.png");
     });
 
-    it("keeps existing File objects during upload creation", () => {
+    it("versions existing File objects during upload creation", () => {
       const file = new File(["x"], "portrait.JPG", {type: "image/jpeg"});
-      expect(api._clipboardCreateUploadFile(file)).toBe(file);
+      const uploadFile = api._clipboardCreateUploadFile(file, 456);
+      expect(uploadFile).toBeInstanceOf(File);
+      expect(uploadFile).not.toBe(file);
+      expect(uploadFile.name).toBe("portrait-456.JPG");
+      expect(uploadFile.type).toBe("image/jpeg");
     });
 
     it("reads copied-object state from the active layer", () => {
@@ -164,6 +168,118 @@ describe("media helpers", () => {
       expect(api._clipboardScaleTokenDimensions(400, 200)).toEqual({width: 2, height: 1});
       expect(api._clipboardScaleTokenDimensions(200, 400)).toEqual({width: 1, height: 2});
       expect(api._clipboardScaleTokenDimensions(0, 0)).toEqual({width: 1, height: 1});
+    });
+
+    it("parses SVG intrinsic dimensions from width/height or viewBox", async () => {
+      expect(api._clipboardParseSvgLength("512")).toBe(512);
+      expect(api._clipboardParseSvgLength("512px")).toBe(512);
+      expect(api._clipboardParseSvgLength("100%")).toBeNull();
+      expect(api._clipboardGetSvgElementFromText('<svg viewBox="0 0 1 1"></svg>')?.nodeName).toBe("svg");
+      expect(api._clipboardGetSvgIntrinsicDimensionsFromText(
+        '<svg width="200" height="400" viewBox="0 0 200 400"></svg>'
+      )).toEqual({width: 200, height: 400});
+      expect(api._clipboardGetSvgIntrinsicDimensionsFromText(
+        '<svg width="256" viewBox="0 0 512 256"></svg>'
+      )).toEqual({width: 256, height: 128});
+      expect(api._clipboardGetSvgIntrinsicDimensionsFromText(
+        '<svg height="300" viewBox="0 0 150 300"></svg>'
+      )).toEqual({width: 150, height: 300});
+      expect(api._clipboardGetSvgIntrinsicDimensionsFromText(
+        '<svg viewBox="0 0 512 512"></svg>'
+      )).toEqual({width: 512, height: 512});
+      expect(await api._clipboardGetPreferredMediaDimensions(
+        new File(['<svg viewBox="0 0 512 512"></svg>'], "test-token.svg", {type: "image/svg+xml"})
+      )).toEqual({width: 512, height: 512});
+
+      const blob = new Blob(['<svg viewBox="0 0 512 512"></svg>'], {type: "image/svg+xml"});
+      blob.name = "fallback.svg";
+      blob.text = undefined;
+      expect(await api._clipboardGetPreferredMediaDimensions(blob)).toEqual({width: 512, height: 512});
+    });
+
+    it("normalizes uploaded SVG blobs to include explicit dimensions", async () => {
+      const normalized = await api._clipboardNormalizeSvgBlobForUpload(
+        new File(['<svg style="width: 512px; height: 512px;" viewBox="0 0 512 512"></svg>'], "test-token.svg", {
+          type: "image/svg+xml",
+        }),
+        {width: 512, height: 512}
+      );
+
+      expect(normalized).toBeInstanceOf(File);
+      expect(normalized.name).toBe("test-token.svg");
+      await expect(api._clipboardReadBlobText(normalized)).resolves.toContain('width="512"');
+      await expect(api._clipboardReadBlobText(normalized)).resolves.toContain('height="512"');
+    });
+
+    it("leaves already explicit SVG blobs unchanged during upload normalization", async () => {
+      const file = new File(['<svg width="200" height="400" viewBox="0 0 200 400"></svg>'], "portrait.svg", {
+        type: "image/svg+xml",
+      });
+      await expect(api._clipboardNormalizeSvgBlobForUpload(file, {width: 200, height: 400})).resolves.toBe(file);
+    });
+
+    it("returns null for unsupported or invalid SVG metadata", async () => {
+      expect(api._clipboardParseSvgLength("0")).toBeNull();
+      expect(api._clipboardParseSvgLength("12em")).toBeNull();
+
+      const invalidViewBoxSvg = new DOMParser().parseFromString(
+        '<svg viewBox="0 0 nope 512"></svg>',
+        "image/svg+xml"
+      ).documentElement;
+      expect(api._clipboardGetSvgViewBoxDimensions(invalidViewBoxSvg)).toBeNull();
+      expect(api._clipboardGetSvgIntrinsicDimensionsFromText('<svg width="100%"></svg>')).toBeNull();
+      expect(api._clipboardGetSvgIntrinsicDimensionsFromText("")).toBeNull();
+
+      await expect(api._clipboardGetPreferredMediaDimensions(
+        new File(["plain text"], "notes.txt", {type: "text/plain"})
+      )).resolves.toBeNull();
+      await expect(api._clipboardGetPreferredMediaDimensions(
+        new File(["raster"], "image.png", {type: "image/png"})
+      )).resolves.toBeNull();
+      await expect(api._clipboardGetPreferredMediaDimensions(
+        new File(["<svg></svg>"], "broken.svg", {type: "image/svg+xml"})
+      )).resolves.toBeNull();
+      await expect(api._clipboardNormalizeSvgBlobForUpload(
+        new File(["<svg></svg>"], "broken.svg", {type: "image/svg+xml"})
+      )).resolves.toBeInstanceOf(File);
+    });
+
+    it("rejects when the SVG FileReader fallback cannot read the blob", async () => {
+      const OriginalFileReader = globalThis.FileReader;
+      globalThis.FileReader = class {
+        constructor() {
+          this.error = new Error("reader failed");
+        }
+
+        readAsText() {
+          this.onerror();
+        }
+      };
+
+      const blob = new Blob(['<svg viewBox="0 0 512 512"></svg>'], {type: "image/svg+xml"});
+      blob.name = "broken.svg";
+      blob.text = undefined;
+
+      await expect(api._clipboardGetPreferredMediaDimensions(blob)).rejects.toThrow("reader failed");
+      globalThis.FileReader = OriginalFileReader;
+    });
+
+    it("loads image dimensions when decode is unavailable", async () => {
+      const OriginalImage = globalThis.Image;
+      globalThis.Image = class {
+        constructor() {
+          this.width = 320;
+          this.height = 180;
+        }
+
+        set src(value) {
+          this._src = value;
+          queueMicrotask(() => this.onload?.());
+        }
+      };
+
+      await expect(api._clipboardLoadImageDimensions("nodecode.png")).resolves.toEqual({width: 320, height: 180});
+      globalThis.Image = OriginalImage;
     });
 
     it("snaps token positions through the grid helper", () => {

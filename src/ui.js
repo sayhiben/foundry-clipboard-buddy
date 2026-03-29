@@ -3,6 +3,7 @@ const {
   CLIPBOARD_IMAGE_TOOL_PASTE,
   CLIPBOARD_IMAGE_TOOL_UPLOAD,
   CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION,
+  CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS,
 } = require("./constants");
 const {CLIPBOARD_IMAGE_BOUND_CHAT_ROOTS, _clipboardSetHiddenMode} = require("./state");
 const {
@@ -10,14 +11,17 @@ const {
   _clipboardDescribeImageInput,
   _clipboardDescribePasteContext,
   _clipboardLog,
+  _clipboardSerializeError,
 } = require("./diagnostics");
 const {
   _clipboardExtractImageBlobFromDataTransfer,
+  _clipboardExtractImageInput,
   _clipboardExtractImageInputFromDataTransfer,
   _clipboardExtractTextInputFromDataTransfer,
   _clipboardGetChatRootFromTarget,
   _clipboardIsEditableTarget,
   _clipboardInsertTextAtTarget,
+  _clipboardReadClipboardItems,
 } = require("./clipboard");
 const {
   _clipboardResolvePasteContext,
@@ -25,15 +29,17 @@ const {
 } = require("./context");
 const {
   _clipboardExecutePasteWorkflow,
+  _clipboardHandleImageInput,
   _clipboardHandleChatImageInput,
   _clipboardHandleImageInputWithTextFallback,
   _clipboardHandleTextInput,
-  _clipboardReadAndPasteClipboardContent,
   _clipboardHasPasteConflict,
-  _clipboardHandleScenePasteAction,
   _clipboardHandleSceneUploadAction,
   _clipboardHandleChatUploadAction,
 } = require("./workflows");
+
+const CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_ID = "clipboard-image-scene-paste-prompt";
+const CLIPBOARD_IMAGE_SCENE_PASTE_TARGET_ID = "clipboard-image-scene-paste-target";
 
 function _clipboardAddSceneControlButtons(controls) {
   for (const controlName of CLIPBOARD_IMAGE_SCENE_CONTROLS) {
@@ -41,6 +47,8 @@ function _clipboardAddSceneControlButtons(controls) {
     if (!control?.tools) continue;
 
     const order = Object.keys(control.tools).length;
+    const onPasteClick = () => _clipboardHandleScenePasteToolClick();
+    const onUploadClick = () => _clipboardHandleSceneUploadAction();
     control.tools[CLIPBOARD_IMAGE_TOOL_PASTE] = {
       name: CLIPBOARD_IMAGE_TOOL_PASTE,
       title: "Paste Media",
@@ -48,7 +56,8 @@ function _clipboardAddSceneControlButtons(controls) {
       order,
       button: true,
       visible: game.user.isGM,
-      onChange: () => _clipboardHandleScenePasteAction(),
+      onClick: onPasteClick,
+      onChange: onPasteClick,
     };
     control.tools[CLIPBOARD_IMAGE_TOOL_UPLOAD] = {
       name: CLIPBOARD_IMAGE_TOOL_UPLOAD,
@@ -57,9 +66,164 @@ function _clipboardAddSceneControlButtons(controls) {
       order: order + 1,
       button: true,
       visible: game.user.isGM,
-      onChange: () => _clipboardHandleSceneUploadAction(),
+      onClick: onUploadClick,
+      onChange: onUploadClick,
     };
   }
+}
+
+function _clipboardGetScenePastePrompt() {
+  return document.getElementById(CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_ID);
+}
+
+function _clipboardScenePastePromptIsOpen(prompt = _clipboardGetScenePastePrompt()) {
+  return Boolean(prompt?.isConnected);
+}
+
+function _clipboardSetScenePastePromptMessage(prompt, message) {
+  const messageElement = prompt?.querySelector?.("[data-role='message']");
+  if (messageElement) {
+    messageElement.textContent = message;
+  }
+}
+
+function _clipboardCloseScenePastePrompt(prompt = _clipboardGetScenePastePrompt()) {
+  prompt?.remove?.();
+}
+
+function _clipboardFocusScenePastePrompt(prompt = _clipboardGetScenePastePrompt()) {
+  const target = prompt?.querySelector?.(`#${CLIPBOARD_IMAGE_SCENE_PASTE_TARGET_ID}`);
+  if (!target) return;
+
+  target.focus({preventScroll: true});
+  target.select?.();
+}
+
+function _clipboardGetScenePastePromptFallbackMessage(clipItems) {
+  if (clipItems?.length && clipItems.every(item => !item?.types?.length)) {
+    return "This clipboard content is not exposed to direct clipboard reads here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media.";
+  }
+
+  return "Direct clipboard read did not return usable media. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media.";
+}
+
+async function _clipboardOnScenePastePromptPaste(event) {
+  const prompt = event.currentTarget?.closest?.(`#${CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_ID}`);
+  const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
+  if (!imageInput) {
+    ui.notifications.warn("Clipboard Image: No supported media was found in that paste.");
+    _clipboardSetScenePastePromptMessage(prompt, "No supported media was found in that paste. Try again, or use Upload Media.");
+    return;
+  }
+
+  _clipboardConsumePasteEvent(event);
+  const handled = await _clipboardExecutePasteWorkflow(() => _clipboardHandleImageInput(imageInput, {
+    contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS,
+  }), {
+    respectCopiedObjects: false,
+  });
+
+  if (handled) {
+    _clipboardCloseScenePastePrompt(prompt);
+    return;
+  }
+
+  _clipboardSetScenePastePromptMessage(prompt, "Paste did not create media. Try again, or use Upload Media.");
+  _clipboardFocusScenePastePrompt(prompt);
+}
+
+function _clipboardOpenScenePastePrompt() {
+  const existingPrompt = _clipboardGetScenePastePrompt();
+  if (existingPrompt) {
+    _clipboardFocusScenePastePrompt(existingPrompt);
+    return existingPrompt;
+  }
+
+  const prompt = document.createElement("div");
+  prompt.id = CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_ID;
+  prompt.className = "clipboard-image-scene-paste-prompt";
+  prompt.innerHTML = `
+    <div class="clipboard-image-scene-paste-panel" role="dialog" aria-modal="true" aria-labelledby="clipboard-image-scene-paste-title">
+      <h2 id="clipboard-image-scene-paste-title">Paste Media</h2>
+      <p data-role="message">Trying direct clipboard read. If nothing happens, press Cmd+V / Ctrl+V in the field below.</p>
+      <textarea
+        id="${CLIPBOARD_IMAGE_SCENE_PASTE_TARGET_ID}"
+        class="clipboard-image-scene-paste-target"
+        rows="4"
+        placeholder="Press Cmd+V / Ctrl+V here if direct clipboard read does not complete."
+      ></textarea>
+      <div class="clipboard-image-scene-paste-actions">
+        <button type="button" data-action="upload">Upload Media</button>
+        <button type="button" data-action="cancel">Cancel</button>
+      </div>
+    </div>
+  `;
+
+  const target = prompt.querySelector(`#${CLIPBOARD_IMAGE_SCENE_PASTE_TARGET_ID}`);
+  const uploadButton = prompt.querySelector('[data-action="upload"]');
+  const cancelButton = prompt.querySelector('[data-action="cancel"]');
+
+  target?.addEventListener("paste", _clipboardOnScenePastePromptPaste, {capture: true});
+  uploadButton?.addEventListener("click", () => {
+    _clipboardCloseScenePastePrompt(prompt);
+    _clipboardHandleSceneUploadAction();
+  });
+  cancelButton?.addEventListener("click", () => _clipboardCloseScenePastePrompt(prompt));
+  prompt.addEventListener("click", event => {
+    if (event.target === prompt) _clipboardCloseScenePastePrompt(prompt);
+  });
+
+  document.body.append(prompt);
+  _clipboardFocusScenePastePrompt(prompt);
+  _clipboardLog("info", "Opened scene paste prompt fallback.");
+  return prompt;
+}
+
+async function _clipboardTryScenePastePromptDirectRead(prompt) {
+  if (!navigator.clipboard?.read) {
+    _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard reads are unavailable here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media.");
+    return false;
+  }
+
+  const clipItems = await _clipboardReadClipboardItems();
+  if (!_clipboardScenePastePromptIsOpen(prompt)) return false;
+
+  if (!clipItems?.length) {
+    _clipboardSetScenePastePromptMessage(prompt, _clipboardGetScenePastePromptFallbackMessage(clipItems));
+    _clipboardFocusScenePastePrompt(prompt);
+    return false;
+  }
+
+  const imageInput = await _clipboardExtractImageInput(clipItems);
+  if (!_clipboardScenePastePromptIsOpen(prompt)) return false;
+
+  if (!imageInput) {
+    _clipboardSetScenePastePromptMessage(prompt, _clipboardGetScenePastePromptFallbackMessage(clipItems));
+    _clipboardFocusScenePastePrompt(prompt);
+    return false;
+  }
+
+  const handled = await _clipboardExecutePasteWorkflow(() => _clipboardHandleImageInput(imageInput, {
+    contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS,
+  }), {
+    respectCopiedObjects: false,
+  });
+
+  if (handled) {
+    _clipboardCloseScenePastePrompt(prompt);
+    return true;
+  }
+
+  if (_clipboardScenePastePromptIsOpen(prompt)) {
+    _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create media. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media.");
+    _clipboardFocusScenePastePrompt(prompt);
+  }
+  return false;
+}
+
+function _clipboardHandleScenePasteToolClick() {
+  const prompt = _clipboardOpenScenePastePrompt();
+  void _clipboardTryScenePastePromptDirectRead(prompt);
 }
 
 function _clipboardToggleChatDropTarget(root, active) {
@@ -140,7 +304,13 @@ async function _clipboardHandleChatImageInputWithTextFallback(imageInput, target
   try {
     return await _clipboardHandleChatImageInput(imageInput);
   } catch (error) {
-    if (imageInput?.url && _clipboardInsertTextAtTarget(target, imageInput.text || imageInput.url)) return false;
+    if (imageInput?.url && _clipboardInsertTextAtTarget(target, imageInput.text || imageInput.url)) {
+      _clipboardLog("info", "Inserted the original URL into chat after media handling failed", {
+        imageInput: _clipboardDescribeImageInput(imageInput),
+        error: _clipboardSerializeError(error),
+      });
+      return false;
+    }
     throw error;
   }
 }
@@ -215,23 +385,20 @@ function _clipboardOnKeydown(event) {
     });
   }
   _clipboardSetHiddenMode(hiddenMode);
-
-  if (event.defaultPrevented || event.repeat) return;
-  if (event.code !== "KeyV" || !event.metaKey || event.ctrlKey || event.altKey) return;
-  if (!navigator.clipboard?.read) return;
-
-  const context = _clipboardResolvePasteContext();
-  if (!_clipboardCanPasteToContext(context)) return;
-  if (_clipboardHasPasteConflict()) return;
-
-  event.preventDefault();
-  void _clipboardExecutePasteWorkflow(() => _clipboardReadAndPasteClipboardContent(), {
-    respectCopiedObjects: false,
-  });
 }
 
 module.exports = {
   _clipboardAddSceneControlButtons,
+  _clipboardGetScenePastePrompt,
+  _clipboardScenePastePromptIsOpen,
+  _clipboardSetScenePastePromptMessage,
+  _clipboardCloseScenePastePrompt,
+  _clipboardFocusScenePastePrompt,
+  _clipboardGetScenePastePromptFallbackMessage,
+  _clipboardOnScenePastePromptPaste,
+  _clipboardOpenScenePastePrompt,
+  _clipboardTryScenePastePromptDirectRead,
+  _clipboardHandleScenePasteToolClick,
   _clipboardToggleChatDropTarget,
   _clipboardOnChatDragOver,
   _clipboardOnChatDragLeave,

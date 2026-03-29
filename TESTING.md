@@ -8,12 +8,13 @@ This repository also ships a Playwright smoke suite under [test/README.md](./tes
 
 The automated suite is intended to cover stable browser-driven workflows such as:
 - Canvas image paste into tiles and tokens
-- Selected token and tile replacement
+- Selected token and tile replacement, including multi-selection updates
+- Canvas video paste and selected tile video replacement
 - Mixed media-and-text clipboard payloads
-- Contextual text note creation and append
-- Chat image paste and upload
+- Contextual text note creation, append, tile-linked notes, and multi-placeable text paste
+- Chat image and video paste, drag/drop, and upload
 - Chat non-media URL fallback
-- Direct media URL paste
+- Direct media URL creation and replacement
 - HTML media URL extraction, hidden-mode paste, scene-control fallbacks, and copied-object priority
 
 Keep the manual checklist for:
@@ -116,7 +117,7 @@ These flows should stay true across the test matrix:
 3. Paste a direct media URL that resolves to video.
    Expected: it follows the same create or replace rules as uploaded video media.
 4. Paste a remote URL from a host that blocks browser-side downloads.
-   Expected: the module reports the failure cleanly and does not create broken scene content.
+   Expected: canvas paste warns and does not create broken scene content; chat paste does not create an empty media message and instead leaves the original URL text in the chat input.
 
 ### 5. Contextual Plain-Text Notes
 
@@ -147,9 +148,11 @@ These flows should stay true across the test matrix:
    Expected: chat posts an inline video preview with an `Open full media` link.
 4. Paste a direct media URL into chat.
    Expected: the remote file is downloaded, uploaded, and posted as chat media.
-5. Drag and drop image or video media onto the chat input.
+5. Paste a direct media URL into chat from a host that blocks browser-side downloads.
+   Expected: no broken or empty media message is created, and the original URL text remains in the chat input.
+6. Drag and drop image or video media onto the chat input.
    Expected: the dropped file is uploaded and posted as chat media.
-6. Use the chat `Upload Chat Media` button.
+7. Use the chat `Upload Chat Media` button.
    Expected: the file picker accepts image and video files and posts the selected media.
 
 ### 7. Chat Plain Text
@@ -165,11 +168,15 @@ These flows should stay true across the test matrix:
 
 1. Use the scene-control `Paste Media` button with image data in the clipboard.
    Expected: it creates or replaces media without depending on keyboard shortcuts.
-2. Use the scene-control `Paste Media` button when no reliable mouse position is available.
+2. Use the scene-control `Paste Media` button when direct clipboard reads cannot expose the media payload.
+   Expected: a focused paste prompt opens instead of creating broken content.
+3. With that prompt open, use `Cmd+V` or `Ctrl+V` with copied local media.
+   Expected: the prompt captures the native paste event, creates or replaces media, and closes itself.
+4. Use the scene-control `Paste Media` button when no reliable mouse position is available.
    Expected: fallback placement uses canvas center when appropriate.
-3. Use the scene-control `Upload Media` button.
+5. Use the scene-control `Upload Media` button.
    Expected: the selected file is uploaded and created with the same placement logic as pasted media.
-4. Confirm that scene-control `Paste Media` and `Upload Media` do not create Journal notes from plain text.
+6. Confirm that scene-control `Paste Media` and `Upload Media` do not create Journal notes from plain text.
    Expected: those tools stay media-only.
 
 ### 9. Upload Destination
@@ -187,6 +194,7 @@ These flows should stay true across the test matrix:
 
 1. In Chrome or Edge, test `Ctrl+V`, browser paste, direct media URLs, text-note creation, and upload fallback.
 2. On macOS, test `Cmd+V` for both media and contextual text paste.
+   Expected: native keyboard paste works through the browser `paste` event, including Finder-copied local media files.
 3. In Firefox, test browser paste events plus the upload fallback.
    Expected: if direct clipboard reads are unavailable or prompt-gated, browser paste and upload still cover the workflow.
 4. On Safari or a touch-oriented browser, test the explicit scene-control buttons and chat upload path.
@@ -219,7 +227,7 @@ For a quick sanity pass before a small release:
 For a fuller release pass:
 - Chrome or Edge
 - Firefox
-- macOS `Cmd+V` if available
+- macOS `Cmd+V`, including Finder-copied local media files
 - Explicit scene-control paste and upload
 - Direct media URL success and failure cases
 - Mobile or touch-friendly upload flow

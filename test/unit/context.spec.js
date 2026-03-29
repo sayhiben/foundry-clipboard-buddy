@@ -67,6 +67,34 @@ describe("canvas context helpers", () => {
       });
     });
 
+    it("uses the default actor icon for video-backed token actors", async () => {
+      await expect(api._clipboardCreatePastedTokenActor({
+        path: "video.webm",
+        mediaKind: "video",
+        width: 1,
+        height: 1,
+      })).resolves.toMatchObject({
+        id: "actor-1",
+        img: "icons/svg/mystery-man.svg",
+        prototypeToken: {
+          texture: {src: "video.webm"},
+          width: 1,
+          height: 1,
+        },
+      });
+      expect(globalThis.foundry.documents.Actor.create).toHaveBeenCalledWith({
+        name: "video",
+        type: "character",
+        img: "icons/svg/mystery-man.svg",
+        prototypeToken: {
+          name: "video",
+          texture: {src: "video.webm"},
+          width: 1,
+          height: 1,
+        },
+      });
+    });
+
     it("builds tile create data", () => {
       api._clipboardSetRuntimeState({hiddenMode: true});
       expect(api._clipboardGetPlaceableStrategy("Tile").createData({
@@ -101,6 +129,10 @@ describe("canvas context helpers", () => {
 
     it("keeps the raw document name when url decoding fails", () => {
       expect(api._clipboardGetPastedDocumentName("%E0%A4%A.png")).toBe("%E0%A4%A");
+    });
+
+    it("strips generated upload suffixes from pasted document names", () => {
+      expect(api._clipboardGetPastedDocumentName("folder/test-token-1774745045587.png?clipboard-image=1774745045596")).toBe("test-token");
     });
 
     it("throws when token actor creation is unavailable", async () => {

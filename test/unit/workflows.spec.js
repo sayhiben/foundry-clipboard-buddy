@@ -98,6 +98,46 @@ describe("paste and handler workflows", () => {
       }, {fallbackToCenter: true})).resolves.toBe(true);
       restoreVideo();
     });
+
+    it("uses intrinsic SVG dimensions from the pasted file instead of browser fallback sizing", async () => {
+      await expect(api._clipboardPasteBlob(new File([
+        '<svg viewBox="0 0 512 512"><rect width="512" height="512"/></svg>',
+      ], "token.svg", {type: "image/svg+xml"}), {
+        source: "data",
+        target: "folder",
+        bucket: "",
+      }, {fallbackToCenter: true})).resolves.toBe(true);
+
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("Tile", [
+        expect.objectContaining({
+          texture: expect.objectContaining({
+            src: expect.stringMatching(/^folder\/token-\d+\.svg\?clipboard-image=\d+$/),
+          }),
+          width: 512,
+          height: 512,
+        }),
+      ]);
+    });
+
+    it("creates documents from an existing media path without uploading", async () => {
+      const restoreImage = withMockImage({width: 200, height: 100});
+      await expect(api._clipboardPasteMediaPath("worlds/test/pasted/file.svg", {fallbackToCenter: true})).resolves.toBe(true);
+      restoreImage();
+
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("Tile", [
+        expect.objectContaining({
+          texture: {src: "worlds/test/pasted/file.svg"},
+        }),
+      ]);
+    });
+
+    it("skips existing media paths when the current paste context is ineligible", async () => {
+      document.body.innerHTML = '<div class="game" tabindex="0"></div><input id="field">';
+      document.getElementById("field").focus();
+
+      await expect(api._clipboardPasteMediaPath("worlds/test/pasted/file.svg")).resolves.toBe(false);
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
   });
 
   describe("_clipboardHasPasteConflict", () => {
@@ -174,6 +214,15 @@ describe("paste and handler workflows", () => {
       restoreImage();
     });
 
+    it("reports a clear error instead of creating canvas content when a direct media url download is blocked", async () => {
+      globalThis.fetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      await expect(api._clipboardHandleImageInput({url: "https://example.com/file.svg"}, {
+        contextOptions: {fallbackToCenter: true},
+      })).rejects.toThrow("cannot download and re-upload");
+
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
     it("returns false for empty media input", async () => {
       await expect(api._clipboardHandleImageInput(null)).resolves.toBe(false);
     });
@@ -214,6 +263,26 @@ describe("paste and handler workflows", () => {
         blob: async () => new Blob(["x"], {type: "image/png"}),
       });
       await expect(api._clipboardHandleChatImageInput({url: "https://example.com/file.png"})).resolves.toBe(true);
+    });
+
+    it("rejects blocked direct media urls in chat so the caller can fall back cleanly", async () => {
+      globalThis.fetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      await expect(api._clipboardHandleChatImageInput({url: "https://example.com/file.svg"})).rejects.toThrow(
+        "cannot download and re-upload"
+      );
+      expect(globalThis.foundry.documents.ChatMessage.create).not.toHaveBeenCalled();
+    });
+
+    it("does not fall back to note text when a direct media url download is blocked on canvas", async () => {
+      document.body.innerHTML = '<div class="game" tabindex="0"></div>';
+      document.querySelector(".game").focus();
+      globalThis.fetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      await expect(api._clipboardHandleImageInputWithTextFallback({
+        url: "https://example.com/file.svg",
+        text: "https://example.com/file.svg",
+      }, {
+        contextOptions: {fallbackToCenter: true},
+      })).rejects.toThrow("cannot download and re-upload");
     });
   });
 

@@ -188,13 +188,42 @@ describe("journal, note, and upload workflows", () => {
   });
 
   describe("upload and fetch helpers", () => {
+    it("adds a unique suffix to uploaded filenames", () => {
+      expect(api._clipboardCreateVersionedFilename("upload.png", 123)).toBe("upload-123.png");
+      expect(api._clipboardCreateVersionedFilename("upload", 123)).toBe("upload-123");
+    });
+
+    it("adds a cache-busting query to uploaded media paths", () => {
+      expect(api._clipboardCreateFreshMediaPath("folder/upload.png", 123)).toBe("folder/upload.png?clipboard-image=123");
+      expect(api._clipboardCreateFreshMediaPath("folder/upload.png?x=1", 123)).toBe("folder/upload.png?x=1&clipboard-image=123");
+      expect(api._clipboardCreateFreshMediaPath("blob:abc", 123)).toBe("blob:abc");
+    });
+
     it("uploads a blob through the FilePicker", async () => {
       const uploadPath = await api._clipboardUploadBlob(new File(["x"], "upload.png", {type: "image/png"}), {
         source: "data",
         target: "folder",
         bucket: "",
       });
-      expect(uploadPath).toBe("folder/upload.png");
+      expect(uploadPath).toMatch(/^folder\/upload-\d+\.png$/);
+    });
+
+    it("normalizes uploaded SVG files before sending them to the FilePicker", async () => {
+      await api._clipboardUploadBlob(
+        new File(['<svg style="width: 512px; height: 512px;" viewBox="0 0 512 512"></svg>'], "token.svg", {
+          type: "image/svg+xml",
+        }),
+        {
+          source: "data",
+          target: "folder",
+          bucket: "",
+        }
+      );
+
+      const uploadedFile = env.MockFilePicker.upload.mock.calls.at(-1)[2];
+      expect(uploadedFile.name).toMatch(/^token-\d+\.svg$/);
+      await expect(api._clipboardReadBlobText(uploadedFile)).resolves.toContain('width="512"');
+      await expect(api._clipboardReadBlobText(uploadedFile)).resolves.toContain('height="512"');
     });
 
     it("throws when upload does not return a usable path", async () => {

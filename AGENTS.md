@@ -39,11 +39,13 @@
 - Canvas-targeted plain text should create or update Journal-backed scene notes, not chat content.
 - Normal keyboard/browser canvas paste respects Foundry's copied-object buffer before module behavior runs.
 - Explicit scene-control `Paste Media` and `Upload Media` actions are media-only tools and do not defer to Foundry's copied-object buffer.
+- `Paste Media` is a hybrid flow: it should try direct clipboard reads first, then fall back to the manual paste prompt when browsers do not expose usable media there.
 - Replacing selected tokens or tiles must preserve size and position.
-- When the Tokens layer is active and no supported placeable is selected, pasted media creates an actorless token snapped to the grid.
+- When the Tokens layer is active and no supported placeable is selected, pasted media creates a snapped token with a real backing Actor so the token sheet can be opened and edited normally.
 - On other layers with no supported selection, pasted media creates a tile.
 - Non-media URLs pasted on canvas should fall back to contextual text-note behavior.
 - Non-media URLs pasted into chat should remain plain text.
+- Direct media URLs that cannot be downloaded and re-uploaded must fail clearly instead of creating broken tiles, broken tokens, or empty chat messages.
 - `Caps Lock` hidden mode affects newly created canvas media, not replacement updates.
 - If `vtta-tokenizer` is open, media paste is intentionally suppressed.
 
@@ -53,6 +55,10 @@
 - Nested upload destinations must be created segment-by-segment through `FilePicker`; a single deep `createDirectory` call is not reliable.
 - Remote media URLs are downloaded in the browser before upload. Failures must surface clearly and should not leave partial scene state behind.
 - Browser clipboard permission behavior is separate from browser `paste` events. Keep those paths conceptually distinct.
+- Finder or OS-file clipboard copies are exposed most reliably through the native browser `paste` event, not `navigator.clipboard.read()`. Do not reintroduce keyboard interception that bypasses native `Cmd+V` / `Ctrl+V`.
+- Uploaded media paths should use unique real filenames, not only cache-busting query strings. Firefox/PIXI can reuse stale textures when the underlying file path is reused.
+- SVG uploads should be normalized before storage when they rely on CSS style sizing or `viewBox` without explicit root `width` and `height`. Firefox is stricter here than Chrome.
+- Layer behavior is real product behavior: Tokens layer creates tokens, other layers create tiles, and selected placeables are replaced in place. Keep docs and tests explicit about that.
 
 ## Coding Style & Maintainability
 - Use JavaScript with 2-space indentation and keep style consistent with the files under `src/`.
@@ -65,6 +71,8 @@
 - When adding structured log output, prefer the existing `_clipboardDescribe...` helpers or add similarly scoped helpers.
 - Keep modules domain-driven. Avoid reintroducing a single giant runtime file or a generic `utils.js` dumping ground.
 - Keep UI/event wiring thin. Prefer moving real behavior into `src/workflows.js`, `src/storage.js`, `src/notes.js`, `src/chat.js`, or similarly focused modules.
+- Put browser-specific media normalization close to upload boundaries. The current SVG normalization belongs in `src/media.js` and `src/storage.js`, not scattered across create paths.
+- When a browser-specific bug appears, prefer fixing the shared media/upload pipeline rather than adding browser-only branches in canvas or chat creation code.
 - When changing compatibility or metadata, update `module.json` and relevant docs together.
 
 ## Testing Guidance
@@ -73,9 +81,15 @@
 - Use `TESTING.md` for manual QA cases that still matter: browser permission prompts, Safari/iOS/Android behavior, Forge/S3 integration, and visual animation/video validation.
 - Read `test/README.md` before changing the suite; it documents required env vars and current scope.
 - When debugging browser tests, headed Chromium is often more reliable than headless Foundry in this environment.
+- When debugging Firefox-specific rendering or SVG behavior, run a targeted headed Firefox smoke. Chrome passing does not prove Firefox correctness here.
+- If a Playwright browser install is missing, install it explicitly with `npx playwright install <browser>` before diagnosing runtime behavior.
 - Enable the module's `Verbose logging` setting when diagnosing failures; the browser console output is intentionally detailed and high-signal.
 - Keep automated tests aligned with real Foundry behavior, not idealized behavior.
+- For canvas rendering assertions, document data alone is not always enough. In Firefox, inspect rendered mesh/texture state rather than assuming `placeable.width` matches the visible mesh.
+- When a manual Playwright debugging session hangs, clean up stale Playwright Firefox/Nightly processes before retrying. Do not leave orphaned browser processes running.
+- Use the dedicated clipboard QA Foundry users when possible to avoid session collisions during browser testing.
 - After changing paste routing, extraction logic, upload behavior, or note/chat behavior, run the smoke suite.
+- After changing SVG handling, upload naming, or browser-specific rendering behavior, run at least one targeted Firefox smoke in addition to unit tests.
 - After changing user-facing behavior, update `README.md`, `TESTING.md`, and `test/README.md` as needed.
 
 ## Suggested Verification Sequence
@@ -86,6 +100,7 @@
 - `node --check test/playwright/helpers/foundry.js`
 - `node --check test/playwright/smoke.spec.js`
 - `npm run test:smoke` or a targeted Playwright grep run when browser-level behavior changed
+- For SVG, upload-path, or rendering fixes: run a targeted Firefox Playwright check as well as Chromium
 - `npm run copy`
 
 ## Commit & Pull Request Guidelines
@@ -98,3 +113,4 @@
 - Clipboard API support depends on browser security context and trusted origin rules.
 - Direct clipboard reads may fail even when normal browser paste events still work.
 - Upload-based fallbacks are the safest cross-browser recovery path.
+- A hard refresh of the Foundry tab can matter when debugging media caching issues, especially after changing upload naming or generated runtime code.

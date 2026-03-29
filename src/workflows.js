@@ -11,6 +11,7 @@ const {
   _clipboardGetMediaKind,
   _clipboardNormalizePastedText,
   _clipboardLoadMediaDimensions,
+  _clipboardGetPreferredMediaDimensions,
 } = {
   ...require("./media"),
   ...require("./text"),
@@ -20,6 +21,7 @@ const {
   _clipboardCreateFolderIfMissing,
   _clipboardResolveImageInputBlob,
   _clipboardUploadBlob,
+  _clipboardCreateFreshMediaPath,
 } = require("./storage");
 const {
   _clipboardResolvePasteContext,
@@ -37,10 +39,12 @@ const {
   _clipboardEnsurePlaceableTextNote,
   _clipboardCreateStandaloneTextNote,
 } = require("./notes");
-const {_clipboardPostChatImage} = require("./chat");
+const {
+  _clipboardPostChatImage,
+} = require("./chat");
 const {_clipboardGetLocked, _clipboardSetLocked} = require("./state");
 
-async function _clipboardApplyPasteResult(path, context) {
+async function _clipboardApplyPasteResult(path, context, preferredDimensions = null) {
   const mediaKind = _clipboardGetMediaKind({src: path}) || "image";
   if (await _clipboardReplaceControlledMedia(path, context.replacementTarget, mediaKind)) {
     _clipboardLog("info", "Applied pasted media by replacing controlled documents", {
@@ -51,7 +55,7 @@ async function _clipboardApplyPasteResult(path, context) {
     return true;
   }
 
-  const {width: imgWidth, height: imgHeight} = await _clipboardLoadMediaDimensions(path);
+  const {width: imgWidth, height: imgHeight} = preferredDimensions || await _clipboardLoadMediaDimensions(path);
   const createData = await context.createStrategy.createData({
     path,
     imgWidth,
@@ -87,8 +91,57 @@ async function _clipboardPasteBlob(blob, targetFolder, contextOptions = {}) {
   }
 
   _clipboardPrepareCreateLayer(context);
-  const path = await _clipboardUploadBlob(blob, targetFolder);
+  const preferredDimensions = await _clipboardGetPreferredMediaDimensions(blob);
+  const uploadPath = await _clipboardUploadBlob(blob, targetFolder);
+  return _clipboardApplyPasteResult(_clipboardCreateFreshMediaPath(uploadPath), context, preferredDimensions);
+}
+
+async function _clipboardPasteMediaPath(path, contextOptions = {}) {
+  if (!canvas?.ready || !canvas.scene) return false;
+
+  const context = _clipboardResolvePasteContext(contextOptions);
+  _clipboardLog("debug", "Resolved direct media URL paste context", {
+    context: _clipboardDescribePasteContext(context),
+    path,
+    mediaKind: _clipboardGetMediaKind({src: path}) || null,
+  });
+  if (!_clipboardCanPasteToContext(context)) {
+    _clipboardLog("info", "Skipping direct media URL paste because the current context is not eligible", {
+      context: _clipboardDescribePasteContext(context),
+      path,
+    });
+    return false;
+  }
+
+  _clipboardPrepareCreateLayer(context);
   return _clipboardApplyPasteResult(path, context);
+}
+
+function _clipboardIsBlockedDirectMediaUrlDownload(imageInput, error) {
+  return Boolean(
+    error?.clipboardBlockedDirectMediaUrl ||
+    (
+      imageInput?.url &&
+      _clipboardGetMediaKind({src: imageInput.url}) &&
+      error instanceof Error &&
+      error.message.startsWith("Failed to download pasted media URL from ")
+    )
+  );
+}
+
+function _clipboardGetBlockedDirectMediaUrlError(imageInput, error) {
+  if (!_clipboardIsBlockedDirectMediaUrlDownload(imageInput, error)) return null;
+
+  const directMediaUrlError = new Error(
+    "The pasted media URL points to a host that blocks browser-side downloads, so Clipboard Image cannot download and re-upload it. Upload the file locally or use a CORS-enabled host."
+  );
+  directMediaUrlError.clipboardBlockedDirectMediaUrl = true;
+  return directMediaUrlError;
+}
+
+function _clipboardShouldFallbackToText(imageInput, error) {
+  if (_clipboardIsBlockedDirectMediaUrlDownload(imageInput, error)) return false;
+  return true;
 }
 
 function _clipboardHasPasteConflict({respectCopiedObjects = true} = {}) {
@@ -155,7 +208,20 @@ async function _clipboardHandleImageInput(imageInput, options = {}) {
   _clipboardLog("debug", "Handling media input", {
     imageInput: _clipboardDescribeImageInput(imageInput),
   });
-  const blob = await _clipboardResolveImageInputBlob(imageInput);
+  let blob;
+  try {
+    blob = await _clipboardResolveImageInputBlob(imageInput);
+  } catch (error) {
+    const directMediaUrlFailure = _clipboardGetBlockedDirectMediaUrlError(imageInput, error);
+    if (directMediaUrlFailure) {
+      _clipboardLog("warn", "Direct media URL cannot be used on the canvas after download failed", {
+        imageInput: _clipboardDescribeImageInput(imageInput),
+        error: _clipboardSerializeError(error),
+      });
+      throw directMediaUrlFailure;
+    }
+    throw error;
+  }
   if (!blob) return false;
   return _clipboardHandleImageBlob(blob, options);
 }
@@ -164,6 +230,8 @@ async function _clipboardHandleImageInputWithTextFallback(imageInput, options = 
   try {
     return await _clipboardHandleImageInput(imageInput, options);
   } catch (error) {
+    if (!_clipboardShouldFallbackToText(imageInput, error)) throw error;
+
     const fallbackText = _clipboardNormalizePastedText(imageInput?.text || imageInput?.url || "");
     if (!fallbackText) throw error;
 
@@ -181,7 +249,20 @@ async function _clipboardHandleChatImageBlob(blob) {
 }
 
 async function _clipboardHandleChatImageInput(imageInput) {
-  const blob = await _clipboardResolveImageInputBlob(imageInput);
+  let blob;
+  try {
+    blob = await _clipboardResolveImageInputBlob(imageInput);
+  } catch (error) {
+    const directMediaUrlFailure = _clipboardGetBlockedDirectMediaUrlError(imageInput, error);
+    if (directMediaUrlFailure) {
+      _clipboardLog("warn", "Direct media URL cannot be posted as chat media after download failed", {
+        imageInput: _clipboardDescribeImageInput(imageInput),
+        error: _clipboardSerializeError(error),
+      });
+      throw directMediaUrlFailure;
+    }
+    throw error;
+  }
   if (!blob) return false;
   return _clipboardHandleChatImageBlob(blob);
 }
@@ -368,6 +449,10 @@ function _clipboardHandleChatUploadAction() {
 module.exports = {
   _clipboardApplyPasteResult,
   _clipboardPasteBlob,
+  _clipboardPasteMediaPath,
+  _clipboardIsBlockedDirectMediaUrlDownload,
+  _clipboardGetBlockedDirectMediaUrlError,
+  _clipboardShouldFallbackToText,
   _clipboardHasPasteConflict,
   _clipboardExecutePasteWorkflow,
   _clipboardHandleImageBlob,

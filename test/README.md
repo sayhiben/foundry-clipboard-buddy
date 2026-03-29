@@ -9,16 +9,18 @@ The unit suite lives separately under `test/unit/` and is organized by behavior 
 The suite is designed to cover the browser-driven flows that can be validated against a running Foundry world:
 - Canvas image paste into Tiles
 - Canvas image paste into Tokens
-- Selected token and tile replacement
+- Selected token and tile replacement, including multi-selection updates
+- Canvas video paste into Tiles and Tokens
+- Selected tile replacement with video media
 - Mixed file-and-text paste payloads
-- Contextual plain-text note creation and append
+- Contextual plain-text note creation, append, selected-tile note creation, and multi-placeable text application
 - Non-media URL fallback to contextual text notes
 - HTML `img[src]` media URL extraction
 - Hidden-mode paste with `Caps Lock`
-- Chat media paste
-- Chat non-media URL fallback
-- Direct media URL paste
-- Scene-control paste and upload fallbacks
+- Chat media paste, video paste, drag/drop, and upload
+- Chat plain-text and non-media URL fallback
+- Direct media URL paste for creation and replacement
+- Scene-control paste, upload, and manual-paste prompt fallbacks
 - Multi-item async clipboard-read handling
 - Copied-object priority handling
 - Chat upload button flow
@@ -106,6 +108,7 @@ npm run test:smoke:s3
 
 - The suite uses the active scene and creates temporary artifacts inside it, then cleans up the created scene documents and journals after each test.
 - Local Playwright runs default to headed Chromium because Foundry's graphics stack is not reliable under headless Chromium in this environment.
+- Keyboard paste coverage follows the browser's native `paste` event. The module's explicit `Paste Media` scene tool is the only path that still depends on `navigator.clipboard.read()`.
 - Uploaded media files remain in the configured `playwright` upload subfolders. They are isolated by test run id but are not automatically deleted from disk.
 - The optional Amazon S3 smoke spec deletes the uploaded S3 prefix after it verifies the object landed in the configured bucket.
 - The tests drive Foundry through real DOM `paste` and file-upload paths and assert against Foundry document state through `canvas.scene`, `game.messages`, and `game.journal`.

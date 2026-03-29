@@ -182,6 +182,134 @@ function _clipboardScaleTokenDimensions(imgWidth, imgHeight) {
   };
 }
 
+function _clipboardParseSvgLength(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized || normalized.endsWith("%")) return null;
+
+  const match = normalized.match(/^([0-9]*\.?[0-9]+)(px)?$/i);
+  if (!match) return null;
+
+  const parsed = Number.parseFloat(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function _clipboardGetSvgViewBoxDimensions(svgElement) {
+  const viewBox = svgElement?.getAttribute?.("viewBox")?.trim();
+  if (!viewBox) return null;
+
+  const values = viewBox.split(/[\s,]+/).map(Number.parseFloat);
+  if (values.length !== 4 || values.some(value => !Number.isFinite(value))) return null;
+
+  const [, , width, height] = values;
+  if (!(width > 0) || !(height > 0)) return null;
+  return {width, height};
+}
+
+function _clipboardGetSvgElementFromText(svgText) {
+  const documentFragment = new DOMParser().parseFromString(svgText, "image/svg+xml");
+  return documentFragment.documentElement?.nodeName === "svg"
+    ? documentFragment.documentElement
+    : documentFragment.querySelector?.("svg");
+}
+
+function _clipboardGetSvgIntrinsicDimensionsFromText(svgText) {
+  if (!svgText?.trim()) return null;
+
+  const svgElement = _clipboardGetSvgElementFromText(svgText);
+  if (!svgElement) return null;
+
+  const width = _clipboardParseSvgLength(svgElement.getAttribute("width"));
+  const height = _clipboardParseSvgLength(svgElement.getAttribute("height"));
+  if (width && height) {
+    return {width, height};
+  }
+
+  const viewBoxDimensions = _clipboardGetSvgViewBoxDimensions(svgElement);
+  if (!viewBoxDimensions) return null;
+
+  if (width) {
+    return {
+      width,
+      height: _clipboardRoundDimension(width * (viewBoxDimensions.height / viewBoxDimensions.width)),
+    };
+  }
+
+  if (height) {
+    return {
+      width: _clipboardRoundDimension(height * (viewBoxDimensions.width / viewBoxDimensions.height)),
+      height,
+    };
+  }
+
+  return viewBoxDimensions;
+}
+
+async function _clipboardReadBlobText(blob) {
+  if (typeof blob?.text === "function") {
+    return blob.text();
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(reader.error || new Error("Failed to read pasted SVG content"));
+    reader.readAsText(blob);
+  });
+}
+
+async function _clipboardGetPreferredMediaDimensions(blob) {
+  if (_clipboardGetMediaKind({blob, filename: blob?.name}) !== "image") return null;
+  if (_clipboardNormalizeMimeType(blob?.type) !== "image/svg+xml" && _clipboardGetFileExtension(blob) !== "svg") {
+    return null;
+  }
+
+  const svgText = await _clipboardReadBlobText(blob);
+  const svgDimensions = _clipboardGetSvgIntrinsicDimensionsFromText(svgText);
+  if (!svgDimensions) return null;
+
+  _clipboardLog("debug", "Resolved intrinsic SVG dimensions from uploaded media", {
+    width: svgDimensions.width,
+    height: svgDimensions.height,
+    fileName: blob?.name || null,
+    mimeType: _clipboardNormalizeMimeType(blob?.type) || null,
+  });
+  return svgDimensions;
+}
+
+async function _clipboardNormalizeSvgBlobForUpload(blob, svgDimensions = null) {
+  if (_clipboardGetMediaKind({blob, filename: blob?.name}) !== "image") return blob;
+  if (_clipboardNormalizeMimeType(blob?.type) !== "image/svg+xml" && _clipboardGetFileExtension(blob) !== "svg") {
+    return blob;
+  }
+
+  const svgText = await _clipboardReadBlobText(blob);
+  const svgElement = _clipboardGetSvgElementFromText(svgText);
+  if (!svgElement) return blob;
+
+  const resolvedDimensions = svgDimensions || _clipboardGetSvgIntrinsicDimensionsFromText(svgText);
+  if (!resolvedDimensions) return blob;
+
+  const hasExplicitWidth = _clipboardParseSvgLength(svgElement.getAttribute("width"));
+  const hasExplicitHeight = _clipboardParseSvgLength(svgElement.getAttribute("height"));
+  if (hasExplicitWidth && hasExplicitHeight) return blob;
+
+  svgElement.setAttribute("width", String(resolvedDimensions.width));
+  svgElement.setAttribute("height", String(resolvedDimensions.height));
+
+  _clipboardLog("debug", "Normalized uploaded SVG with explicit width and height", {
+    width: resolvedDimensions.width,
+    height: resolvedDimensions.height,
+    fileName: blob?.name || null,
+    mimeType: _clipboardNormalizeMimeType(blob?.type) || null,
+  });
+
+  return new File(
+    [new XMLSerializer().serializeToString(svgElement)],
+    blob?.name || `pasted_image.${_clipboardGetFileExtension(blob) || "svg"}`,
+    {type: _clipboardNormalizeMimeType(blob?.type) || "image/svg+xml"}
+  );
+}
+
 async function _clipboardLoadImageDimensions(path) {
   const image = new Image();
   await new Promise((resolve, reject) => {
@@ -267,6 +395,13 @@ module.exports = {
   _clipboardScaleTileDimensions,
   _clipboardRoundDimension,
   _clipboardScaleTokenDimensions,
+  _clipboardParseSvgLength,
+  _clipboardGetSvgViewBoxDimensions,
+  _clipboardGetSvgElementFromText,
+  _clipboardReadBlobText,
+  _clipboardGetSvgIntrinsicDimensionsFromText,
+  _clipboardGetPreferredMediaDimensions,
+  _clipboardNormalizeSvgBlobForUpload,
   _clipboardLoadImageDimensions,
   _clipboardLoadVideoDimensions,
   _clipboardLoadMediaDimensions,

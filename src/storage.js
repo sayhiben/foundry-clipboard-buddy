@@ -20,6 +20,7 @@ const {
   _clipboardGetFilenameFromUrl,
   _clipboardEnsureFilenameExtension,
   _clipboardGetFileExtension,
+  _clipboardNormalizeSvgBlobForUpload,
 } = require("./media");
 
 function _clipboardUsingTheForge() {
@@ -177,17 +178,39 @@ async function _clipboardCreateFolderIfMissing(destination) {
   });
 }
 
-function _clipboardCreateUploadFile(blob) {
-  if (blob instanceof File && blob.name) return blob;
+function _clipboardCreateVersionedFilename(filename, version = Date.now()) {
+  const normalizedFilename = String(filename || "").trim() || "pasted_image";
+  const extensionMatch = normalizedFilename.match(/\.([^./]+)$/);
+  const extension = extensionMatch?.[1] || "";
+  const baseName = extension ? normalizedFilename.slice(0, -(extension.length + 1)) : normalizedFilename;
+  const suffix = encodeURIComponent(String(version));
+  return extension ? `${baseName}-${suffix}.${extension}` : `${baseName}-${suffix}`;
+}
 
-  const extension = _clipboardGetFileExtension(blob);
-  const filename = `pasted_image_${Date.now()}.${extension}`;
+function _clipboardCreateUploadFile(blob, version = Date.now()) {
+  const sourceName = blob instanceof File && blob.name
+    ? blob.name
+    : `pasted_image.${_clipboardGetFileExtension(blob)}`;
+  const filename = _clipboardCreateVersionedFilename(
+    _clipboardEnsureFilenameExtension(sourceName, blob),
+    version
+  );
   return new File([blob], filename, {type: blob.type});
+}
+
+function _clipboardCreateFreshMediaPath(path, version = Date.now()) {
+  if (!path || /^(data:|blob:)/i.test(path)) return path;
+
+  const [basePath, hash = ""] = String(path).split("#", 2);
+  const separator = basePath.includes("?") ? "&" : "?";
+  const freshPath = `${basePath}${separator}clipboard-image=${encodeURIComponent(String(version))}`;
+  return hash ? `${freshPath}#${hash}` : freshPath;
 }
 
 async function _clipboardUploadBlob(blob, targetFolder) {
   _clipboardAssertUploadDestination(targetFolder);
-  const file = _clipboardCreateUploadFile(blob);
+  const normalizedBlob = await _clipboardNormalizeSvgBlobForUpload(blob);
+  const file = _clipboardCreateUploadFile(normalizedBlob);
   const fileDetails = _clipboardDescribeFile(file);
   _clipboardLog("info", "Uploading pasted media", {
     destination: _clipboardDescribeDestinationForLog(targetFolder),
@@ -280,7 +303,9 @@ module.exports = {
   _clipboardDescribeDestination,
   _clipboardAssertUploadDestination,
   _clipboardCreateFolderIfMissing,
+  _clipboardCreateVersionedFilename,
   _clipboardCreateUploadFile,
+  _clipboardCreateFreshMediaPath,
   _clipboardUploadBlob,
   _clipboardFetchImageUrl,
   _clipboardResolveImageInputBlob,

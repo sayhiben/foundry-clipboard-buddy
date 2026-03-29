@@ -309,6 +309,7 @@ function loadRuntime(options = {}) {
   };
 
   globalThis.CONST = {
+    DEFAULT_TOKEN: "icons/svg/mystery-man.svg",
     BASE_DOCUMENT_TYPE: "base",
     JOURNAL_ENTRY_PAGE_FORMATS: {
       HTML: 9,
@@ -377,6 +378,7 @@ function loadRuntime(options = {}) {
         }),
       },
       Actor: {
+        DEFAULT_ICON: "icons/svg/mystery-man.svg",
         create: vi.fn(async data => createActor(env, data)),
       },
     },

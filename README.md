@@ -55,7 +55,8 @@ Repository:
 
 - When the chat input is focused, normal text paste stays normal chat text.
 - Media paste uploads the media and posts a chat message with an inline preview.
-- Direct media URLs pasted into chat are downloaded, uploaded, and posted as chat media.
+- Direct media URLs pasted into chat are downloaded and uploaded when the browser allows it.
+- If a direct media URL cannot be downloaded because the remote host blocks browser-side access, the original URL text is inserted into chat instead of creating a broken or empty media message.
 - Non-media URLs pasted into chat stay as normal text.
 - Chat also supports drag and drop plus an `Upload Chat Media` button.
 
@@ -78,6 +79,8 @@ The module scans all available clipboard items, not just the first one.
    `Ctrl+V` on Windows/Linux, `Cmd+V` on macOS, or your browser's Paste action.
 3. Focus the chat input first if you want media to go to chat instead of the scene.
 
+Keyboard paste follows the browser's native `paste` event rather than a custom module shortcut. That matters for cases like Finder-copied files on macOS, where the browser paste event can expose the real file payload even when direct clipboard reads only expose a filename.
+
 ### Scene controls
 
 The Tiles and Tokens controls add:
@@ -89,7 +92,8 @@ Use these when:
 - direct paste is blocked by browser restrictions
 - you are on a touch-oriented device
 
-`Paste Media` relies on direct clipboard reads and may be unavailable in stricter browser contexts. `Upload Media` works as a file-picker fallback.
+`Paste Media` first tries a direct clipboard read. If the browser cannot expose usable media through that API, the module now opens a focused paste prompt so you can finish with the browser's native paste event. This is especially useful for local files copied from Finder on macOS.
+`Upload Media` works as a file-picker fallback.
 Unlike normal canvas paste, these explicit scene tools do not defer to Foundry's copied-object buffer.
 
 ### Hidden mode
@@ -134,7 +138,10 @@ Modern Firefox is much more usable than older versions for clipboard media workf
 
 ### Remote media URLs
 
-Direct media URLs are downloaded in the browser before upload. If the remote host blocks that request, the module will surface an error and skip creating broken content.
+Direct media URLs are downloaded in the browser before upload when possible. If a remote host blocks that browser-side download:
+- canvas paste will warn instead of creating broken tiles or tokens
+- chat paste will leave the original URL text in the input instead of creating a broken or empty media message
+- the safest workaround is to upload the file locally or use a host that allows browser-side downloads
 
 ## Testing And Debugging
 

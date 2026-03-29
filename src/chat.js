@@ -4,6 +4,7 @@ const {
   _clipboardGetUploadDestination,
   _clipboardCreateFolderIfMissing,
   _clipboardUploadBlob,
+  _clipboardCreateFreshMediaPath,
 } = require("./storage");
 
 function _clipboardCreateChatMediaContent(path) {
@@ -48,6 +49,9 @@ function _clipboardCreateChatMediaContent(path) {
 }
 
 async function _clipboardCreateChatMessage(path) {
+  if (!path) {
+    throw new Error("Cannot create a chat media message without a usable media path");
+  }
   _clipboardLog("info", "Creating chat media message", {
     path,
     mediaKind: _clipboardGetMediaKind({src: path}) || "image",
@@ -62,7 +66,7 @@ async function _clipboardCreateChatMessage(path) {
 async function _clipboardPostChatImage(blob) {
   const destination = _clipboardGetUploadDestination();
   await _clipboardCreateFolderIfMissing(destination);
-  const path = await _clipboardUploadBlob(blob, destination);
+  const path = _clipboardCreateFreshMediaPath(await _clipboardUploadBlob(blob, destination));
   await _clipboardCreateChatMessage(path);
   return true;
 }
