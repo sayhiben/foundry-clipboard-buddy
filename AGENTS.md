@@ -63,10 +63,12 @@
 - Layer behavior is real product behavior: Tokens layer creates tokens, other layers create tiles, and selected placeables are replaced in place. Keep docs and tests explicit about that.
 - Role gates and feature toggles should disable workflows cleanly. Do not silently reroute a disabled token paste into tile creation, or vice versa.
 - Scene-control visibility is no longer a simple `isGM` check. It depends on both the world settings and the current user's configured role.
+- The Playwright config coverage now lives in `test/playwright/config.spec.js`. Keep behavior-setting flows there instead of bloating `smoke.spec.js` with every settings permutation.
 - The Playwright permission coverage lives in `test/playwright/permissions.spec.js`, not only in `smoke.spec.js`. Keep multi-user browser flows isolated from the single-page smoke setup when they need separate GM and player sessions.
 - Browser-level error reporting coverage now lives in `test/playwright/error-reporting.spec.js`. Keep player alert, GM relay, and verbose-log download assertions there instead of bloating the main smoke file.
 - In this local Foundry setup, browser-driven user creation or role changes are not reliable. The Playwright harness seeds the existing `Clipboard QA` users directly through the world user store, with `Clipboard QA 2` and `Clipboard QA 3` acting as Players.
 - Player media-upload tests need a destination folder that already exists. Pre-create the upload directory as GM before exercising player chat-media or token-replacement uploads, or the failure will come from Foundry's directory-creation rules rather than the module policy layer.
+- The Playwright harness now recovers if the test world has no active scene. It waits for `game.ready`, activates an existing scene or creates a throwaway one, and only then waits for `canvas.ready`. Do not assume the local world will always boot with an active scene already selected.
 
 ## Coding Style & Maintainability
 - Use JavaScript with 2-space indentation and keep style consistent with the files under `src/`.

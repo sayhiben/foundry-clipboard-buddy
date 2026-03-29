@@ -135,13 +135,65 @@ function sanitizeId(value) {
 }
 
 async function waitForFoundryReady(page) {
-  await page.waitForFunction(() => globalThis.game?.ready && globalThis.canvas?.ready, null, {
+  await page.waitForFunction(() => globalThis.game?.ready, null, {
+    timeout: DEFAULT_TIMEOUT,
+  });
+  await ensureActiveScene(page);
+  await page.waitForFunction(() => globalThis.game?.ready && globalThis.canvas?.ready && Boolean(globalThis.canvas?.scene), null, {
     timeout: DEFAULT_TIMEOUT,
   });
   await expect.poll(() => page.evaluate(() => game.modules.get("clipboard-image")?.active ?? false), {
     timeout: DEFAULT_TIMEOUT,
     message: "clipboard-image module is not active in the loaded Foundry world",
   }).toBe(true);
+}
+
+async function ensureActiveScene(page) {
+  await page.evaluate(async () => {
+    if (globalThis.canvas?.ready && globalThis.canvas?.scene) return;
+    const sceneCollection = game?.scenes;
+    if (!sceneCollection) return;
+
+    let scene = sceneCollection.current ||
+      sceneCollection.active ||
+      sceneCollection.viewed ||
+      sceneCollection.contents?.find?.(entry => entry.active) ||
+      sceneCollection.contents?.[0] ||
+      null;
+
+    if (!scene) {
+      const SceneDocument = foundry?.documents?.Scene ||
+        CONFIG?.Scene?.documentClass ||
+        globalThis.Scene ||
+        null;
+      if (!SceneDocument?.create) return;
+
+      scene = await SceneDocument.create({
+        name: "Clipboard Image Smoke Scene",
+        active: true,
+        navigation: true,
+        width: 4096,
+        height: 4096,
+        grid: {
+          size: 100,
+          distance: 5,
+          units: "ft",
+        },
+      });
+    }
+
+    if (!scene) return;
+    if (!scene.navigation) await scene.update({navigation: true});
+    if (!scene.active) {
+      await scene.update({active: true});
+    } else if (typeof scene.activate === "function") {
+      await scene.activate();
+    }
+
+    if (typeof scene.view === "function") {
+      await scene.view();
+    }
+  });
 }
 
 async function loginToFoundry(page, credentials = {}) {

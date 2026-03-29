@@ -24,6 +24,7 @@ The suite is designed to cover the browser-driven flows that can be validated ag
 - Multi-item async clipboard-read handling
 - Copied-object priority handling
 - Chat upload button flow
+- Behavior-setting flows in `test/playwright/config.spec.js`, including empty-canvas targeting, backing-actor creation, chat display modes, canvas text mode, prompt mode, and upload-destination persistence
 - Permissions and feature-toggle flows in `test/playwright/permissions.spec.js`, including non-GM scene controls, minimum-role gates, and owned-token replacement
 - Error-reporting flows in `test/playwright/error-reporting.spec.js`, including player alerts, GM relay dialogs, and verbose logfile download behavior
 
@@ -121,6 +122,7 @@ npm run test:smoke:s3
 ## Notes
 
 - The suite uses the active scene and creates temporary artifacts inside it, then cleans up the created scene documents and journals after each test.
+- If the local world boots without an active scene, the Playwright harness now activates an existing scene or creates a temporary one before continuing so `canvas.ready` can succeed.
 - The permissions smoke spec reseeds the local QA users from Foundry's world user store before it runs. The expected local roles are `Gamemaster` and `Clipboard QA 1` as GMs, with `Clipboard QA 2` and `Clipboard QA 3` as Players.
 - Local Playwright runs default to headed Chromium because Foundry's graphics stack is not reliable under headless Chromium in this environment.
 - Keyboard paste coverage follows the browser's native `paste` event. The module's explicit `Paste Media` scene tool is the only path that still depends on `navigator.clipboard.read()`.

@@ -1064,6 +1064,20 @@ describe("ui and hook integration helpers", () => {
         expect.anything()
       );
     });
+
+    it("clears the stored bucket when the destination source is not s3", async () => {
+      const {ClipboardImageDestinationConfig} = env.runtime;
+      const app = new ClipboardImageDestinationConfig();
+      await app._updateObject(null, {
+        source: "data",
+        target: "final-folder",
+        bucket: "should-be-cleared",
+      });
+
+      expect(globalThis.game.settings.set).toHaveBeenCalledWith("clipboard-image", "image-location-source", "data");
+      expect(globalThis.game.settings.set).toHaveBeenCalledWith("clipboard-image", "image-location", "final-folder");
+      expect(globalThis.game.settings.set).toHaveBeenCalledWith("clipboard-image", "image-location-bucket", "");
+    });
   });
 
   describe("settings registration and hook wiring", () => {
@@ -1071,6 +1085,58 @@ describe("ui and hook integration helpers", () => {
       api._clipboardRegisterSettings();
       expect(globalThis.game.settings.registerMenu).toHaveBeenCalled();
       expect(globalThis.game.settings.register).toHaveBeenCalled();
+    });
+
+    it("registers every module setting with the expected defaults and scopes", () => {
+      api._clipboardRegisterSettings();
+
+      expect(env.registeredMenus).toHaveLength(1);
+      expect(env.registeredMenus[0]).toMatchObject({
+        moduleId: "clipboard-image",
+        key: "upload-destination",
+        config: {
+          restricted: true,
+          type: env.runtime.ClipboardImageDestinationConfig,
+        },
+      });
+
+      const registeredByKey = new Map(env.registeredSettings.map(entry => [entry.key, entry.config]));
+      const expectedSettings = {
+        "image-location": {scope: "world", config: false, default: "pasted_images", type: String},
+        "image-location-source": {scope: "world", config: false, default: "auto", type: String},
+        "image-location-bucket": {scope: "world", config: false, default: "", type: String},
+        "verbose-logging": {scope: "client", config: true, default: false, type: Boolean},
+        "minimum-role-canvas-media": {scope: "world", config: true, default: "PLAYER", type: String},
+        "minimum-role-canvas-text": {scope: "world", config: true, default: "PLAYER", type: String},
+        "minimum-role-chat-media": {scope: "world", config: true, default: "PLAYER", type: String},
+        "allow-non-gm-scene-controls": {scope: "world", config: true, default: false, type: Boolean},
+        "enable-chat-media": {scope: "world", config: true, default: true, type: Boolean},
+        "enable-chat-upload-button": {scope: "world", config: true, default: true, type: Boolean},
+        "enable-token-creation": {scope: "world", config: true, default: true, type: Boolean},
+        "enable-tile-creation": {scope: "world", config: true, default: true, type: Boolean},
+        "enable-token-replacement": {scope: "world", config: true, default: true, type: Boolean},
+        "enable-tile-replacement": {scope: "world", config: true, default: true, type: Boolean},
+        "enable-scene-paste-tool": {scope: "world", config: true, default: true, type: Boolean},
+        "enable-scene-upload-tool": {scope: "world", config: true, default: true, type: Boolean},
+        "default-empty-canvas-target": {scope: "world", config: true, default: "active-layer", type: String},
+        "create-backing-actors": {scope: "world", config: true, default: true, type: Boolean},
+        "chat-media-display": {scope: "world", config: true, default: "thumbnail", type: String},
+        "canvas-text-paste-mode": {scope: "world", config: true, default: "scene-notes", type: String},
+        "scene-paste-prompt-mode": {scope: "world", config: true, default: "auto", type: String},
+      };
+
+      expect(registeredByKey.size).toBe(Object.keys(expectedSettings).length);
+      for (const [key, expected] of Object.entries(expectedSettings)) {
+        expect(registeredByKey.get(key)).toMatchObject(expected);
+      }
+
+      expect(registeredByKey.get("minimum-role-canvas-media").choices).toMatchObject({
+        PLAYER: "Player",
+        TRUSTED: "Trusted Player",
+        ASSISTANT: "Assistant GM",
+        GAMEMASTER: "Gamemaster",
+      });
+      expect(env.settingsRegistry.size).toBe(Object.keys(expectedSettings).length);
     });
 
     it("wires init hooks without registering a custom paste keybinding", () => {
