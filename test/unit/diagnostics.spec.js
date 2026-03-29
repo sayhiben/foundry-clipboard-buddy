@@ -18,13 +18,13 @@ describe("diagnostics and settings helpers", () => {
     });
 
     it("returns true when the client setting is enabled", () => {
-      env.settingsRegistry.set("clipboard-image.verbose-logging", {});
-      env.settingsValues.set("clipboard-image.verbose-logging", true);
+      env.settingsRegistry.set("foundry-paste-eater.verbose-logging", {});
+      env.settingsValues.set("foundry-paste-eater.verbose-logging", true);
       expect(api._clipboardVerboseLoggingEnabled()).toBe(true);
     });
 
     it("returns false when reading the setting throws", () => {
-      env.settingsRegistry.set("clipboard-image.verbose-logging", {});
+      env.settingsRegistry.set("foundry-paste-eater.verbose-logging", {});
       globalThis.game.settings.get.mockImplementationOnce(() => {
         throw new Error("settings failure");
       });
@@ -128,8 +128,8 @@ describe("diagnostics and settings helpers", () => {
 
   describe("_clipboardLog", () => {
     it("emits debug logs when verbose logging is enabled", () => {
-      env.settingsRegistry.set("clipboard-image.verbose-logging", {});
-      env.settingsValues.set("clipboard-image.verbose-logging", true);
+      env.settingsRegistry.set("foundry-paste-eater.verbose-logging", {});
+      env.settingsValues.set("foundry-paste-eater.verbose-logging", true);
       api._clipboardLog("debug", "debug message", {ok: true});
       expect(console.debug).toHaveBeenCalled();
     });
@@ -224,7 +224,7 @@ describe("diagnostics and settings helpers", () => {
         level: "warn",
         message: "warn before error",
       });
-      expect(api._clipboardFormatErrorReport(report)).toContain("Clipboard Image Error Report");
+      expect(api._clipboardFormatErrorReport(report)).toContain("Foundry Paste Eater Error Report");
       expect(api._clipboardFormatErrorReport(report)).toContain("\"nested\"");
     });
 
@@ -234,7 +234,7 @@ describe("diagnostics and settings helpers", () => {
         details: {foo: "bar"},
       });
 
-      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Clipboard Image: gm failed");
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Foundry Paste Eater: gm failed");
       expect(env.dialogInstances).toHaveLength(1);
       expect(env.dialogInstances[0].data.content).toContain("Download module logfile");
       expect(report.operation).toBe("gm-test");
@@ -260,8 +260,8 @@ describe("diagnostics and settings helpers", () => {
         operation: "player-test",
       });
 
-      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Clipboard Image: player failed");
-      expect(globalThis.game.socket.emit).toHaveBeenCalledWith("module.clipboard-image", expect.objectContaining({
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Foundry Paste Eater: player failed");
+      expect(globalThis.game.socket.emit).toHaveBeenCalledWith("module.foundry-paste-eater", expect.objectContaining({
         type: "clipboard-error-report",
         report: expect.objectContaining({
           operation: "player-test",
@@ -275,15 +275,15 @@ describe("diagnostics and settings helpers", () => {
     });
 
     it("downloads a verbose logfile when verbose logging is enabled", () => {
-      env.settingsRegistry.set("clipboard-image.verbose-logging", {});
-      env.settingsValues.set("clipboard-image.verbose-logging", true);
+      env.settingsRegistry.set("foundry-paste-eater.verbose-logging", {});
+      env.settingsValues.set("foundry-paste-eater.verbose-logging", true);
 
       api._clipboardReportError(new Error("download me"));
 
       expect(globalThis.saveDataToFile).toHaveBeenCalledWith(
-        expect.stringContaining("Clipboard Image Error Report"),
+        expect.stringContaining("Foundry Paste Eater Error Report"),
         "text/plain",
-        expect.stringMatching(/^clipboard-image-error-/)
+        expect.stringMatching(/^foundry-paste-eater-error-/)
       );
     });
 
@@ -294,7 +294,7 @@ describe("diagnostics and settings helpers", () => {
       const file = api._clipboardCreateReportFile(api._clipboardBuildErrorReport(new Error("no object url")));
 
       expect(file).toMatchObject({
-        filename: expect.stringMatching(/^clipboard-image-error-/),
+        filename: expect.stringMatching(/^foundry-paste-eater-error-/),
         url: "",
       });
       globalThis.URL.createObjectURL = originalCreateObjectURL;
@@ -327,14 +327,14 @@ describe("diagnostics and settings helpers", () => {
 
       expect(handled).toBe(true);
       expect(env.dialogInstances).toHaveLength(1);
-      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Clipboard Image: remote boom");
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Foundry Paste Eater: remote boom");
     });
 
     it("tolerates missing dialog support on GM clients", () => {
       globalThis.Dialog = undefined;
 
       expect(() => api._clipboardReportError(new Error("no dialog"))).not.toThrow();
-      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Clipboard Image: no dialog");
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Foundry Paste Eater: no dialog");
       expect(env.dialogInstances).toHaveLength(0);
     });
 
@@ -353,7 +353,7 @@ describe("diagnostics and settings helpers", () => {
     it("can build a generic report for non-Error failures", () => {
       const report = api._clipboardBuildErrorReport("plain failure");
       expect(report.summary).toBe("Failed to handle media input. Check the console.");
-      expect(report.playerMessage).toBe("Clipboard Image: Failed to handle media input. Check the console.");
+      expect(report.playerMessage).toBe("Foundry Paste Eater: Failed to handle media input. Check the console.");
     });
 
     it("tolerates missing socket emit support for player relays", () => {
@@ -362,12 +362,12 @@ describe("diagnostics and settings helpers", () => {
       globalThis.game.socket.emit = undefined;
 
       expect(() => api._clipboardReportError(new Error("no socket"))).not.toThrow();
-      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Clipboard Image: no socket");
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Foundry Paste Eater: no socket");
     });
 
     it("registers the socket listener only when sockets are available", () => {
       api._clipboardRegisterErrorReporting();
-      expect(globalThis.game.socket.on).toHaveBeenCalledWith("module.clipboard-image", api._clipboardHandleSocketReport);
+      expect(globalThis.game.socket.on).toHaveBeenCalledWith("module.foundry-paste-eater", api._clipboardHandleSocketReport);
 
       globalThis.game.socket.on = undefined;
       expect(() => api._clipboardRegisterErrorReporting()).not.toThrow();
@@ -382,9 +382,9 @@ describe("diagnostics and settings helpers", () => {
     });
 
     it("reads stored source, target, and bucket settings", () => {
-      env.settingsValues.set("clipboard-image.image-location-source", "  s3 ");
-      env.settingsValues.set("clipboard-image.image-location", "  custom/folder ");
-      env.settingsValues.set("clipboard-image.image-location-bucket", "  bucket-name ");
+      env.settingsValues.set("foundry-paste-eater.image-location-source", "  s3 ");
+      env.settingsValues.set("foundry-paste-eater.image-location", "  custom/folder ");
+      env.settingsValues.set("foundry-paste-eater.image-location-bucket", "  bucket-name ");
 
       expect(api._clipboardGetStoredSource()).toBe("s3");
       expect(api._clipboardGetTargetFolder()).toBe("custom/folder");

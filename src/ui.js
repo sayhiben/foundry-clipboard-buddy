@@ -50,18 +50,40 @@ const {
   _clipboardHandleChatUploadAction,
 } = require("./workflows");
 
-const CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_ID = "clipboard-image-scene-paste-prompt";
-const CLIPBOARD_IMAGE_SCENE_PASTE_TARGET_ID = "clipboard-image-scene-paste-target";
+const CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_ID = "foundry-paste-eater-scene-paste-prompt";
+const CLIPBOARD_IMAGE_SCENE_PASTE_TARGET_ID = "foundry-paste-eater-scene-paste-target";
+
+function _clipboardUpsertSceneControlTool(control, toolName, toolData) {
+  if (Array.isArray(control?.tools)) {
+    const existingIndex = control.tools.findIndex(entry => entry?.name === toolName);
+    if (existingIndex >= 0) {
+      control.tools[existingIndex] = {
+        ...control.tools[existingIndex],
+        ...toolData,
+      };
+      return;
+    }
+
+    control.tools.push(toolData);
+    return;
+  }
+
+  if (control?.tools) {
+    control.tools[toolName] = toolData;
+  }
+}
 
 function _clipboardAddSceneControlButtons(controls) {
   for (const controlName of CLIPBOARD_IMAGE_SCENE_CONTROLS) {
     const control = controls[controlName];
     if (!control?.tools) continue;
 
-    const order = Object.keys(control.tools).length;
+    const order = Array.isArray(control.tools)
+      ? control.tools.length
+      : Object.keys(control.tools).length;
     const onPasteClick = () => _clipboardHandleScenePasteToolClick();
     const onUploadClick = () => _clipboardHandleSceneUploadAction();
-    control.tools[CLIPBOARD_IMAGE_TOOL_PASTE] = {
+    _clipboardUpsertSceneControlTool(control, CLIPBOARD_IMAGE_TOOL_PASTE, {
       name: CLIPBOARD_IMAGE_TOOL_PASTE,
       title: "Paste Media",
       icon: "fa-solid fa-paste",
@@ -70,8 +92,8 @@ function _clipboardAddSceneControlButtons(controls) {
       visible: _clipboardCanUseScenePasteTool(),
       onClick: onPasteClick,
       onChange: onPasteClick,
-    };
-    control.tools[CLIPBOARD_IMAGE_TOOL_UPLOAD] = {
+    });
+    _clipboardUpsertSceneControlTool(control, CLIPBOARD_IMAGE_TOOL_UPLOAD, {
       name: CLIPBOARD_IMAGE_TOOL_UPLOAD,
       title: "Upload Media",
       icon: "fa-solid fa-file-image",
@@ -80,7 +102,7 @@ function _clipboardAddSceneControlButtons(controls) {
       visible: _clipboardCanUseSceneUploadTool(),
       onClick: onUploadClick,
       onChange: onUploadClick,
-    };
+    });
   }
 }
 
@@ -123,7 +145,7 @@ async function _clipboardOnScenePastePromptPaste(event) {
   const prompt = event.currentTarget?.closest?.(`#${CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_ID}`);
   const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
   if (!imageInput) {
-    ui.notifications.warn("Clipboard Image: No supported media was found in that paste.");
+    ui.notifications.warn("Foundry Paste Eater: No supported media was found in that paste.");
     _clipboardSetScenePastePromptMessage(prompt, "No supported media was found in that paste. Try again, or use Upload Media.");
     return;
   }
@@ -153,18 +175,18 @@ function _clipboardOpenScenePastePrompt() {
 
   const prompt = document.createElement("div");
   prompt.id = CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_ID;
-  prompt.className = "clipboard-image-scene-paste-prompt";
+  prompt.className = "foundry-paste-eater-scene-paste-prompt";
   prompt.innerHTML = `
-    <div class="clipboard-image-scene-paste-panel" role="dialog" aria-modal="true" aria-labelledby="clipboard-image-scene-paste-title">
-      <h2 id="clipboard-image-scene-paste-title">Paste Media</h2>
+    <div class="foundry-paste-eater-scene-paste-panel" role="dialog" aria-modal="true" aria-labelledby="foundry-paste-eater-scene-paste-title">
+      <h2 id="foundry-paste-eater-scene-paste-title">Paste Media</h2>
       <p data-role="message">Trying direct clipboard read. If nothing happens, press Cmd+V / Ctrl+V in the field below.</p>
       <textarea
         id="${CLIPBOARD_IMAGE_SCENE_PASTE_TARGET_ID}"
-        class="clipboard-image-scene-paste-target"
+        class="foundry-paste-eater-scene-paste-target"
         rows="4"
         placeholder="Press Cmd+V / Ctrl+V here if direct clipboard read does not complete."
       ></textarea>
-      <div class="clipboard-image-scene-paste-actions">
+      <div class="foundry-paste-eater-scene-paste-actions">
         ${_clipboardCanUseSceneUploadTool() ? '<button type="button" data-action="upload">Upload Media</button>' : ""}
         <button type="button" data-action="cancel">Cancel</button>
       </div>
@@ -249,7 +271,7 @@ function _clipboardHandleScenePasteToolClick() {
 }
 
 function _clipboardToggleChatDropTarget(root, active) {
-  root.classList.toggle("clipboard-image-chat-drop-target", active);
+  root.classList.toggle("foundry-paste-eater-chat-drop-target", active);
 }
 
 function _clipboardOnChatDragOver(event) {
@@ -297,7 +319,7 @@ function _clipboardAttachChatUploadButton(root) {
 
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "clipboard-image-chat-upload";
+  button.className = "foundry-paste-eater-chat-upload";
   button.dataset.action = CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION;
   button.title = "Upload Chat Media";
   button.ariaLabel = "Upload Chat Media";
@@ -421,6 +443,7 @@ module.exports = {
   _clipboardCloseScenePastePrompt,
   _clipboardFocusScenePastePrompt,
   _clipboardGetScenePastePromptFallbackMessage,
+  _clipboardUpsertSceneControlTool,
   _clipboardOnScenePastePromptPaste,
   _clipboardOpenScenePastePrompt,
   _clipboardTryScenePastePromptDirectRead,

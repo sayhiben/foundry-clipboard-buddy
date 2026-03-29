@@ -22,9 +22,9 @@ describe("settings and permission helpers", () => {
     it("blocks users below the configured minimum role", () => {
       globalThis.game.user.isGM = false;
       globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
-      env.settingsValues.set("clipboard-image.minimum-role-canvas-media", "ASSISTANT");
-      env.settingsValues.set("clipboard-image.minimum-role-canvas-text", "TRUSTED");
-      env.settingsValues.set("clipboard-image.minimum-role-chat-media", "TRUSTED");
+      env.settingsValues.set("foundry-paste-eater.minimum-role-canvas-media", "ASSISTANT");
+      env.settingsValues.set("foundry-paste-eater.minimum-role-canvas-text", "TRUSTED");
+      env.settingsValues.set("foundry-paste-eater.minimum-role-chat-media", "TRUSTED");
 
       expect(api._clipboardCanUseCanvasMedia()).toBe(false);
       expect(api._clipboardCanUseCanvasText()).toBe(false);
@@ -41,16 +41,16 @@ describe("settings and permission helpers", () => {
     });
 
     it("falls back to player minimum-role defaults when a setting is blank", () => {
-      env.settingsValues.set("clipboard-image.minimum-role-canvas-media", "   ");
+      env.settingsValues.set("foundry-paste-eater.minimum-role-canvas-media", "   ");
       expect(api._clipboardGetConfiguredMinimumRole("minimum-role-canvas-media")).toBe("PLAYER");
     });
 
     it("allows users who exactly meet the configured minimum role", () => {
       globalThis.game.user.isGM = false;
       globalThis.game.user.role = globalThis.CONST.USER_ROLES.TRUSTED;
-      env.settingsValues.set("clipboard-image.minimum-role-canvas-media", "TRUSTED");
-      env.settingsValues.set("clipboard-image.minimum-role-canvas-text", "TRUSTED");
-      env.settingsValues.set("clipboard-image.minimum-role-chat-media", "TRUSTED");
+      env.settingsValues.set("foundry-paste-eater.minimum-role-canvas-media", "TRUSTED");
+      env.settingsValues.set("foundry-paste-eater.minimum-role-canvas-text", "TRUSTED");
+      env.settingsValues.set("foundry-paste-eater.minimum-role-chat-media", "TRUSTED");
 
       expect(api._clipboardCanUseCanvasMedia()).toBe(true);
       expect(api._clipboardCanUseCanvasText()).toBe(true);
@@ -60,12 +60,12 @@ describe("settings and permission helpers", () => {
 
   describe("feature toggles", () => {
     it("disables chat media and the chat upload button independently", () => {
-      env.settingsValues.set("clipboard-image.enable-chat-media", false);
+      env.settingsValues.set("foundry-paste-eater.enable-chat-media", false);
       expect(api._clipboardCanUseChatMedia()).toBe(false);
       expect(api._clipboardCanUseChatUploadButton()).toBe(false);
 
-      env.settingsValues.set("clipboard-image.enable-chat-media", true);
-      env.settingsValues.set("clipboard-image.enable-chat-upload-button", false);
+      env.settingsValues.set("foundry-paste-eater.enable-chat-media", true);
+      env.settingsValues.set("foundry-paste-eater.enable-chat-upload-button", false);
       expect(api._clipboardCanUseChatMedia()).toBe(true);
       expect(api._clipboardCanUseChatUploadButton()).toBe(false);
     });
@@ -73,21 +73,21 @@ describe("settings and permission helpers", () => {
     it("gates scene controls behind gm policy and media permissions", () => {
       globalThis.game.user.isGM = false;
       globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
-      env.settingsValues.set("clipboard-image.allow-non-gm-scene-controls", false);
+      env.settingsValues.set("foundry-paste-eater.allow-non-gm-scene-controls", false);
       expect(api._clipboardCanUseSceneControls()).toBe(false);
 
-      env.settingsValues.set("clipboard-image.allow-non-gm-scene-controls", true);
+      env.settingsValues.set("foundry-paste-eater.allow-non-gm-scene-controls", true);
       expect(api._clipboardCanUseSceneControls()).toBe(true);
 
-      env.settingsValues.set("clipboard-image.minimum-role-canvas-media", "ASSISTANT");
+      env.settingsValues.set("foundry-paste-eater.minimum-role-canvas-media", "ASSISTANT");
       expect(api._clipboardCanUseSceneControls()).toBe(false);
     });
 
     it("respects token and tile create/replace toggles", () => {
-      env.settingsValues.set("clipboard-image.enable-token-creation", false);
-      env.settingsValues.set("clipboard-image.enable-tile-replacement", false);
-      env.settingsValues.set("clipboard-image.enable-scene-paste-tool", false);
-      env.settingsValues.set("clipboard-image.enable-scene-upload-tool", false);
+      env.settingsValues.set("foundry-paste-eater.enable-token-creation", false);
+      env.settingsValues.set("foundry-paste-eater.enable-tile-replacement", false);
+      env.settingsValues.set("foundry-paste-eater.enable-scene-paste-tool", false);
+      env.settingsValues.set("foundry-paste-eater.enable-scene-upload-tool", false);
 
       expect(api._clipboardCanCreateTokens()).toBe(false);
       expect(api._clipboardCanCreateTiles()).toBe(true);
@@ -95,6 +95,51 @@ describe("settings and permission helpers", () => {
       expect(api._clipboardCanReplaceTiles()).toBe(false);
       expect(api._clipboardCanUseScenePasteTool()).toBe(false);
       expect(api._clipboardCanUseSceneUploadTool()).toBe(false);
+    });
+  });
+
+  describe("legacy migration", () => {
+    it("falls back to legacy stored settings when the new namespace has not been persisted yet", () => {
+      env.worldStorage.set("clipboard-image.enable-token-creation", {
+        key: "clipboard-image.enable-token-creation",
+        value: false,
+      });
+
+      expect(api._clipboardGetSetting("enable-token-creation")).toBe(false);
+      expect(api._clipboardCanCreateTokens()).toBe(false);
+    });
+
+    it("migrates legacy stored settings into the new namespace", async () => {
+      api._clipboardRegisterSettings();
+      env.worldStorage.set("clipboard-image.enable-token-creation", {
+        key: "clipboard-image.enable-token-creation",
+        value: false,
+      });
+      env.clientStorage.set("clipboard-image.verbose-logging", {
+        key: "clipboard-image.verbose-logging",
+        value: true,
+      });
+
+      await expect(api._clipboardMigrateLegacySettings()).resolves.toEqual(expect.arrayContaining([
+        "enable-token-creation",
+        "verbose-logging",
+      ]));
+      expect(globalThis.game.settings.set).toHaveBeenCalledWith("foundry-paste-eater", "enable-token-creation", false);
+      expect(globalThis.game.settings.set).toHaveBeenCalledWith("foundry-paste-eater", "verbose-logging", true);
+      expect(env.settingsValues.get("foundry-paste-eater.enable-token-creation")).toBe(false);
+      expect(env.settingsValues.get("foundry-paste-eater.verbose-logging")).toBe(true);
+    });
+
+    it("does not migrate world settings for non-gm users", async () => {
+      api._clipboardRegisterSettings();
+      globalThis.game.user.isGM = false;
+      env.worldStorage.set("clipboard-image.enable-token-creation", {
+        key: "clipboard-image.enable-token-creation",
+        value: false,
+      });
+
+      await expect(api._clipboardMigrateLegacySettings()).resolves.toEqual([]);
+      expect(globalThis.game.settings.set).not.toHaveBeenCalledWith("foundry-paste-eater", "enable-token-creation", false);
     });
   });
 
@@ -106,11 +151,11 @@ describe("settings and permission helpers", () => {
       expect(api._clipboardGetScenePastePromptMode()).toBe("auto");
       expect(api._clipboardShouldCreateBackingActors()).toBe(true);
 
-      env.settingsValues.set("clipboard-image.default-empty-canvas-target", "token");
-      env.settingsValues.set("clipboard-image.chat-media-display", "link-only");
-      env.settingsValues.set("clipboard-image.canvas-text-paste-mode", "disabled");
-      env.settingsValues.set("clipboard-image.scene-paste-prompt-mode", "always");
-      env.settingsValues.set("clipboard-image.create-backing-actors", false);
+      env.settingsValues.set("foundry-paste-eater.default-empty-canvas-target", "token");
+      env.settingsValues.set("foundry-paste-eater.chat-media-display", "link-only");
+      env.settingsValues.set("foundry-paste-eater.canvas-text-paste-mode", "disabled");
+      env.settingsValues.set("foundry-paste-eater.scene-paste-prompt-mode", "always");
+      env.settingsValues.set("foundry-paste-eater.create-backing-actors", false);
 
       expect(api._clipboardGetDefaultEmptyCanvasTarget()).toBe("token");
       expect(api._clipboardGetChatMediaDisplayMode()).toBe("link-only");
@@ -120,9 +165,9 @@ describe("settings and permission helpers", () => {
     });
 
     it("accepts the remaining explicit behavior modes", () => {
-      env.settingsValues.set("clipboard-image.default-empty-canvas-target", "tile");
-      env.settingsValues.set("clipboard-image.chat-media-display", "full-preview");
-      env.settingsValues.set("clipboard-image.scene-paste-prompt-mode", "never");
+      env.settingsValues.set("foundry-paste-eater.default-empty-canvas-target", "tile");
+      env.settingsValues.set("foundry-paste-eater.chat-media-display", "full-preview");
+      env.settingsValues.set("foundry-paste-eater.scene-paste-prompt-mode", "never");
 
       expect(api._clipboardGetDefaultEmptyCanvasTarget()).toBe("tile");
       expect(api._clipboardGetChatMediaDisplayMode()).toBe("full-preview");
@@ -130,10 +175,10 @@ describe("settings and permission helpers", () => {
     });
 
     it("falls back to safe defaults for unsupported behavior values", () => {
-      env.settingsValues.set("clipboard-image.default-empty-canvas-target", "weird");
-      env.settingsValues.set("clipboard-image.chat-media-display", "weird");
-      env.settingsValues.set("clipboard-image.canvas-text-paste-mode", "weird");
-      env.settingsValues.set("clipboard-image.scene-paste-prompt-mode", "weird");
+      env.settingsValues.set("foundry-paste-eater.default-empty-canvas-target", "weird");
+      env.settingsValues.set("foundry-paste-eater.chat-media-display", "weird");
+      env.settingsValues.set("foundry-paste-eater.canvas-text-paste-mode", "weird");
+      env.settingsValues.set("foundry-paste-eater.scene-paste-prompt-mode", "weird");
 
       expect(api._clipboardGetDefaultEmptyCanvasTarget()).toBe("active-layer");
       expect(api._clipboardGetChatMediaDisplayMode()).toBe("thumbnail");

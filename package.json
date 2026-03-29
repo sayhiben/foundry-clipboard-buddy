@@ -1,14 +1,14 @@
 {
-  "name": "foundry-clipboard-buddy",
+  "name": "foundry-paste-eater",
   "version": "0.5.0",
   "description": "Paste media and contextual text from Clipboard into Tiles, Tokens, Notes, or Chat",
-  "main": "clipboard-image.js",
+  "main": "foundry-paste-eater.js",
   "scripts": {
     "build:runtime": "node scripts/build-runtime.js",
-    "copy": "npm run build:runtime && rm -rf dist && mkdir -p dist && cp ./clipboard-image.js dist/ && cp ./clipboard-image.css dist/ && cp ./README.md dist/ && cp ./TESTING.md dist/ && cp ./CHANGELOG.md dist/ && cp ./LICENSE.md dist/ && cp ./module.json dist/ && cp -R ./templates dist/",
-    "copyWin": "npm run build:runtime && if exist dist rmdir /S /Q dist && mkdir dist && copy module.json dist && copy clipboard-image.js dist && copy clipboard-image.css dist && copy README.md dist && copy TESTING.md dist && copy CHANGELOG.md dist && copy LICENSE.md dist && xcopy templates dist\\templates /E /I /Y",
+    "copy": "npm run build:runtime && rm -rf dist && mkdir -p dist && cp ./foundry-paste-eater.js dist/ && cp ./foundry-paste-eater.css dist/ && cp ./README.md dist/ && cp ./TESTING.md dist/ && cp ./CHANGELOG.md dist/ && cp ./LICENSE.md dist/ && cp ./module.json dist/ && cp -R ./templates dist/",
+    "copyWin": "npm run build:runtime && if exist dist rmdir /S /Q dist && mkdir dist && copy module.json dist && copy foundry-paste-eater.js dist && copy foundry-paste-eater.css dist && copy README.md dist && copy TESTING.md dist && copy CHANGELOG.md dist && copy LICENSE.md dist && xcopy templates dist\\templates /E /I /Y",
     "lint": "eslint .",
-    "zip": "npm-build-zip --source=dist --destination=.",
+    "zip": "npm run copy && rm -f foundry-paste-eater_${npm_package_version}.zip && npm-build-zip --source=dist --destination=. && mv dist.zip foundry-paste-eater_${npm_package_version}.zip",
     "test": "npm run test:unit",
     "test:unit": "npm run test:unit:run && node scripts/check-coverage.js",
     "test:unit:run": "vitest run --coverage",
@@ -21,7 +21,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sayhiben/foundry-clipboard-buddy.git"
+    "url": "git+https://github.com/sayhiben/foundry-paste-eater.git"
   },
   "keywords": [
     "foundry",
@@ -42,9 +42,9 @@
   "author": "JeansenVaars (Saif Ellafi)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/sayhiben/foundry-clipboard-buddy/issues"
+    "url": "https://github.com/sayhiben/foundry-paste-eater/issues"
   },
-  "homepage": "https://github.com/sayhiben/foundry-clipboard-buddy",
+  "homepage": "https://github.com/sayhiben/foundry-paste-eater",
   "devDependencies": {
     "@eslint/js": "^9.23.0",
     "@playwright/test": "^1.54.2",
@@ -53,7 +53,7 @@
     "eslint": "^9.23.0",
     "globals": "^16.0.0",
     "jsdom": "^26.0.0",
-    "npm-build-zip": "^1.0.3"
-    ,"vitest": "^3.2.4"
+    "npm-build-zip": "^1.0.3",
+    "vitest": "^3.2.4"
   }
 }

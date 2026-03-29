@@ -124,9 +124,9 @@ test("gm-local errors show a popup, a richer dialog, and a verbose logfile downl
     const uiState = await getClipboardUi(gmPage);
     expect(uiState.notifications.error[0]).toContain("S3-compatible destinations require a bucket selection");
     expect(uiState.dialogs[0].content).toContain("Download module logfile");
-    expect(uiState.dialogs[0].content).toContain("This client encountered a Clipboard Image error.");
-    expect(uiState.downloads[0].filename).toMatch(/^clipboard-image-error-/);
-    expect(uiState.downloads[0].content).toContain("Clipboard Image Error Report");
+    expect(uiState.dialogs[0].content).toContain("This client encountered a Foundry Paste Eater error.");
+    expect(uiState.downloads[0].filename).toMatch(/^foundry-paste-eater-error-/);
+    expect(uiState.downloads[0].content).toContain("Foundry Paste Eater Error Report");
 
     const after = await getStateSnapshot(gmPage);
     expect(after.tokens).toEqual(before.tokens);
@@ -177,7 +177,7 @@ test("player-side errors alert the player and relay richer details to connected 
     expect(playerUi.notifications.error[0]).toContain("S3-compatible destinations require a bucket selection");
     expect(playerUi.dialogs).toHaveLength(0);
     expect(gmUi.notifications.error[0]).toContain("S3-compatible destinations require a bucket selection");
-    expect(gmUi.dialogs[0].content).toContain("Another user encountered a Clipboard Image error.");
+    expect(gmUi.dialogs[0].content).toContain("Another user encountered a Foundry Paste Eater error.");
     expect(gmUi.dialogs[0].content).toContain("Download module logfile");
     expect(gmUi.downloads).toHaveLength(0);
 

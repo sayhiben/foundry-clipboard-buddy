@@ -34,7 +34,7 @@ describe("journal, note, and upload workflows", () => {
     it("reads associated note flag data from a document", () => {
       const document = env.createPlaceableDocument("Token", {
         flags: {
-          "clipboard-image": {
+          "foundry-paste-eater": {
             textNote: {
               entryId: "entry-1",
               pageId: "page-1",
@@ -50,13 +50,33 @@ describe("journal, note, and upload workflows", () => {
         noteId: "note-1",
       });
     });
+
+    it("falls back to legacy note flag data from the old module namespace", () => {
+      const document = env.createPlaceableDocument("Token", {
+        flags: {
+          "clipboard-image": {
+            textNote: {
+              entryId: "entry-legacy",
+              pageId: "page-legacy",
+              noteId: "note-legacy",
+            },
+          },
+        },
+      });
+
+      expect(api._clipboardGetAssociatedTextNoteData(document)).toEqual({
+        entryId: "entry-legacy",
+        pageId: "page-legacy",
+        noteId: "note-legacy",
+      });
+    });
   });
 
   describe("_clipboardEnsureAssociatedTextPage", () => {
     it("appends to an existing text page", async () => {
       const document = env.createPlaceableDocument("Token", {
         flags: {
-          "clipboard-image": {
+          "foundry-paste-eater": {
             textNote: {
               entryId: "entry-1",
               pageId: "page-1",
@@ -84,7 +104,7 @@ describe("journal, note, and upload workflows", () => {
     it("creates a new page inside an existing journal when the flagged page is missing", async () => {
       const document = env.createPlaceableDocument("Tile", {
         flags: {
-          "clipboard-image": {
+          "foundry-paste-eater": {
             textNote: {
               entryId: "entry-2",
               pageId: "page-missing",
@@ -115,6 +135,7 @@ describe("journal, note, and upload workflows", () => {
 
   describe("_clipboardEnsurePlaceableTextNote", () => {
     it("creates a new scene note and stores flags", async () => {
+      globalThis.game.modules.set("clipboard-image", {active: true});
       const document = env.createPlaceableDocument("Token", {
         id: "token-1",
         name: "Hero",
@@ -133,6 +154,7 @@ describe("journal, note, and upload workflows", () => {
         }),
       ]);
       expect(document.setFlag).toHaveBeenCalled();
+      expect(document.unsetFlag).toHaveBeenCalledWith("clipboard-image", "textNote");
     });
 
     it("updates an existing note when a noteId is already stored", async () => {
@@ -150,7 +172,7 @@ describe("journal, note, and upload workflows", () => {
         id: "token-2",
         name: "Noted",
         flags: {
-          "clipboard-image": {
+          "foundry-paste-eater": {
             textNote: {
               entryId: createdPage.entry.id,
               pageId: createdPage.page.id,
@@ -163,6 +185,25 @@ describe("journal, note, and upload workflows", () => {
 
       await api._clipboardEnsurePlaceableTextNote(document, "More text", {x: 30, y: 40});
       expect(note.update).toHaveBeenCalled();
+    });
+
+    it("ignores legacy scope cleanup errors after storing the new note flag", async () => {
+      globalThis.game.modules.set("clipboard-image", {active: true});
+      const document = env.createPlaceableDocument("Token", {
+        id: "token-legacy-cleanup",
+        name: "Legacy Cleanup",
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+      });
+      document.unsetFlag.mockImplementation(() => {
+        throw new Error("invalid scope");
+      });
+
+      await expect(api._clipboardEnsurePlaceableTextNote(document, "Some text", {x: 10, y: 20})).resolves.toBe(true);
+      expect(document.setFlag).toHaveBeenCalled();
+      expect(document.unsetFlag).toHaveBeenCalledWith("clipboard-image", "textNote");
     });
 
     it("throws when it cannot produce a valid note target", async () => {
@@ -194,8 +235,8 @@ describe("journal, note, and upload workflows", () => {
     });
 
     it("adds a cache-busting query to uploaded media paths", () => {
-      expect(api._clipboardCreateFreshMediaPath("folder/upload.png", 123)).toBe("folder/upload.png?clipboard-image=123");
-      expect(api._clipboardCreateFreshMediaPath("folder/upload.png?x=1", 123)).toBe("folder/upload.png?x=1&clipboard-image=123");
+      expect(api._clipboardCreateFreshMediaPath("folder/upload.png", 123)).toBe("folder/upload.png?foundry-paste-eater=123");
+      expect(api._clipboardCreateFreshMediaPath("folder/upload.png?x=1", 123)).toBe("folder/upload.png?x=1&foundry-paste-eater=123");
       expect(api._clipboardCreateFreshMediaPath("blob:abc", 123)).toBe("blob:abc");
     });
 

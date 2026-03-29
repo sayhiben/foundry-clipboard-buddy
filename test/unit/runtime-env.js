@@ -114,8 +114,28 @@ function createPlaceableDocument(documentName, data = {}) {
       const scopedFlags = flags.get(scope) || {};
       scopedFlags[key] = value;
       flags.set(scope, scopedFlags);
+      document.flags[scope] = {...scopedFlags};
+      document._source.flags[scope] = {...scopedFlags};
       return value;
     }),
+    unsetFlag: vi.fn(async (scope, key) => {
+      const scopedFlags = flags.get(scope);
+      if (!scopedFlags) return null;
+      delete scopedFlags[key];
+      if (!Object.keys(scopedFlags).length) {
+        flags.delete(scope);
+        delete document.flags[scope];
+        delete document._source.flags[scope];
+      } else {
+        document.flags[scope] = {...scopedFlags};
+        document._source.flags[scope] = {...scopedFlags};
+      }
+      return null;
+    }),
+  };
+  document.flags = Object.fromEntries(Array.from(flags.entries(), ([scope, value]) => [scope, {...value}]));
+  document._source = {
+    flags: Object.fromEntries(Array.from(flags.entries(), ([scope, value]) => [scope, {...value}])),
   };
 
   return document;
@@ -139,29 +159,31 @@ function loadRuntime(options = {}) {
   const socketHandlers = new Map();
   const dialogInstances = [];
   const settingsValues = new Map([
-    ["clipboard-image.image-location-source", "auto"],
-    ["clipboard-image.image-location", "pasted_images"],
-    ["clipboard-image.image-location-bucket", ""],
-    ["clipboard-image.verbose-logging", false],
-    ["clipboard-image.minimum-role-canvas-media", "PLAYER"],
-    ["clipboard-image.minimum-role-canvas-text", "PLAYER"],
-    ["clipboard-image.minimum-role-chat-media", "PLAYER"],
-    ["clipboard-image.allow-non-gm-scene-controls", false],
-    ["clipboard-image.enable-chat-media", true],
-    ["clipboard-image.enable-chat-upload-button", true],
-    ["clipboard-image.enable-token-creation", true],
-    ["clipboard-image.enable-tile-creation", true],
-    ["clipboard-image.enable-token-replacement", true],
-    ["clipboard-image.enable-tile-replacement", true],
-    ["clipboard-image.enable-scene-paste-tool", true],
-    ["clipboard-image.enable-scene-upload-tool", true],
-    ["clipboard-image.default-empty-canvas-target", "active-layer"],
-    ["clipboard-image.create-backing-actors", true],
-    ["clipboard-image.chat-media-display", "thumbnail"],
-    ["clipboard-image.canvas-text-paste-mode", "scene-notes"],
-    ["clipboard-image.scene-paste-prompt-mode", "auto"],
+    ["foundry-paste-eater.image-location-source", "auto"],
+    ["foundry-paste-eater.image-location", "pasted_images"],
+    ["foundry-paste-eater.image-location-bucket", ""],
+    ["foundry-paste-eater.verbose-logging", false],
+    ["foundry-paste-eater.minimum-role-canvas-media", "PLAYER"],
+    ["foundry-paste-eater.minimum-role-canvas-text", "PLAYER"],
+    ["foundry-paste-eater.minimum-role-chat-media", "PLAYER"],
+    ["foundry-paste-eater.allow-non-gm-scene-controls", false],
+    ["foundry-paste-eater.enable-chat-media", true],
+    ["foundry-paste-eater.enable-chat-upload-button", true],
+    ["foundry-paste-eater.enable-token-creation", true],
+    ["foundry-paste-eater.enable-tile-creation", true],
+    ["foundry-paste-eater.enable-token-replacement", true],
+    ["foundry-paste-eater.enable-tile-replacement", true],
+    ["foundry-paste-eater.enable-scene-paste-tool", true],
+    ["foundry-paste-eater.enable-scene-upload-tool", true],
+    ["foundry-paste-eater.default-empty-canvas-target", "active-layer"],
+    ["foundry-paste-eater.create-backing-actors", true],
+    ["foundry-paste-eater.chat-media-display", "thumbnail"],
+    ["foundry-paste-eater.canvas-text-paste-mode", "scene-notes"],
+    ["foundry-paste-eater.scene-paste-prompt-mode", "auto"],
   ]);
   const settingsRegistry = new Map();
+  const worldStorage = new Map();
+  const clientStorage = new Map();
   const journalEntries = new Map();
   const sceneNotes = new Map();
   const actors = new Map();
@@ -211,6 +233,8 @@ function loadRuntime(options = {}) {
     dialogInstances,
     settingsValues,
     settingsRegistry,
+    worldStorage,
+    clientStorage,
     journalEntries,
     sceneNotes,
     actors,
@@ -300,15 +324,28 @@ function loadRuntime(options = {}) {
     },
     settings: {
       settings: settingsRegistry,
+      storage: new Map([
+        ["world", worldStorage],
+        ["client", clientStorage],
+      ]),
       get: vi.fn((moduleId, key) => settingsValues.get(`${moduleId}.${key}`)),
       set: vi.fn(async (moduleId, key, value) => {
-        settingsValues.set(`${moduleId}.${key}`, value);
+        const settingsKey = `${moduleId}.${key}`;
+        settingsValues.set(settingsKey, value);
+        const config = settingsRegistry.get(settingsKey);
+        const scope = config?.scope || "world";
+        const storage = scope === "client" ? clientStorage : worldStorage;
+        storage.set(settingsKey, {key: settingsKey, value});
         return value;
       }),
       register: vi.fn((moduleId, key, config) => {
         const settingsKey = `${moduleId}.${key}`;
         settingsRegistry.set(settingsKey, config);
         if (!settingsValues.has(settingsKey)) settingsValues.set(settingsKey, config.default);
+        const storage = config.scope === "client" ? clientStorage : worldStorage;
+        if (storage.has(settingsKey)) {
+          settingsValues.set(settingsKey, storage.get(settingsKey).value);
+        }
         registeredSettings.push({moduleId, key, config});
       }),
       registerMenu: vi.fn((moduleId, key, config) => {
@@ -462,7 +499,7 @@ function loadRuntime(options = {}) {
       dialogInstances.push(this);
     }
   };
-  globalThis.URL.createObjectURL = vi.fn(() => "blob:clipboard-image-log");
+  globalThis.URL.createObjectURL = vi.fn(() => "blob:foundry-paste-eater-log");
   globalThis.URL.revokeObjectURL = vi.fn();
 
   Object.defineProperty(window.navigator, "clipboard", {

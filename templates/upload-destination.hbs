@@ -1,4 +1,4 @@
-<form class="clipboard-image-destination-config flexcol" autocomplete="off">
+<form class="foundry-paste-eater-destination-config flexcol" autocomplete="off">
   <div class="form-group">
     <label>Source</label>
     <div class="form-fields">
@@ -9,7 +9,7 @@
     <p class="notes">Automatic follows the current host. Use S3-compatible storage when Foundry is configured to upload through Amazon S3, Cloudflare R2, MinIO, or another compatible provider.</p>
   </div>
 
-  <div class="form-group clipboard-image-s3-bucket{{#unless isS3}} hidden{{/unless}}">
+  <div class="form-group foundry-paste-eater-s3-bucket{{#unless isS3}} hidden{{/unless}}">
     <label>Bucket</label>
     <div class="form-fields">
       <input type="text" name="bucket" value="{{bucket}}" placeholder="my-bucket" />
@@ -17,7 +17,7 @@
     <p class="notes">Required for S3-compatible destinations. Choosing a folder from the file picker fills this automatically.</p>
   </div>
 
-  <div class="form-group clipboard-image-s3-endpoint{{#unless isS3}} hidden{{/unless}}">
+  <div class="form-group foundry-paste-eater-s3-endpoint{{#unless isS3}} hidden{{/unless}}">
     <label>Endpoint / Base URL</label>
     <div class="form-fields">
       <input type="text" value="{{s3Endpoint}}" data-role="s3-endpoint" placeholder="Configured by Foundry server storage settings" disabled />

@@ -9,7 +9,7 @@ const notes = require("./notes");
 const chat = require("./chat");
 const workflows = require("./workflows");
 const uiHandlers = require("./ui");
-const {ClipboardImageDestinationConfig} = require("./config-app");
+const {FoundryPasteEaterDestinationConfig} = require("./config-app");
 const settings = require("./settings");
 const state = require("./state");
 
@@ -20,26 +20,27 @@ Hooks.once("init", function() {
   settings._clipboardRegisterSettings();
   Hooks.on("getSceneControlButtons", uiHandlers._clipboardAddSceneControlButtons);
   Hooks.on("renderChatInput", uiHandlers._clipboardOnRenderChatInput);
-  diagnostics._clipboardLog("info", "Initializing clipboard-image module.", {
+  diagnostics._clipboardLog("info", "Initializing foundry-paste-eater module.", {
     clipboardReadAvailable: Boolean(navigator.clipboard?.read),
     sceneControls: constants.CLIPBOARD_IMAGE_SCENE_CONTROLS,
   });
 });
 
-Hooks.once("ready", function() {
+Hooks.once("ready", async function() {
+  await settings._clipboardMigrateLegacySettings();
   diagnostics._clipboardRegisterErrorReporting();
-  diagnostics._clipboardLog("info", "clipboard-image module is ready.", {
+  diagnostics._clipboardLog("info", "foundry-paste-eater module is ready.", {
     clipboardReadAvailable: Boolean(navigator.clipboard?.read),
     verboseLogging: diagnostics._clipboardVerboseLoggingEnabled(),
   });
   if (game.user.isGM && !navigator.clipboard?.read) {
-    ui.notifications.info("Clipboard Image: Direct clipboard reads are unavailable here. Browser paste events and upload fallbacks are still available where enabled.");
+    ui.notifications.info("Foundry Paste Eater: Direct clipboard reads are unavailable here. Browser paste events and upload fallbacks are still available where enabled.");
     diagnostics._clipboardLog("info", "Direct clipboard reads are unavailable; paste-event and upload fallbacks remain available where enabled.");
   }
 });
 
 module.exports = {
-  ClipboardImageDestinationConfig,
+  FoundryPasteEaterDestinationConfig,
   __testables: {
     ...diagnostics,
     ...storage,

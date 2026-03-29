@@ -105,7 +105,7 @@ describe("ui and hook integration helpers", () => {
 
       api._clipboardHandleScenePasteAction();
       expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith(
-        "Clipboard Image: Direct clipboard reads are unavailable here. Use your browser's Paste action or the Upload Media tool instead."
+        "Foundry Paste Eater: Direct clipboard reads are unavailable here. Use your browser's Paste action or the Upload Media tool instead."
       );
       Object.defineProperty(window.navigator, "clipboard", {
         configurable: true,
@@ -137,7 +137,7 @@ describe("ui and hook integration helpers", () => {
     });
 
     it("supports always-show prompt mode for the scene paste tool", async () => {
-      env.settingsValues.set("clipboard-image.scene-paste-prompt-mode", "always");
+      env.settingsValues.set("foundry-paste-eater.scene-paste-prompt-mode", "always");
       api._clipboardHandleScenePasteToolClick();
       await flush();
 
@@ -147,7 +147,7 @@ describe("ui and hook integration helpers", () => {
     });
 
     it("supports direct-read-only scene paste tool mode", async () => {
-      env.settingsValues.set("clipboard-image.scene-paste-prompt-mode", "never");
+      env.settingsValues.set("foundry-paste-eater.scene-paste-prompt-mode", "never");
       const restoreImage = withMockImage();
       window.navigator.clipboard.read.mockResolvedValueOnce([
         {types: ["image/png"], getType: async () => new Blob(["x"], {type: "image/png"})},
@@ -163,7 +163,7 @@ describe("ui and hook integration helpers", () => {
     it("handles media pasted into the scene paste prompt", async () => {
       const restoreImage = withMockImage();
       const prompt = api._clipboardOpenScenePastePrompt();
-      const target = prompt.querySelector("#clipboard-image-scene-paste-target");
+      const target = prompt.querySelector("#foundry-paste-eater-scene-paste-target");
       const file = new File(["x"], "prompt.png", {type: "image/png"});
       const event = new Event("paste", {bubbles: true, cancelable: true});
       Object.defineProperty(event, "clipboardData", {
@@ -187,7 +187,7 @@ describe("ui and hook integration helpers", () => {
 
     it("keeps the scene paste prompt open for unsupported pasted content", async () => {
       const prompt = api._clipboardOpenScenePastePrompt();
-      const target = prompt.querySelector("#clipboard-image-scene-paste-target");
+      const target = prompt.querySelector("#foundry-paste-eater-scene-paste-target");
       const event = new Event("paste", {bubbles: true, cancelable: true});
       Object.defineProperty(event, "clipboardData", {
         configurable: true,
@@ -200,7 +200,7 @@ describe("ui and hook integration helpers", () => {
       await flush();
 
       expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith(
-        "Clipboard Image: No supported media was found in that paste."
+        "Foundry Paste Eater: No supported media was found in that paste."
       );
       expect(api._clipboardGetScenePastePrompt()).toBe(prompt);
       api._clipboardCloseScenePastePrompt(prompt);
@@ -208,7 +208,7 @@ describe("ui and hook integration helpers", () => {
 
     it("closes the scene paste prompt when paste handling returns false", async () => {
       const prompt = api._clipboardOpenScenePastePrompt();
-      const target = prompt.querySelector("#clipboard-image-scene-paste-target");
+      const target = prompt.querySelector("#foundry-paste-eater-scene-paste-target");
       const file = new File(["x"], "prompt.png", {type: "image/png"});
       api._clipboardSetRuntimeState({locked: true});
 
@@ -369,21 +369,21 @@ describe("ui and hook integration helpers", () => {
     });
 
     it("supports link-only chat media display", () => {
-      env.settingsValues.set("clipboard-image.chat-media-display", "link-only");
+      env.settingsValues.set("foundry-paste-eater.chat-media-display", "link-only");
       const content = api._clipboardCreateChatMediaContent("https://example.com/file.png");
       expect(content).not.toContain("<img");
       expect(content).toContain("Open full media");
     });
 
     it("supports full-preview chat media display", () => {
-      env.settingsValues.set("clipboard-image.chat-media-display", "full-preview");
+      env.settingsValues.set("foundry-paste-eater.chat-media-display", "full-preview");
       expect(api._clipboardCreateChatMediaContent("https://example.com/file.png"))
-        .toContain("clipboard-image-chat-full-preview");
+        .toContain("foundry-paste-eater-chat-full-preview");
     });
 
     it("creates chat messages directly", async () => {
-      env.settingsRegistry.set("clipboard-image.verbose-logging", {});
-      env.settingsValues.set("clipboard-image.verbose-logging", true);
+      env.settingsRegistry.set("foundry-paste-eater.verbose-logging", {});
+      env.settingsValues.set("foundry-paste-eater.verbose-logging", true);
       await api._clipboardCreateChatMessage("folder/file.png");
       expect(globalThis.foundry.documents.ChatMessage.create).toHaveBeenCalledWith({
         content: expect.stringContaining("folder/file.png"),
@@ -404,45 +404,75 @@ describe("ui and hook integration helpers", () => {
       };
 
       api._clipboardAddSceneControlButtons(controls);
-      expect(controls.tiles.tools["clipboard-image-paste"]).toMatchObject({title: "Paste Media", button: true});
-      expect(controls.tiles.tools["clipboard-image-paste"].onClick).toBeTypeOf("function");
-      expect(controls.tiles.tools["clipboard-image-paste"].onChange).toBe(controls.tiles.tools["clipboard-image-paste"].onClick);
-      expect(controls.tokens.tools["clipboard-image-upload"]).toMatchObject({title: "Upload Media", button: true});
-      expect(controls.tokens.tools["clipboard-image-upload"].onClick).toBeTypeOf("function");
-      expect(controls.tokens.tools["clipboard-image-upload"].onChange).toBe(controls.tokens.tools["clipboard-image-upload"].onClick);
-      expect(controls.walls.tools["clipboard-image-paste"]).toBeUndefined();
+      expect(controls.tiles.tools["foundry-paste-eater-paste"]).toMatchObject({title: "Paste Media", button: true});
+      expect(controls.tiles.tools["foundry-paste-eater-paste"].onClick).toBeTypeOf("function");
+      expect(controls.tiles.tools["foundry-paste-eater-paste"].onChange).toBe(controls.tiles.tools["foundry-paste-eater-paste"].onClick);
+      expect(controls.tokens.tools["foundry-paste-eater-upload"]).toMatchObject({title: "Upload Media", button: true});
+      expect(controls.tokens.tools["foundry-paste-eater-upload"].onClick).toBeTypeOf("function");
+      expect(controls.tokens.tools["foundry-paste-eater-upload"].onChange).toBe(controls.tokens.tools["foundry-paste-eater-upload"].onClick);
+      expect(controls.walls.tools["foundry-paste-eater-paste"]).toBeUndefined();
+    });
+
+    it("adds scene control buttons when Foundry provides tool arrays", () => {
+      const controls = {
+        tiles: {
+          tools: [
+            {name: "select", title: "Select Tiles"},
+            {name: "tile", title: "Place Tile"},
+          ],
+        },
+        tokens: {
+          tools: [
+            {name: "select", title: "Select Tokens"},
+          ],
+        },
+      };
+
+      api._clipboardAddSceneControlButtons(controls);
+
+      expect(controls.tiles.tools.map(tool => tool.name)).toEqual([
+        "select",
+        "tile",
+        "foundry-paste-eater-paste",
+        "foundry-paste-eater-upload",
+      ]);
+      expect(controls.tokens.tools.map(tool => tool.name)).toEqual([
+        "select",
+        "foundry-paste-eater-paste",
+        "foundry-paste-eater-upload",
+      ]);
     });
 
     it("respects scene control visibility settings for non-gm users", () => {
       globalThis.game.user.isGM = false;
       globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
-      env.settingsValues.set("clipboard-image.allow-non-gm-scene-controls", true);
-      env.settingsValues.set("clipboard-image.enable-scene-paste-tool", false);
+      env.settingsValues.set("foundry-paste-eater.allow-non-gm-scene-controls", true);
+      env.settingsValues.set("foundry-paste-eater.enable-scene-paste-tool", false);
 
       const controls = {tiles: {tools: {}}, tokens: {tools: {}}};
       api._clipboardAddSceneControlButtons(controls);
 
-      expect(controls.tiles.tools["clipboard-image-paste"].visible).toBe(false);
-      expect(controls.tiles.tools["clipboard-image-upload"].visible).toBe(true);
+      expect(controls.tiles.tools["foundry-paste-eater-paste"].visible).toBe(false);
+      expect(controls.tiles.tools["foundry-paste-eater-upload"].visible).toBe(true);
     });
 
     it("hides scene controls from non-gms when the world setting disallows them", () => {
       globalThis.game.user.isGM = false;
       globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
-      env.settingsValues.set("clipboard-image.allow-non-gm-scene-controls", false);
+      env.settingsValues.set("foundry-paste-eater.allow-non-gm-scene-controls", false);
 
       const controls = {tiles: {tools: {}}, tokens: {tools: {}}};
       api._clipboardAddSceneControlButtons(controls);
 
-      expect(controls.tiles.tools["clipboard-image-paste"].visible).toBe(false);
-      expect(controls.tiles.tools["clipboard-image-upload"].visible).toBe(false);
+      expect(controls.tiles.tools["foundry-paste-eater-paste"].visible).toBe(false);
+      expect(controls.tiles.tools["foundry-paste-eater-upload"].visible).toBe(false);
     });
 
     it("invokes scene control callbacks", async () => {
       const controls = {tiles: {tools: {}}, tokens: {tools: {}}};
       api._clipboardAddSceneControlButtons(controls);
-      controls.tiles.tools["clipboard-image-paste"].onClick();
-      controls.tokens.tools["clipboard-image-upload"].onClick();
+      controls.tiles.tools["foundry-paste-eater-paste"].onClick();
+      controls.tokens.tools["foundry-paste-eater-upload"].onClick();
       await flush();
       api._clipboardCloseScenePastePrompt();
     });
@@ -450,9 +480,9 @@ describe("ui and hook integration helpers", () => {
     it("toggles chat drop-target styling", () => {
       const root = document.createElement("form");
       api._clipboardToggleChatDropTarget(root, true);
-      expect(root.classList.contains("clipboard-image-chat-drop-target")).toBe(true);
+      expect(root.classList.contains("foundry-paste-eater-chat-drop-target")).toBe(true);
       api._clipboardToggleChatDropTarget(root, false);
-      expect(root.classList.contains("clipboard-image-chat-drop-target")).toBe(false);
+      expect(root.classList.contains("foundry-paste-eater-chat-drop-target")).toBe(false);
     });
 
     it("prevents dragover for supported media", () => {
@@ -476,7 +506,7 @@ describe("ui and hook integration helpers", () => {
     it("clears dragover styling when leaving the chat root", () => {
       const root = document.createElement("form");
       api._clipboardOnChatDragLeave({currentTarget: root, relatedTarget: null});
-      expect(root.classList.contains("clipboard-image-chat-drop-target")).toBe(false);
+      expect(root.classList.contains("foundry-paste-eater-chat-drop-target")).toBe(false);
     });
 
     it("handles dropped chat media", async () => {
@@ -506,19 +536,19 @@ describe("ui and hook integration helpers", () => {
       document.body.append(root);
 
       api._clipboardAttachChatUploadButton(root);
-      expect(root.querySelector('[data-action="clipboard-image-chat-upload"]')).toBeTruthy();
+      expect(root.querySelector('[data-action="foundry-paste-eater-chat-upload"]')).toBeTruthy();
       api._clipboardBindChatRoot(root);
       api._clipboardBindChatRoot(root);
-      expect(root.getAttribute("data-clipboard-image-chat-root")).toBe("true");
+      expect(root.getAttribute("data-foundry-paste-eater-chat-root")).toBe("true");
     });
 
     it("omits the chat upload button when that feature is disabled", () => {
-      env.settingsValues.set("clipboard-image.enable-chat-upload-button", false);
+      env.settingsValues.set("foundry-paste-eater.enable-chat-upload-button", false);
       const root = document.createElement("form");
       document.body.append(root);
 
       api._clipboardAttachChatUploadButton(root);
-      expect(root.querySelector('[data-action="clipboard-image-chat-upload"]')).toBeNull();
+      expect(root.querySelector('[data-action="foundry-paste-eater-chat-upload"]')).toBeNull();
     });
 
     it("binds chat roots from rendered chat input elements", () => {
@@ -532,7 +562,7 @@ describe("ui and hook integration helpers", () => {
         ignored: document.createElement("div"),
         text: "not-element",
       });
-      expect(root.querySelector('[data-action="clipboard-image-chat-upload"]')).toBeTruthy();
+      expect(root.querySelector('[data-action="foundry-paste-eater-chat-upload"]')).toBeTruthy();
     });
   });
 
@@ -688,7 +718,7 @@ describe("ui and hook integration helpers", () => {
 
     it("routes chat media paste events through the chat pipeline", async () => {
       const root = document.createElement("form");
-      root.setAttribute("data-clipboard-image-chat-root", "true");
+      root.setAttribute("data-foundry-paste-eater-chat-root", "true");
       const input = document.createElement("textarea");
       root.append(input);
 
@@ -786,17 +816,17 @@ describe("ui and hook integration helpers", () => {
     });
 
     it("exposes destination-config default options and data", () => {
-      const {ClipboardImageDestinationConfig} = env.runtime;
-      expect(ClipboardImageDestinationConfig.defaultOptions).toMatchObject({
-        id: "clipboard-image-destination-config",
+      const {FoundryPasteEaterDestinationConfig} = env.runtime;
+      expect(FoundryPasteEaterDestinationConfig.defaultOptions).toMatchObject({
+        id: "foundry-paste-eater-destination-config",
         width: 520,
       });
 
-      const app = new ClipboardImageDestinationConfig();
+      const app = new FoundryPasteEaterDestinationConfig();
       globalThis.game.data.files.s3.endpoint = "https://r2.example.com";
-      env.settingsValues.set("clipboard-image.image-location-source", "s3");
-      env.settingsValues.set("clipboard-image.image-location", "folder");
-      env.settingsValues.set("clipboard-image.image-location-bucket", "bucket");
+      env.settingsValues.set("foundry-paste-eater.image-location-source", "s3");
+      env.settingsValues.set("foundry-paste-eater.image-location", "folder");
+      env.settingsValues.set("foundry-paste-eater.image-location-bucket", "bucket");
       expect(app.getData()).toMatchObject({
         bucket: "bucket",
         isS3: true,
@@ -807,9 +837,9 @@ describe("ui and hook integration helpers", () => {
     });
 
     it("keeps the s3 endpoint hidden and empty for non-s3 sources", () => {
-      const {ClipboardImageDestinationConfig} = env.runtime;
-      const app = new ClipboardImageDestinationConfig();
-      env.settingsValues.set("clipboard-image.image-location-source", "data");
+      const {FoundryPasteEaterDestinationConfig} = env.runtime;
+      const app = new FoundryPasteEaterDestinationConfig();
+      env.settingsValues.set("foundry-paste-eater.image-location-source", "data");
       globalThis.game.data.files.s3.endpoint = "https://r2.example.com";
 
       expect(app.getData()).toMatchObject({
@@ -820,8 +850,8 @@ describe("ui and hook integration helpers", () => {
     });
 
     it("binds config form listeners and refreshes form state", () => {
-      const {ClipboardImageDestinationConfig} = env.runtime;
-      const app = new ClipboardImageDestinationConfig();
+      const {FoundryPasteEaterDestinationConfig} = env.runtime;
+      const app = new FoundryPasteEaterDestinationConfig();
       const sourceHandlers = {};
       const targetHandlers = {};
       const bucketHandlers = {};
@@ -848,7 +878,7 @@ describe("ui and hook integration helpers", () => {
         }),
       };
       app.element = {find: vi.fn(selector => {
-        if (selector === ".clipboard-image-s3-endpoint") return endpointGroup;
+        if (selector === ".foundry-paste-eater-s3-endpoint") return endpointGroup;
         return bucketGroup;
       })};
 
@@ -871,8 +901,8 @@ describe("ui and hook integration helpers", () => {
     });
 
     it("ensures custom source options exist and refreshes summary text", () => {
-      const {ClipboardImageDestinationConfig} = env.runtime;
-      const app = new ClipboardImageDestinationConfig();
+      const {FoundryPasteEaterDestinationConfig} = env.runtime;
+      const app = new FoundryPasteEaterDestinationConfig();
       globalThis.game.data.files.s3.endpoint = "https://r2.example.com";
       app.form = {
         elements: {
@@ -902,8 +932,8 @@ describe("ui and hook integration helpers", () => {
     });
 
     it("returns early from config refresh helpers when no form or source field exists", () => {
-      const {ClipboardImageDestinationConfig} = env.runtime;
-      const app = new ClipboardImageDestinationConfig();
+      const {FoundryPasteEaterDestinationConfig} = env.runtime;
+      const app = new FoundryPasteEaterDestinationConfig();
 
       app.form = null;
       expect(() => app._refreshFormState()).not.toThrow();
@@ -914,8 +944,8 @@ describe("ui and hook integration helpers", () => {
     });
 
     it("skips adding duplicate source options", () => {
-      const {ClipboardImageDestinationConfig} = env.runtime;
-      const app = new ClipboardImageDestinationConfig();
+      const {FoundryPasteEaterDestinationConfig} = env.runtime;
+      const app = new FoundryPasteEaterDestinationConfig();
       const add = vi.fn();
       app.form = {
         elements: {
@@ -931,8 +961,8 @@ describe("ui and hook integration helpers", () => {
     });
 
     it("applies picker selections and rejects unsupported sources", () => {
-      const {ClipboardImageDestinationConfig} = env.runtime;
-      const app = new ClipboardImageDestinationConfig();
+      const {FoundryPasteEaterDestinationConfig} = env.runtime;
+      const app = new FoundryPasteEaterDestinationConfig();
       app.form = {
         elements: {
           source: {
@@ -972,8 +1002,8 @@ describe("ui and hook integration helpers", () => {
     });
 
     it("returns early when applyPickerSelection has no form", () => {
-      const {ClipboardImageDestinationConfig} = env.runtime;
-      const app = new ClipboardImageDestinationConfig();
+      const {FoundryPasteEaterDestinationConfig} = env.runtime;
+      const app = new FoundryPasteEaterDestinationConfig();
       app.form = null;
       app._applyPickerSelection("ignored", {
         activeSource: "data",
@@ -983,8 +1013,8 @@ describe("ui and hook integration helpers", () => {
     });
 
     it("opens a destination browser and configures s3 pickers", () => {
-      const {ClipboardImageDestinationConfig} = env.runtime;
-      const app = new ClipboardImageDestinationConfig();
+      const {FoundryPasteEaterDestinationConfig} = env.runtime;
+      const app = new FoundryPasteEaterDestinationConfig();
       app.form = {
         elements: {
           source: {value: "s3"},
@@ -1002,8 +1032,8 @@ describe("ui and hook integration helpers", () => {
     });
 
     it("invokes the picker callback through _onBrowseDestination", () => {
-      const {ClipboardImageDestinationConfig} = env.runtime;
-      const app = new ClipboardImageDestinationConfig();
+      const {FoundryPasteEaterDestinationConfig} = env.runtime;
+      const app = new FoundryPasteEaterDestinationConfig();
       app.form = {
         elements: {
           source: {value: "data"},
@@ -1027,8 +1057,8 @@ describe("ui and hook integration helpers", () => {
     });
 
     it("returns early from browse when there is no form", () => {
-      const {ClipboardImageDestinationConfig} = env.runtime;
-      const app = new ClipboardImageDestinationConfig();
+      const {FoundryPasteEaterDestinationConfig} = env.runtime;
+      const app = new FoundryPasteEaterDestinationConfig();
       app.form = null;
 
       app._onBrowseDestination({
@@ -1038,8 +1068,8 @@ describe("ui and hook integration helpers", () => {
     });
 
     it("writes destination settings on submit", async () => {
-      const {ClipboardImageDestinationConfig} = env.runtime;
-      const app = new ClipboardImageDestinationConfig();
+      const {FoundryPasteEaterDestinationConfig} = env.runtime;
+      const app = new FoundryPasteEaterDestinationConfig();
       await app._updateObject(null, {
         source: "s3",
         target: "final-folder",
@@ -1049,8 +1079,8 @@ describe("ui and hook integration helpers", () => {
     });
 
     it("does not persist any endpoint override from the destination form", async () => {
-      const {ClipboardImageDestinationConfig} = env.runtime;
-      const app = new ClipboardImageDestinationConfig();
+      const {FoundryPasteEaterDestinationConfig} = env.runtime;
+      const app = new FoundryPasteEaterDestinationConfig();
       await app._updateObject(null, {
         source: "s3",
         target: "final-folder",
@@ -1059,24 +1089,24 @@ describe("ui and hook integration helpers", () => {
       });
 
       expect(globalThis.game.settings.set).not.toHaveBeenCalledWith(
-        "clipboard-image",
+        "foundry-paste-eater",
         expect.stringContaining("endpoint"),
         expect.anything()
       );
     });
 
     it("clears the stored bucket when the destination source is not s3", async () => {
-      const {ClipboardImageDestinationConfig} = env.runtime;
-      const app = new ClipboardImageDestinationConfig();
+      const {FoundryPasteEaterDestinationConfig} = env.runtime;
+      const app = new FoundryPasteEaterDestinationConfig();
       await app._updateObject(null, {
         source: "data",
         target: "final-folder",
         bucket: "should-be-cleared",
       });
 
-      expect(globalThis.game.settings.set).toHaveBeenCalledWith("clipboard-image", "image-location-source", "data");
-      expect(globalThis.game.settings.set).toHaveBeenCalledWith("clipboard-image", "image-location", "final-folder");
-      expect(globalThis.game.settings.set).toHaveBeenCalledWith("clipboard-image", "image-location-bucket", "");
+      expect(globalThis.game.settings.set).toHaveBeenCalledWith("foundry-paste-eater", "image-location-source", "data");
+      expect(globalThis.game.settings.set).toHaveBeenCalledWith("foundry-paste-eater", "image-location", "final-folder");
+      expect(globalThis.game.settings.set).toHaveBeenCalledWith("foundry-paste-eater", "image-location-bucket", "");
     });
   });
 
@@ -1092,11 +1122,11 @@ describe("ui and hook integration helpers", () => {
 
       expect(env.registeredMenus).toHaveLength(1);
       expect(env.registeredMenus[0]).toMatchObject({
-        moduleId: "clipboard-image",
+        moduleId: "foundry-paste-eater",
         key: "upload-destination",
         config: {
           restricted: true,
-          type: env.runtime.ClipboardImageDestinationConfig,
+          type: env.runtime.FoundryPasteEaterDestinationConfig,
         },
       });
 
@@ -1147,7 +1177,7 @@ describe("ui and hook integration helpers", () => {
       expect(globalThis.game.keybindings.register).not.toHaveBeenCalled();
     });
 
-    it("shows the ready notification for gms when direct clipboard reads are unavailable", () => {
+    it("shows the ready notification for gms when direct clipboard reads are unavailable", async () => {
       const secondEnv = loadRuntime({
         customize() {
           Object.defineProperty(window.navigator, "clipboard", {
@@ -1158,14 +1188,14 @@ describe("ui and hook integration helpers", () => {
         },
       });
 
-      secondEnv.onceHandlers.ready();
-      expect(globalThis.game.socket.on).toHaveBeenCalledWith("module.clipboard-image", secondEnv.api._clipboardHandleSocketReport);
+      await secondEnv.onceHandlers.ready();
+      expect(globalThis.game.socket.on).toHaveBeenCalledWith("module.foundry-paste-eater", secondEnv.api._clipboardHandleSocketReport);
       expect(globalThis.ui.notifications.info).toHaveBeenCalledWith(
-        "Clipboard Image: Direct clipboard reads are unavailable here. Browser paste events and upload fallbacks are still available where enabled."
+        "Foundry Paste Eater: Direct clipboard reads are unavailable here. Browser paste events and upload fallbacks are still available where enabled."
       );
     });
 
-    it("skips the ready notification for non-gms", () => {
+    it("skips the ready notification for non-gms", async () => {
       const thirdEnv = loadRuntime({
         customize() {
           Object.defineProperty(window.navigator, "clipboard", {
@@ -1176,9 +1206,9 @@ describe("ui and hook integration helpers", () => {
         },
       });
 
-      thirdEnv.onceHandlers.ready();
+      await thirdEnv.onceHandlers.ready();
       expect(globalThis.ui.notifications.info).not.toHaveBeenCalledWith(
-        "Clipboard Image: Direct clipboard reads are unavailable here. Browser paste events and upload fallbacks are still available where enabled."
+        "Foundry Paste Eater: Direct clipboard reads are unavailable here. Browser paste events and upload fallbacks are still available where enabled."
       );
     });
   });

@@ -111,7 +111,7 @@ describe("paste and handler workflows", () => {
       expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("Tile", [
         expect.objectContaining({
           texture: expect.objectContaining({
-            src: expect.stringMatching(/^folder\/token-\d+\.svg\?clipboard-image=\d+$/),
+            src: expect.stringMatching(/^folder\/token-\d+\.svg\?foundry-paste-eater=\d+$/),
           }),
           width: 512,
           height: 512,
@@ -172,7 +172,7 @@ describe("paste and handler workflows", () => {
         throw new Error("bad");
       })).resolves.toBe(false);
 
-      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Clipboard Image: bad");
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Foundry Paste Eater: bad");
     });
 
     it("can suppress user notifications", async () => {
@@ -190,7 +190,7 @@ describe("paste and handler workflows", () => {
       })).resolves.toBe(false);
 
       expect(globalThis.ui.notifications.error).toHaveBeenCalledWith(
-        "Clipboard Image: Failed to handle media input. Check the console."
+        "Foundry Paste Eater: Failed to handle media input. Check the console."
       );
     });
   });
@@ -231,7 +231,7 @@ describe("paste and handler workflows", () => {
     });
 
     it("skips canvas media handling when the user lacks canvas media access", async () => {
-      env.settingsValues.set("clipboard-image.minimum-role-canvas-media", "ASSISTANT");
+      env.settingsValues.set("foundry-paste-eater.minimum-role-canvas-media", "ASSISTANT");
       globalThis.game.user.isGM = false;
       globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
 
@@ -241,7 +241,7 @@ describe("paste and handler workflows", () => {
     });
 
     it("fails closed when token creation is disabled", async () => {
-      env.settingsValues.set("clipboard-image.enable-token-creation", false);
+      env.settingsValues.set("foundry-paste-eater.enable-token-creation", false);
       globalThis.canvas.activeLayer = globalThis.canvas.tokens;
       const restoreImage = withMockImage();
 
@@ -254,7 +254,7 @@ describe("paste and handler workflows", () => {
     });
 
     it("fails closed when tile creation is disabled", async () => {
-      env.settingsValues.set("clipboard-image.enable-tile-creation", false);
+      env.settingsValues.set("foundry-paste-eater.enable-tile-creation", false);
       globalThis.canvas.activeLayer = globalThis.canvas.tiles;
       const restoreImage = withMockImage();
 
@@ -267,7 +267,7 @@ describe("paste and handler workflows", () => {
     });
 
     it("fails closed when token replacement is disabled", async () => {
-      env.settingsValues.set("clipboard-image.enable-token-replacement", false);
+      env.settingsValues.set("foundry-paste-eater.enable-token-replacement", false);
       globalThis.canvas.tokens.controlled = [env.createControlledPlaceable("Token", {name: "Hero"})];
       globalThis.canvas.activeLayer = globalThis.canvas.tokens;
       const restoreImage = withMockImage();
@@ -282,7 +282,7 @@ describe("paste and handler workflows", () => {
     });
 
     it("fails closed when tile replacement is disabled", async () => {
-      env.settingsValues.set("clipboard-image.enable-tile-replacement", false);
+      env.settingsValues.set("foundry-paste-eater.enable-tile-replacement", false);
       globalThis.canvas.tiles.controlled = [env.createControlledPlaceable("Tile", {name: "Map"})];
       globalThis.canvas.activeLayer = globalThis.canvas.tiles;
       const restoreImage = withMockImage();
@@ -326,7 +326,7 @@ describe("paste and handler workflows", () => {
     });
 
     it("skips chat media posting when chat media handling is disabled", async () => {
-      env.settingsValues.set("clipboard-image.enable-chat-media", false);
+      env.settingsValues.set("foundry-paste-eater.enable-chat-media", false);
       await expect(api._clipboardHandleChatImageBlob(new File(["x"], "chat.png", {type: "image/png"}))).resolves.toBe(false);
     });
 
@@ -377,7 +377,7 @@ describe("paste and handler workflows", () => {
     });
 
     it("returns false when canvas text paste is disabled", async () => {
-      env.settingsValues.set("clipboard-image.canvas-text-paste-mode", "disabled");
+      env.settingsValues.set("foundry-paste-eater.canvas-text-paste-mode", "disabled");
       await expect(api._clipboardHandleTextInput({text: "Disabled"})).resolves.toBe(false);
     });
 
@@ -397,14 +397,14 @@ describe("paste and handler workflows", () => {
     it("warns when no clipboard media exists", async () => {
       window.navigator.clipboard.read.mockResolvedValueOnce([]);
       await expect(api._clipboardReadAndPasteImage({notifyNoImage: true})).resolves.toBe(false);
-      expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith("Clipboard Image: No clipboard media was available.");
+      expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith("Foundry Paste Eater: No clipboard media was available.");
     });
 
     it("warns when clipboard content has no supported media", async () => {
       window.navigator.clipboard.read.mockResolvedValueOnce([{types: ["text/plain"], getType: async () => ({text: async () => "plain"})}]);
       await expect(api._clipboardReadAndPasteImage({notifyNoImage: true})).resolves.toBe(false);
       expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith(
-        "Clipboard Image: No supported media or media URL was found in the clipboard."
+        "Foundry Paste Eater: No supported media or media URL was found in the clipboard."
       );
     });
 
@@ -443,7 +443,7 @@ describe("paste and handler workflows", () => {
     it("warns when no clipboard content exists", async () => {
       window.navigator.clipboard.read.mockResolvedValueOnce([]);
       await expect(api._clipboardReadAndPasteClipboardContent({notifyNoContent: true})).resolves.toBe(false);
-      expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith("Clipboard Image: No clipboard data was available.");
+      expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith("Foundry Paste Eater: No clipboard data was available.");
     });
 
     it("passes media input to a custom content handler", async () => {
@@ -482,7 +482,7 @@ describe("paste and handler workflows", () => {
       ]);
       await expect(api._clipboardReadAndPasteClipboardContent({notifyNoContent: true})).resolves.toBe(false);
       expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith(
-        "Clipboard Image: No supported media or text was found in the clipboard."
+        "Foundry Paste Eater: No supported media or text was found in the clipboard."
       );
     });
   });

@@ -1,16 +1,16 @@
-![GitHub all releases](https://img.shields.io/github/downloads/sayhiben/foundry-clipboard-buddy/total?logo=GitHub) ![GitHub release](https://img.shields.io/github/v/release/sayhiben/foundry-clipboard-buddy) ![GitHub license](https://img.shields.io/github/license/sayhiben/foundry-clipboard-buddy)
+![GitHub all releases](https://img.shields.io/github/downloads/sayhiben/foundry-paste-eater/total?logo=GitHub) ![GitHub release](https://img.shields.io/github/v/release/sayhiben/foundry-paste-eater) ![GitHub license](https://img.shields.io/github/license/sayhiben/foundry-paste-eater)
 
-# Foundry Clipboard Buddy
+# Foundry Paste Eater
 
-Foundry Clipboard Buddy lets you paste or upload media and contextual text into:
+Foundry Paste Eater lets you paste or upload media and contextual text into:
 - Tiles
 - Tokens
 - Scene notes
 - Chat
 
-The Foundry manifest title is currently `Clipboard Image`.
+The Foundry manifest title is `Foundry Paste Eater`.
 
-![Clipboard Image demo](example.gif)
+![Foundry Paste Eater demo](example.gif)
 
 ## Compatibility
 
@@ -24,11 +24,11 @@ This fork uses Foundry V13 public clipboard, canvas, `KeyboardManager`, and `Fil
 Install from this manifest URL:
 
 ```text
-https://github.com/sayhiben/foundry-clipboard-buddy/releases/latest/download/module.json
+https://github.com/sayhiben/foundry-paste-eater/releases/latest/download/module.json
 ```
 
 Repository:
-- [GitHub](https://github.com/sayhiben/foundry-clipboard-buddy)
+- [GitHub](https://github.com/sayhiben/foundry-paste-eater)
 
 ## What It Does
 
@@ -180,7 +180,7 @@ Open Foundry's Game Settings and look for the module settings/menu:
 - `Minimum role for chat media paste`
   Lowest Foundry role allowed to post pasted or uploaded media into chat.
 - `Allow non-GMs to use scene controls`
-  Lets non-GM users who meet the canvas-media role requirement see the Clipboard Image scene-control buttons.
+  Lets non-GM users who meet the canvas-media role requirement see the Foundry Paste Eater scene-control buttons.
 - `Enable chat media handling`
   Master toggle for chat media paste, drag/drop, and upload behavior.
 - `Enable chat upload button`
@@ -208,7 +208,7 @@ Open Foundry's Game Settings and look for the module settings/menu:
 - `Scene Paste Media prompt mode`
   Chooses whether the explicit scene-control paste button uses automatic browser behavior, always opens the manual paste prompt, or only uses direct clipboard reads.
 - `Verbose logging`
-  Client-level debugging setting that writes detailed clipboard-image diagnostics to the browser console.
+  Client-level debugging setting that writes detailed foundry-paste-eater diagnostics to the browser console.
   When enabled, client-side error reports also download a full module logfile automatically for that client.
 
 By default, pasted media is uploaded under:
@@ -277,9 +277,9 @@ When an actual module error is raised:
 
 ## Credits
 
-This fork builds on the original Clipboard Image work and the people who helped shape it.
+This fork builds on the original Foundry Paste Eater work and the people who helped shape it.
 
-- Original Clipboard Image concept and upstream work by JeansenVaars
+- Original Foundry Paste Eater concept and upstream work by JeansenVaars
 - Thanks to @theripper93 for early design guidance
 - Thanks to @vttom for help with Forge-related behavior
 - Thanks to the Foundry VTT Discord community for issue reports and feedback

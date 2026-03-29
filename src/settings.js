@@ -1,5 +1,6 @@
 const {
   CLIPBOARD_IMAGE_MODULE_ID,
+  CLIPBOARD_IMAGE_LEGACY_MODULE_ID,
   CLIPBOARD_IMAGE_DEFAULT_FOLDER,
   CLIPBOARD_IMAGE_SOURCE_AUTO,
   CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING,
@@ -36,7 +37,32 @@ const {
   CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS,
   CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER,
 } = require("./constants");
-const {ClipboardImageDestinationConfig} = require("./config-app");
+const {_clipboardLog} = require("./diagnostics");
+const {FoundryPasteEaterDestinationConfig} = require("./config-app");
+
+const CLIPBOARD_IMAGE_SETTINGS_MIGRATION_KEYS = [
+  "image-location",
+  "image-location-source",
+  "image-location-bucket",
+  CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING,
+  CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING,
+  CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING,
+  CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING,
+  CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING,
+  CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING,
+  CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING,
+  CLIPBOARD_IMAGE_ENABLE_TOKEN_CREATION_SETTING,
+  CLIPBOARD_IMAGE_ENABLE_TILE_CREATION_SETTING,
+  CLIPBOARD_IMAGE_ENABLE_TOKEN_REPLACEMENT_SETTING,
+  CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING,
+  CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING,
+  CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING,
+  CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING,
+  CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING,
+  CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING,
+  CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING,
+  CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING,
+];
 
 function _clipboardGetRoleChoices() {
   return {
@@ -57,7 +83,39 @@ function _clipboardGetCurrentUserRole() {
   return _clipboardGetRoleValue(CLIPBOARD_IMAGE_ROLE_PLAYER);
 }
 
+function _clipboardGetRegisteredSettingConfig(moduleId, key) {
+  return game?.settings?.settings?.get?.(`${moduleId}.${key}`) || null;
+}
+
+function _clipboardGetSettingScope(key) {
+  return _clipboardGetRegisteredSettingConfig(CLIPBOARD_IMAGE_MODULE_ID, key)?.scope ||
+    _clipboardGetRegisteredSettingConfig(CLIPBOARD_IMAGE_LEGACY_MODULE_ID, key)?.scope ||
+    "world";
+}
+
+function _clipboardGetSettingsStorage(scope) {
+  return game?.settings?.storage?.get?.(scope) || null;
+}
+
+function _clipboardGetStoredSettingDocument(moduleId, key) {
+  const scope = _clipboardGetSettingScope(key);
+  return _clipboardGetSettingsStorage(scope)?.get?.(`${moduleId}.${key}`) || null;
+}
+
+function _clipboardHasStoredSetting(moduleId, key) {
+  return Boolean(_clipboardGetStoredSettingDocument(moduleId, key));
+}
+
+function _clipboardGetStoredSettingValue(moduleId, key) {
+  const document = _clipboardGetStoredSettingDocument(moduleId, key);
+  if (!document || !Object.hasOwn(document, "value")) return undefined;
+  return document.value;
+}
+
 function _clipboardGetSetting(key) {
+  const hasCurrentValue = _clipboardHasStoredSetting(CLIPBOARD_IMAGE_MODULE_ID, key);
+  const legacyValue = _clipboardGetStoredSettingValue(CLIPBOARD_IMAGE_LEGACY_MODULE_ID, key);
+  if (!hasCurrentValue && legacyValue !== undefined) return legacyValue;
   return game.settings.get(CLIPBOARD_IMAGE_MODULE_ID, key);
 }
 
@@ -179,13 +237,40 @@ function _clipboardCanReplaceTiles() {
     _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING);
 }
 
+async function _clipboardMigrateLegacySettings() {
+  if (CLIPBOARD_IMAGE_MODULE_ID === CLIPBOARD_IMAGE_LEGACY_MODULE_ID) return [];
+
+  const migrated = [];
+  for (const key of CLIPBOARD_IMAGE_SETTINGS_MIGRATION_KEYS) {
+    const scope = _clipboardGetSettingScope(key);
+    if (scope === "world" && !game?.user?.isGM) continue;
+    if (_clipboardHasStoredSetting(CLIPBOARD_IMAGE_MODULE_ID, key)) continue;
+
+    const legacyValue = _clipboardGetStoredSettingValue(CLIPBOARD_IMAGE_LEGACY_MODULE_ID, key);
+    if (legacyValue === undefined) continue;
+
+    await game.settings.set(CLIPBOARD_IMAGE_MODULE_ID, key, legacyValue);
+    migrated.push(key);
+  }
+
+  if (migrated.length) {
+    _clipboardLog("info", "Migrated legacy module settings to the new namespace.", {
+      legacyModuleId: CLIPBOARD_IMAGE_LEGACY_MODULE_ID,
+      moduleId: CLIPBOARD_IMAGE_MODULE_ID,
+      settings: migrated,
+    });
+  }
+
+  return migrated;
+}
+
 function _clipboardRegisterSettings() {
   game.settings.registerMenu(CLIPBOARD_IMAGE_MODULE_ID, "upload-destination", {
     name: "Upload destination",
     label: "Configure",
     hint: "Choose the file store and folder used for pasted media. Supports User Data, The Forge, and Foundry-configured S3-compatible storage through Foundry's native file picker.",
     icon: "fa-solid fa-folder-tree",
-    type: ClipboardImageDestinationConfig,
+    type: FoundryPasteEaterDestinationConfig,
     restricted: true,
   });
 
@@ -218,7 +303,7 @@ function _clipboardRegisterSettings() {
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING, {
     name: "Verbose logging",
-    hint: "Log detailed clipboard-image diagnostics to the browser console for debugging.",
+    hint: "Log detailed foundry-paste-eater diagnostics to the browser console for debugging.",
     scope: "client",
     config: true,
     type: Boolean,
@@ -257,7 +342,7 @@ function _clipboardRegisterSettings() {
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING, {
     name: "Allow non-GMs to use scene controls",
-    hint: "Show Clipboard Image scene control buttons to non-GM users who meet the canvas media role requirement.",
+    hint: "Show Foundry Paste Eater scene control buttons to non-GM users who meet the canvas media role requirement.",
     scope: "world",
     config: true,
     type: Boolean,
@@ -405,6 +490,12 @@ module.exports = {
   _clipboardGetRoleChoices,
   _clipboardGetRoleValue,
   _clipboardGetCurrentUserRole,
+  _clipboardGetRegisteredSettingConfig,
+  _clipboardGetSettingScope,
+  _clipboardGetSettingsStorage,
+  _clipboardGetStoredSettingDocument,
+  _clipboardHasStoredSetting,
+  _clipboardGetStoredSettingValue,
   _clipboardGetSetting,
   _clipboardSettingEnabled,
   _clipboardGetConfiguredMinimumRole,
@@ -425,5 +516,6 @@ module.exports = {
   _clipboardCanCreateTiles,
   _clipboardCanReplaceTokens,
   _clipboardCanReplaceTiles,
+  _clipboardMigrateLegacySettings,
   _clipboardRegisterSettings,
 };

@@ -1,4 +1,6 @@
-const CLIPBOARD_IMAGE_MODULE_ID = "clipboard-image";
+const CLIPBOARD_IMAGE_MODULE_ID = "foundry-paste-eater";
+const CLIPBOARD_IMAGE_LEGACY_MODULE_ID = "clipboard-image";
+const CLIPBOARD_IMAGE_TITLE = "Foundry Paste Eater";
 const CLIPBOARD_IMAGE_DEFAULT_FOLDER = "pasted_images";
 const CLIPBOARD_IMAGE_SOURCE_AUTO = "auto";
 const CLIPBOARD_IMAGE_SOURCE_DATA = "data";
@@ -8,10 +10,10 @@ const CLIPBOARD_IMAGE_FILE_PICKER = foundry.applications.apps.FilePicker.impleme
 const CLIPBOARD_IMAGE_KEYBOARD_MANAGER = foundry.helpers.interaction.KeyboardManager;
 const CLIPBOARD_IMAGE_FORM_APPLICATION = foundry.appv1.api.FormApplication;
 const CLIPBOARD_IMAGE_SCENE_CONTROLS = ["tiles", "tokens"];
-const CLIPBOARD_IMAGE_TOOL_PASTE = "clipboard-image-paste";
-const CLIPBOARD_IMAGE_TOOL_UPLOAD = "clipboard-image-upload";
-const CLIPBOARD_IMAGE_CHAT_ROOT_ATTRIBUTE = "data-clipboard-image-chat-root";
-const CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION = "clipboard-image-chat-upload";
+const CLIPBOARD_IMAGE_TOOL_PASTE = "foundry-paste-eater-paste";
+const CLIPBOARD_IMAGE_TOOL_UPLOAD = "foundry-paste-eater-upload";
+const CLIPBOARD_IMAGE_CHAT_ROOT_ATTRIBUTE = "data-foundry-paste-eater-chat-root";
+const CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION = "foundry-paste-eater-chat-upload";
 const CLIPBOARD_IMAGE_TEXT_NOTE_FLAG = "textNote";
 const CLIPBOARD_IMAGE_TEXT_NOTE_PAGE_NAME = "Notes";
 const CLIPBOARD_IMAGE_TEXT_NOTE_JOURNAL_PREFIX = "Pasted Note";
@@ -58,6 +60,8 @@ const CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS = Object.freeze({
 
 module.exports = {
   CLIPBOARD_IMAGE_MODULE_ID,
+  CLIPBOARD_IMAGE_LEGACY_MODULE_ID,
+  CLIPBOARD_IMAGE_TITLE,
   CLIPBOARD_IMAGE_DEFAULT_FOLDER,
   CLIPBOARD_IMAGE_SOURCE_AUTO,
   CLIPBOARD_IMAGE_SOURCE_DATA,

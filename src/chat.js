@@ -16,11 +16,11 @@ function _clipboardCreateChatMediaContent(path) {
   const mediaKind = _clipboardGetMediaKind({src: path}) || "image";
   const displayMode = _clipboardGetChatMediaDisplayMode();
   const figure = document.createElement("figure");
-  figure.className = "clipboard-image-chat-message";
+  figure.className = "foundry-paste-eater-chat-message";
 
   const previewClassName = displayMode === CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW
-    ? "clipboard-image-chat-full-preview"
-    : "clipboard-image-chat-thumbnail";
+    ? "foundry-paste-eater-chat-full-preview"
+    : "foundry-paste-eater-chat-thumbnail";
 
   if (displayMode !== CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY && mediaKind === "video") {
     const video = document.createElement("video");
@@ -33,7 +33,7 @@ function _clipboardCreateChatMediaContent(path) {
     figure.append(video);
   } else if (displayMode !== CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY) {
     const previewLink = document.createElement("a");
-    previewLink.className = "clipboard-image-chat-link";
+    previewLink.className = "foundry-paste-eater-chat-link";
     previewLink.href = path;
     previewLink.target = "_blank";
     previewLink.rel = "noopener noreferrer";

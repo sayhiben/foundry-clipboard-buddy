@@ -213,7 +213,7 @@ function _clipboardCreateFreshMediaPath(path, version = Date.now()) {
 
   const [basePath, hash = ""] = String(path).split("#", 2);
   const separator = basePath.includes("?") ? "&" : "?";
-  const freshPath = `${basePath}${separator}clipboard-image=${encodeURIComponent(String(version))}`;
+  const freshPath = `${basePath}${separator}${encodeURIComponent(CLIPBOARD_IMAGE_MODULE_ID)}=${encodeURIComponent(String(version))}`;
   return hash ? `${freshPath}#${hash}` : freshPath;
 }
 

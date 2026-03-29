@@ -102,7 +102,7 @@ async function rerenderChat(page) {
 async function getPlaceableTextNoteFlag(page, documentName, id) {
   return page.evaluate(({documentName, id}) => {
     const collection = documentName === "Token" ? canvas.scene.tokens : canvas.scene.tiles;
-    return collection.get(id)?.getFlag("clipboard-image", "textNote") || null;
+    return collection.get(id)?.getFlag("foundry-paste-eater", "textNote") || null;
   }, {documentName, id});
 }
 
@@ -269,6 +269,7 @@ test("creates correctly sized tiles when different raster images reuse the same 
 
 test("pastes a Finder-copied file through the native macOS paste event", async ({page}, testInfo) => {
   test.skip(process.platform !== "darwin", "Finder clipboard integration is only available on macOS.");
+  test.skip(process.env.PW_HEADLESS === "true", "Finder clipboard integration requires a headed macOS browser session.");
 
   const run = await beginClipboardRun(page, testInfo);
   try {
@@ -889,9 +890,9 @@ test("appends plain text to the same linked note for a selected token", async ({
 
     await expect.poll(async () => {
       const tokenState = await getTokenDocument(page, token.id);
-      return tokenState?.flags?.["clipboard-image"]?.textNote || null;
+      return tokenState?.flags?.["foundry-paste-eater"]?.textNote || null;
     }).not.toBeNull();
-    const firstNoteData = await page.evaluate(tokenId => canvas.scene.tokens.get(tokenId)?.getFlag("clipboard-image", "textNote"), token.id);
+    const firstNoteData = await page.evaluate(tokenId => canvas.scene.tokens.get(tokenId)?.getFlag("foundry-paste-eater", "textNote"), token.id);
     const firstJournal = await getJournalEntry(page, firstNoteData.entryId);
 
     const secondText = `${run.prefix} second text block`;
@@ -901,8 +902,8 @@ test("appends plain text to the same linked note for a selected token", async ({
       mimeType: "text/plain",
     });
 
-    await expect.poll(() => page.evaluate(tokenId => canvas.scene.tokens.get(tokenId)?.getFlag("clipboard-image", "textNote") || null, token.id)).not.toBeNull();
-    const secondNoteData = await page.evaluate(tokenId => canvas.scene.tokens.get(tokenId)?.getFlag("clipboard-image", "textNote"), token.id);
+    await expect.poll(() => page.evaluate(tokenId => canvas.scene.tokens.get(tokenId)?.getFlag("foundry-paste-eater", "textNote") || null, token.id)).not.toBeNull();
+    const secondNoteData = await page.evaluate(tokenId => canvas.scene.tokens.get(tokenId)?.getFlag("foundry-paste-eater", "textNote"), token.id);
     expect(secondNoteData.noteId).toBe(firstNoteData.noteId);
     expect(secondNoteData.entryId).toBe(firstNoteData.entryId);
     expect(secondNoteData.pageId).toBe(firstNoteData.pageId);
@@ -1108,7 +1109,7 @@ test("posts chat media on image paste without creating canvas content", async ({
     const after = await getStateSnapshot(page);
     const [message] = getNewDocuments(before, after, "messages");
 
-    expect(message.content).toContain("clipboard-image-chat-message");
+    expect(message.content).toContain("foundry-paste-eater-chat-message");
     expect(message.content).toContain("Open full media");
     expect(after.tiles.length).toBe(before.tiles.length);
     expect(after.tokens.length).toBe(before.tokens.length);
@@ -1134,7 +1135,7 @@ test("posts chat media on video paste without creating canvas content", async ({
     const after = await getStateSnapshot(page);
     const [message] = getNewDocuments(before, after, "messages");
 
-    expect(message.content).toContain("clipboard-image-chat-message");
+    expect(message.content).toContain("foundry-paste-eater-chat-message");
     expect(message.content).toContain("<video");
     expect(message.content).toContain("Open full media");
     expect(after.tiles.length).toBe(before.tiles.length);
@@ -1161,7 +1162,7 @@ test("accepts dropped chat media without creating canvas content", async ({page}
     const after = await getStateSnapshot(page);
     const [message] = getNewDocuments(before, after, "messages");
 
-    expect(message.content).toContain("clipboard-image-chat-message");
+    expect(message.content).toContain("foundry-paste-eater-chat-message");
     expect(after.tiles.length).toBe(before.tiles.length);
     expect(after.tokens.length).toBe(before.tokens.length);
     expect(after.notes.length).toBe(before.notes.length);
@@ -1302,7 +1303,7 @@ test("downloads a direct media URL and creates a tile", async ({page}, testInfo)
     const [tile] = getNewDocuments(before, after, "tiles");
 
     expect(tile.textureSrc).toContain(run.uploadFolder);
-    expect(tile.textureSrc).not.toContain("/modules/clipboard-image/test/assets/test-token.png");
+    expect(tile.textureSrc).not.toContain("/modules/foundry-paste-eater/test/assets/test-token.png");
   } finally {
     await cleanupClipboardRun(page, run);
   }
@@ -1329,7 +1330,7 @@ test("downloads a direct media URL and creates a token", async ({page}, testInfo
     const actorInfo = await getTokenActorInfo(page, token.id);
 
     expect(token.textureSrc).toContain(run.uploadFolder);
-    expect(token.textureSrc).not.toContain("/modules/clipboard-image/test/assets/test-token.png");
+    expect(token.textureSrc).not.toContain("/modules/foundry-paste-eater/test/assets/test-token.png");
     expect(token.actorId).toBeTruthy();
     expect(actorInfo.actorExists).toBe(true);
   } finally {
@@ -1366,7 +1367,7 @@ test("downloads a direct media URL and replaces a selected token in place", asyn
     const updated = await getTokenDocument(page, token.id);
 
     expect(updated.textureSrc).not.toBe(token.textureSrc);
-    expect(updated.textureSrc).not.toContain("/modules/clipboard-image/test/assets/test-token.png");
+    expect(updated.textureSrc).not.toContain("/modules/foundry-paste-eater/test/assets/test-token.png");
     expect(updated.x).toBe(token.x);
     expect(updated.y).toBe(token.y);
     expect(updated.width).toBe(token.width);
@@ -1404,7 +1405,7 @@ test("downloads a direct media URL and replaces a selected tile in place", async
     const updated = await getTileDocument(page, tile.id);
 
     expect(updated.textureSrc).not.toBe(tile.textureSrc);
-    expect(updated.textureSrc).not.toContain("/modules/clipboard-image/test/assets/test-token.png");
+    expect(updated.textureSrc).not.toContain("/modules/foundry-paste-eater/test/assets/test-token.png");
     expect(updated.x).toBe(tile.x);
     expect(updated.y).toBe(tile.y);
     expect(updated.width).toBe(tile.width);
@@ -1472,7 +1473,7 @@ test("leaves the original url text in chat when a direct media url download is b
   }
 });
 
-test("scene upload still works when copied objects are present and falls back to canvas center", async ({page}, testInfo) => {
+test("scene prompt upload still works when copied objects are present and falls back to canvas center", async ({page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
     "enable-scene-paste-tool": true,
@@ -1486,7 +1487,8 @@ test("scene upload still works when copied objects are present and falls back to
     const before = await getStateSnapshot(page);
 
     const chooserPromise = page.waitForEvent("filechooser");
-    await invokeSceneTool(page, "tiles", "clipboard-image-upload");
+    await invokeSceneTool(page, "tiles", "foundry-paste-eater-paste");
+    await page.locator('#foundry-paste-eater-scene-paste-prompt [data-action="upload"]').click();
     const chooser = await chooserPromise;
     await chooser.setFiles(getFixturePath("test-token.png"));
 
@@ -1526,7 +1528,7 @@ test("scene paste reads later async clipboard items, ignores copied objects, and
       ui.controls.render(true);
     });
     await page.evaluate(() => {
-      const button = document.querySelector('[data-tool="clipboard-image-paste"]');
+      const button = document.querySelector('[data-tool="foundry-paste-eater-paste"]');
       if (!button) throw new Error("Could not find the scene Paste Media button.");
       button.click();
     });
@@ -1561,20 +1563,20 @@ test("scene paste button falls back to a manual paste prompt when direct reads c
 
     const before = await getStateSnapshot(page);
     await page.evaluate(() => {
-      const button = document.querySelector('[data-tool="clipboard-image-paste"]');
+      const button = document.querySelector('[data-tool="foundry-paste-eater-paste"]');
       if (!button) throw new Error("Could not find the scene Paste Media button.");
       button.click();
     });
 
-    await expect(page.locator("#clipboard-image-scene-paste-target")).toBeVisible();
+    await expect(page.locator("#foundry-paste-eater-scene-paste-target")).toBeVisible();
     await dispatchFilePaste(page, {
-      targetSelector: "#clipboard-image-scene-paste-target",
+      targetSelector: "#foundry-paste-eater-scene-paste-target",
       filename: "test-token.png",
       mimeType: "image/png",
     });
 
     await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
-    await expect(page.locator("#clipboard-image-scene-paste-prompt")).toHaveCount(0);
+    await expect(page.locator("#foundry-paste-eater-scene-paste-prompt")).toHaveCount(0);
   } finally {
     await restoreModuleSettings(page, previousSettings);
     await restoreClipboardRead(page).catch(() => {});
@@ -1584,6 +1586,7 @@ test("scene paste button falls back to a manual paste prompt when direct reads c
 
 test("scene paste button supports Finder-copied files on macOS via the prompt fallback", async ({page}, testInfo) => {
   test.skip(process.platform !== "darwin", "Finder clipboard integration is only available on macOS.");
+  test.skip(process.env.PW_HEADLESS === "true", "Finder clipboard integration requires a headed macOS browser session.");
 
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
@@ -1601,15 +1604,15 @@ test("scene paste button supports Finder-copied files on macOS via the prompt fa
 
     const before = await getStateSnapshot(page);
     await page.evaluate(() => {
-      const button = document.querySelector('[data-tool="clipboard-image-paste"]');
+      const button = document.querySelector('[data-tool="foundry-paste-eater-paste"]');
       if (!button) throw new Error("Could not find the scene Paste Media button.");
       button.click();
     });
-    await expect(page.locator("#clipboard-image-scene-paste-target")).toBeVisible();
+    await expect(page.locator("#foundry-paste-eater-scene-paste-target")).toBeVisible();
     await page.keyboard.press("Meta+V");
 
     await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
-    await expect(page.locator("#clipboard-image-scene-paste-prompt")).toHaveCount(0);
+    await expect(page.locator("#foundry-paste-eater-scene-paste-prompt")).toHaveCount(0);
   } finally {
     await restoreModuleSettings(page, previousSettings);
     await cleanupClipboardRun(page, run);
@@ -1623,7 +1626,7 @@ test("uses the chat upload button to post media", async ({page}, testInfo) => {
     const before = await getStateSnapshot(page);
 
     const chooserPromise = page.waitForEvent("filechooser");
-    await page.locator(".clipboard-image-chat-upload").click();
+    await page.locator(".foundry-paste-eater-chat-upload").click();
     const chooser = await chooserPromise;
     await chooser.setFiles(getFixturePath("test-token.png"));
 
@@ -1631,7 +1634,7 @@ test("uses the chat upload button to post media", async ({page}, testInfo) => {
     const after = await getStateSnapshot(page);
     const [message] = getNewDocuments(before, after, "messages");
 
-    expect(message.content).toContain("clipboard-image-chat-message");
+    expect(message.content).toContain("foundry-paste-eater-chat-message");
     expect(message.content).toContain("Open full media");
   } finally {
     await cleanupClipboardRun(page, run);
@@ -1641,7 +1644,7 @@ test("uses the chat upload button to post media", async ({page}, testInfo) => {
 test("shows the configured S3 endpoint in the upload destination config and hides it for non-s3 sources", async ({page}) => {
   const previousSettings = await setModuleSettings(page, {
     "image-location-source": "s3",
-    "image-location": "worlds/clipboard-image-v13-test/pasted_images",
+    "image-location": "worlds/foundry-paste-eater-v13-test/pasted_images",
     "image-location-bucket": "foundry-store",
   });
 
@@ -1654,10 +1657,10 @@ test("shows the configured S3 endpoint in the upload destination config and hide
     });
 
     await openUploadDestinationConfig(page);
-    const app = page.locator("#clipboard-image-destination-config");
+    const app = page.locator("#foundry-paste-eater-destination-config");
     const sourceSelect = app.locator('select[name="source"]');
-    const bucketGroup = app.locator(".clipboard-image-s3-bucket");
-    const endpointGroup = app.locator(".clipboard-image-s3-endpoint");
+    const bucketGroup = app.locator(".foundry-paste-eater-s3-bucket");
+    const endpointGroup = app.locator(".foundry-paste-eater-s3-endpoint");
     const endpointField = app.locator('[data-role="s3-endpoint"]');
 
     await expect(bucketGroup).toBeVisible();
@@ -1795,7 +1798,7 @@ test("chat feature toggles disable media posting and the upload button", async (
 
   try {
     await rerenderChat(page);
-    await expect(page.locator(".clipboard-image-chat-upload")).toHaveCount(0);
+    await expect(page.locator(".foundry-paste-eater-chat-upload")).toHaveCount(0);
 
     const before = await getStateSnapshot(page);
     await dispatchFilePaste(page, {

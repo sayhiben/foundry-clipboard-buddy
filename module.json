@@ -1,6 +1,6 @@
 {
-	"id": "clipboard-image",
-	"title": "Clipboard Image",
+	"id": "foundry-paste-eater",
+	"title": "Foundry Paste Eater",
 	"authors": [
 		{
 			"name": "Saif Addin Ellafi",
@@ -15,10 +15,10 @@
 		"maximum": "13"
 	},
 	"socket": true,
-	"scripts": [ "clipboard-image.js" ],
-	"styles": [ "clipboard-image.css" ],
-	"url": "https://github.com/sayhiben/foundry-clipboard-buddy",
-	"manifest": "https://github.com/sayhiben/foundry-clipboard-buddy/releases/latest/download/module.json",
-	"download": "https://github.com/sayhiben/foundry-clipboard-buddy/releases/download/0.5.0/foundryvtt-clipboard-image_0.5.0.zip",
-	"changelog": "https://github.com/sayhiben/foundry-clipboard-buddy/blob/main/CHANGELOG.md"
+	"scripts": [ "foundry-paste-eater.js" ],
+	"styles": [ "foundry-paste-eater.css" ],
+	"url": "https://github.com/sayhiben/foundry-paste-eater",
+	"manifest": "https://github.com/sayhiben/foundry-paste-eater/releases/latest/download/module.json",
+	"download": "https://github.com/sayhiben/foundry-paste-eater/releases/download/0.5.0/foundry-paste-eater_0.5.0.zip",
+	"changelog": "https://github.com/sayhiben/foundry-paste-eater/blob/main/CHANGELOG.md"
 }

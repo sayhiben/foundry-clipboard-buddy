@@ -3,7 +3,7 @@ const path = require("path");
 const {execFileSync} = require("child_process");
 const {expect} = require("@playwright/test");
 
-const MODULE_ID = "clipboard-image";
+const MODULE_ID = "foundry-paste-eater";
 const DEFAULT_TIMEOUT = 120_000;
 const CHAT_INPUT_SELECTORS = [
   "form textarea[name='content']",
@@ -11,7 +11,7 @@ const CHAT_INPUT_SELECTORS = [
   ".chat-form textarea",
   "textarea[name='content']",
 ];
-const CLIPBOARD_LOG_PREFIX = "Clipboard Image [";
+const CLIPBOARD_LOG_PREFIX = "Foundry Paste Eater [";
 const FOUNDRY_DOCKER_CONTAINER = process.env.FOUNDRY_DOCKER_CONTAINER || "";
 const FOUNDRY_CLASSIC_LEVEL_PATH = process.env.FOUNDRY_CLASSIC_LEVEL_PATH || "";
 const FOUNDRY_DATA_PATH = process.env.FOUNDRY_DATA_PATH || "";
@@ -135,6 +135,15 @@ function sanitizeId(value) {
 }
 
 async function waitForFoundryReady(page) {
+  await waitForFoundryCoreReady(page);
+  await ensureModuleActive(page);
+  await expect.poll(() => page.evaluate(moduleId => game.modules.get(moduleId)?.active ?? false, MODULE_ID), {
+    timeout: DEFAULT_TIMEOUT,
+    message: `${MODULE_ID} module is not active in the loaded Foundry world`,
+  }).toBe(true);
+}
+
+async function waitForFoundryCoreReady(page) {
   await page.waitForFunction(() => globalThis.game?.ready, null, {
     timeout: DEFAULT_TIMEOUT,
   });
@@ -142,10 +151,37 @@ async function waitForFoundryReady(page) {
   await page.waitForFunction(() => globalThis.game?.ready && globalThis.canvas?.ready && Boolean(globalThis.canvas?.scene), null, {
     timeout: DEFAULT_TIMEOUT,
   });
-  await expect.poll(() => page.evaluate(() => game.modules.get("clipboard-image")?.active ?? false), {
-    timeout: DEFAULT_TIMEOUT,
-    message: "clipboard-image module is not active in the loaded Foundry world",
-  }).toBe(true);
+}
+
+async function ensureModuleActive(page) {
+  const moduleState = await page.evaluate(moduleId => {
+    const module = game?.modules?.get?.(moduleId);
+    return {
+      exists: Boolean(module),
+      active: Boolean(module?.active),
+      isGM: Boolean(game?.user?.isGM),
+    };
+  }, MODULE_ID);
+
+  if (!moduleState.exists) {
+    throw new Error(`${MODULE_ID} module is not installed in the loaded Foundry world.`);
+  }
+
+  if (moduleState.active || !moduleState.isGM) return;
+
+  const enabled = await page.evaluate(async moduleId => {
+    const configuration = foundry.utils.deepClone(game.settings.get("core", "moduleConfiguration") || {});
+    if (configuration[moduleId]) return false;
+
+    configuration[moduleId] = true;
+    await game.settings.set("core", "moduleConfiguration", configuration);
+    return true;
+  }, MODULE_ID);
+
+  if (!enabled) return;
+
+  await page.reload({waitUntil: "domcontentloaded"});
+  await waitForFoundryCoreReady(page);
 }
 
 async function ensureActiveScene(page) {
@@ -169,7 +205,7 @@ async function ensureActiveScene(page) {
       if (!SceneDocument?.create) return;
 
       scene = await SceneDocument.create({
-        name: "Clipboard Image Smoke Scene",
+        name: "Foundry Paste Eater Smoke Scene",
         active: true,
         navigation: true,
         width: 4096,
@@ -345,18 +381,28 @@ async function setModuleSettings(page, updates, {moduleId = MODULE_ID} = {}) {
       previous[key] = await game.settings.get(moduleId, key);
       await game.settings.set(moduleId, key, value);
     }
+    ui.controls.initialize({control: canvas.activeLayer?.options?.name || "tiles"});
+    ui.controls.render(true);
     return previous;
   }, {moduleId, updates});
 }
 
 async function restoreModuleSettings(page, previous, {moduleId = MODULE_ID} = {}) {
   if (!previous || !Object.keys(previous).length) return;
+  if (page?.isClosed?.()) return;
 
-  await page.evaluate(async ({moduleId, previous}) => {
-    for (const [key, value] of Object.entries(previous)) {
-      await game.settings.set(moduleId, key, value);
-    }
-  }, {moduleId, previous});
+  try {
+    await page.evaluate(async ({moduleId, previous}) => {
+      for (const [key, value] of Object.entries(previous)) {
+        await game.settings.set(moduleId, key, value);
+      }
+      ui.controls.initialize({control: canvas.activeLayer?.options?.name || "tiles"});
+      ui.controls.render(true);
+    }, {moduleId, previous});
+  } catch (error) {
+    if (/Target page, context or browser has been closed|Test ended/i.test(String(error?.message || error))) return;
+    throw error;
+  }
 }
 
 async function setCorePermissions(page, updates) {
@@ -375,10 +421,16 @@ async function setCorePermissions(page, updates) {
 
 async function restoreCorePermissions(page, previous) {
   if (!previous) return;
+  if (page?.isClosed?.()) return;
 
-  await page.evaluate(async previous => {
-    await game.settings.set("core", "permissions", previous);
-  }, previous);
+  try {
+    await page.evaluate(async previous => {
+      await game.settings.set("core", "permissions", previous);
+    }, previous);
+  } catch (error) {
+    if (/Target page, context or browser has been closed|Test ended/i.test(String(error?.message || error))) return;
+    throw error;
+  }
 }
 
 async function cleanupClipboardRun(page, run) {
@@ -678,7 +730,7 @@ async function clearCanvasMousePosition(page) {
 }
 
 async function invokeSceneTool(page, controlName, toolName) {
-  await page.evaluate(({controlName, toolName}) => {
+  await page.evaluate(({controlName, toolName, moduleId}) => {
     ui.controls.initialize({control: controlName});
     ui.controls.render(true);
 
@@ -696,11 +748,21 @@ async function invokeSceneTool(page, controlName, toolName) {
     const tool = tools.find(entry => entry.name === toolName);
     const handler = tool?.onClick || tool?.onChange;
     if (!handler) {
-      throw new Error(`Could not find tool ${toolName} on control ${controlName}.`);
+      const debugState = {
+        activeControl: ui.controls.control?.name || null,
+        configuredPaste: game.settings.get(moduleId, "enable-scene-paste-tool"),
+        configuredUpload: game.settings.get(moduleId, "enable-scene-upload-tool"),
+        availableTools: tools.map(entry => ({
+          name: entry?.name || null,
+          visible: entry?.visible ?? null,
+          title: entry?.title || null,
+        })),
+      };
+      throw new Error(`Could not find tool ${toolName} on control ${controlName}. Debug: ${JSON.stringify(debugState)}`);
     }
 
     handler(true);
-  }, {controlName, toolName});
+  }, {controlName, toolName, moduleId: MODULE_ID});
 }
 
 async function getSceneToolState(page, controlName, toolName) {
@@ -730,9 +792,9 @@ async function getSceneToolState(page, controlName, toolName) {
 async function openUploadDestinationConfig(page) {
   await page.evaluate(async moduleId => {
     const menu = game.settings.menus.get(`${moduleId}.upload-destination`);
-    if (!menu?.type) throw new Error("Could not find the Clipboard Image upload-destination settings menu.");
+    if (!menu?.type) throw new Error("Could not find the Foundry Paste Eater upload-destination settings menu.");
 
-    const existing = Object.values(ui.windows).find(windowApp => windowApp.id === "clipboard-image-destination-config");
+    const existing = Object.values(ui.windows).find(windowApp => windowApp.id === "foundry-paste-eater-destination-config");
     if (existing) {
       existing.bringToFront?.();
       return;
@@ -742,20 +804,20 @@ async function openUploadDestinationConfig(page) {
     await app.render(true);
   }, MODULE_ID);
 
-  await page.waitForSelector("#clipboard-image-destination-config", {state: "visible", timeout: DEFAULT_TIMEOUT});
+  await page.waitForSelector("#foundry-paste-eater-destination-config", {state: "visible", timeout: DEFAULT_TIMEOUT});
 }
 
 async function closeUploadDestinationConfig(page) {
   await page.evaluate(() => {
-    const app = Object.values(ui.windows).find(windowApp => windowApp.id === "clipboard-image-destination-config");
+    const app = Object.values(ui.windows).find(windowApp => windowApp.id === "foundry-paste-eater-destination-config");
     app?.close?.();
   });
 
-  await page.waitForSelector("#clipboard-image-destination-config", {state: "hidden", timeout: DEFAULT_TIMEOUT}).catch(() => {});
+  await page.waitForSelector("#foundry-paste-eater-destination-config", {state: "hidden", timeout: DEFAULT_TIMEOUT}).catch(() => {});
 }
 
 async function getUploadDestinationSummary(page) {
-  return page.locator("#clipboard-image-destination-config [data-role='destination-summary']").inputValue();
+  return page.locator("#foundry-paste-eater-destination-config [data-role='destination-summary']").inputValue();
 }
 
 async function ensureFoundryUsers(users) {

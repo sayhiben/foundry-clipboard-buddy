@@ -39,7 +39,7 @@ S3-compatible storage is covered separately by an opt-in smoke spec when you pro
 2. Install the Playwright browser used by the suite:
    `npx playwright install chromium`
 3. Start Foundry VTT and make sure:
-   - the `clipboard-image` module is enabled
+   - the `foundry-paste-eater` module is enabled
    - you can log in as a GM
    - a scene is active and the canvas loads normally
 
@@ -134,4 +134,4 @@ npm run test:smoke:s3
 - The S3 smoke refresh only updates the Foundry-side AWS config file and restarts the Foundry server. It does not change repository files.
 - The module itself does not override Foundry's server-side S3 endpoint. If you want a different base URL for a provider like R2, set it in Foundry's AWS config or provide `FOUNDRY_S3_ENDPOINT` for the smoke harness.
 - The tests drive Foundry through real DOM `paste` and file-upload paths and assert against Foundry document state through `canvas.scene`, `game.messages`, and `game.journal`.
-- Each test temporarily enables the module's `Verbose logging` setting and relays `Clipboard Image [...]` browser-console lines into the Playwright output, which makes failures much easier to diagnose.
+- Each test temporarily enables the module's `Verbose logging` setting and relays `Foundry Paste Eater [...]` browser-console lines into the Playwright output, which makes failures much easier to diagnose.

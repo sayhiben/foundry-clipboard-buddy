@@ -198,9 +198,9 @@ These flows should stay true across the test matrix:
 1. Force a real module failure, such as selecting S3-compatible storage without a bucket and then pasting media.
    Expected: the acting user gets a short popup notification.
 2. Repeat that failure while a GM is connected from another client.
-   Expected: the GM receives a richer Clipboard Image error dialog with a downloadable module logfile link.
+   Expected: the GM receives a richer Foundry Paste Eater error dialog with a downloadable module logfile link.
 3. Enable `Verbose logging` on a client, then trigger the same failure again.
-   Expected: that client automatically downloads a verbose Clipboard Image logfile in addition to the normal alert.
+   Expected: that client automatically downloads a verbose Foundry Paste Eater logfile in addition to the normal alert.
 
 ### 10. Browser And Platform Validation
 
@@ -250,7 +250,7 @@ These flows should stay true across the test matrix:
 ### 12. Regression Watchlist
 
 Review the browser console while testing and confirm:
-- With `Verbose logging` enabled, clipboard-image logs clearly describe clipboard parsing, upload destination, media download, paste routing, and create vs replace outcomes
+- With `Verbose logging` enabled, foundry-paste-eater logs clearly describe clipboard parsing, upload destination, media download, paste routing, and create vs replace outcomes
 - No unhandled exceptions are emitted in successful flows
 - Expected failures show clear notifications
 - Expected failures reach the acting user, connected GMs, and verbose-debug clients through the new error-reporting flow

@@ -143,7 +143,7 @@ function _clipboardGetBlockedDirectMediaUrlError(imageInput, error) {
   if (!_clipboardIsBlockedDirectMediaUrlDownload(imageInput, error)) return null;
 
   const directMediaUrlError = new Error(
-    "The pasted media URL points to a host that blocks browser-side downloads, so Clipboard Image cannot download and re-upload it. Upload the file locally or use a CORS-enabled host."
+    "The pasted media URL points to a host that blocks browser-side downloads, so Foundry Paste Eater cannot download and re-upload it. Upload the file locally or use a CORS-enabled host."
   );
   directMediaUrlError.clipboardBlockedDirectMediaUrl = true;
   return directMediaUrlError;
@@ -313,13 +313,13 @@ async function _clipboardHandleTextInput(textInput, options = {}) {
 async function _clipboardReadAndPasteImage(options = {}) {
   const clipItems = await _clipboardReadClipboardItems();
   if (!clipItems?.length) {
-    if (options.notifyNoImage) ui.notifications.warn("Clipboard Image: No clipboard media was available.");
+    if (options.notifyNoImage) ui.notifications.warn("Foundry Paste Eater: No clipboard media was available.");
     return false;
   }
 
   const imageInput = await _clipboardExtractImageInput(clipItems);
   if (!imageInput) {
-    if (options.notifyNoImage) ui.notifications.warn("Clipboard Image: No supported media or media URL was found in the clipboard.");
+    if (options.notifyNoImage) ui.notifications.warn("Foundry Paste Eater: No supported media or media URL was found in the clipboard.");
     return false;
   }
 
@@ -336,7 +336,7 @@ async function _clipboardReadAndPasteImage(options = {}) {
 async function _clipboardReadAndPasteClipboardContent(options = {}) {
   const clipItems = await _clipboardReadClipboardItems();
   if (!clipItems?.length) {
-    if (options.notifyNoContent) ui.notifications.warn("Clipboard Image: No clipboard data was available.");
+    if (options.notifyNoContent) ui.notifications.warn("Foundry Paste Eater: No clipboard data was available.");
     return false;
   }
 
@@ -353,7 +353,7 @@ async function _clipboardReadAndPasteClipboardContent(options = {}) {
   }
 
   if (options.notifyNoContent) {
-    ui.notifications.warn("Clipboard Image: No supported media or text was found in the clipboard.");
+    ui.notifications.warn("Foundry Paste Eater: No supported media or text was found in the clipboard.");
   }
   return false;
 }
@@ -424,7 +424,7 @@ async function _clipboardOpenChatUploadPicker() {
 function _clipboardHandleScenePasteAction() {
   if (!_clipboardCanUseScenePasteTool()) return false;
   if (!navigator.clipboard?.read) {
-    ui.notifications.warn("Clipboard Image: Direct clipboard reads are unavailable here. Use your browser's Paste action or the Upload Media tool instead.");
+    ui.notifications.warn("Foundry Paste Eater: Direct clipboard reads are unavailable here. Use your browser's Paste action or the Upload Media tool instead.");
     return false;
   }
 

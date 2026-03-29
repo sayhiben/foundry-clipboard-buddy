@@ -18,12 +18,12 @@ const {
   _clipboardGetSourceChoices,
 } = require("./storage");
 
-class ClipboardImageDestinationConfig extends CLIPBOARD_IMAGE_FORM_APPLICATION {
+class FoundryPasteEaterDestinationConfig extends CLIPBOARD_IMAGE_FORM_APPLICATION {
   static get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
-      id: "clipboard-image-destination-config",
-      title: "Clipboard Image: Upload Destination",
-      template: "modules/clipboard-image/templates/upload-destination.hbs",
+      id: "foundry-paste-eater-destination-config",
+      title: "Foundry Paste Eater: Upload Destination",
+      template: "modules/foundry-paste-eater/templates/upload-destination.hbs",
       width: 520,
       closeOnSubmit: true,
     });
@@ -83,8 +83,8 @@ class ClipboardImageDestinationConfig extends CLIPBOARD_IMAGE_FORM_APPLICATION {
     const destination = _clipboardGetUploadDestination({storedSource, target, bucket});
     const summaryField = form.querySelector('[data-role="destination-summary"]');
     const endpointField = form.querySelector('[data-role="s3-endpoint"]');
-    const bucketGroup = this.element.find(".clipboard-image-s3-bucket");
-    const endpointGroup = this.element.find(".clipboard-image-s3-endpoint");
+    const bucketGroup = this.element.find(".foundry-paste-eater-s3-bucket");
+    const endpointGroup = this.element.find(".foundry-paste-eater-s3-endpoint");
 
     if (summaryField) summaryField.value = _clipboardDescribeDestination(destination);
     if (endpointField) endpointField.value = destination.endpoint || "";
@@ -98,7 +98,7 @@ class ClipboardImageDestinationConfig extends CLIPBOARD_IMAGE_FORM_APPLICATION {
 
     const selectedSource = picker.activeSource || _clipboardResolveSource(previousStoredSource);
     if (!_clipboardCanSelectSource(selectedSource)) {
-      ui.notifications.warn("Clipboard Image: The selected file source does not support pasted uploads.");
+      ui.notifications.warn("Foundry Paste Eater: The selected file source does not support pasted uploads.");
       return;
     }
 
@@ -153,5 +153,5 @@ class ClipboardImageDestinationConfig extends CLIPBOARD_IMAGE_FORM_APPLICATION {
 }
 
 module.exports = {
-  ClipboardImageDestinationConfig,
+  FoundryPasteEaterDestinationConfig,
 };

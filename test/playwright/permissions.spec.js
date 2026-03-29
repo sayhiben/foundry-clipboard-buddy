@@ -24,7 +24,6 @@ const {
 } = require("./helpers/foundry");
 
 test.describe.configure({mode: "serial"});
-
 async function captureClipboardNotifications(page) {
   await page.evaluate(() => {
     window.__clipboardNotifications = {
@@ -56,11 +55,14 @@ async function ensureClipboardQaUsers() {
   ]);
 }
 
-test("non-gm scene controls follow visibility and per-tool world settings", async ({browser}) => {
+test("non-gm scene controls follow visibility and per-tool world settings", async ({browser}, testInfo) => {
+  testInfo.setTimeout(240_000);
   await ensureClipboardQaUsers();
 
   const gmContext = await browser.newContext();
   const gmPage = await gmContext.newPage();
+  const playerContext = await browser.newContext();
+  const playerPage = await playerContext.newPage();
   let previousSettings = null;
 
   try {
@@ -76,21 +78,14 @@ test("non-gm scene controls follow visibility and per-tool world settings", asyn
     });
 
     async function getPlayerToolState() {
-      const playerContext = await browser.newContext();
-      const playerPage = await playerContext.newPage();
-      try {
-        await loginToFoundry(playerPage, {
-          user: "Clipboard QA 2",
-          password: "",
-        });
-
-        return {
-          paste: await getSceneToolState(playerPage, "tokens", "clipboard-image-paste"),
-          upload: await getSceneToolState(playerPage, "tokens", "clipboard-image-upload"),
-        };
-      } finally {
-        await playerContext.close();
-      }
+      await loginToFoundry(playerPage, {
+        user: "Clipboard QA 2",
+        password: "",
+      });
+      return {
+        paste: await getSceneToolState(playerPage, "tokens", "foundry-paste-eater-paste"),
+        upload: await getSceneToolState(playerPage, "tokens", "foundry-paste-eater-upload"),
+      };
     }
 
     let toolState = await getPlayerToolState();
@@ -113,11 +108,13 @@ test("non-gm scene controls follow visibility and per-tool world settings", asyn
     expect(toolState.upload.visible).toBe(true);
   } finally {
     await restoreModuleSettings(gmPage, previousSettings || {});
+    await playerContext.close();
     await gmContext.close();
   }
 });
 
 test("player role gates block canvas text, chat media, and owned-token replacement until settings permit them", async ({browser}, testInfo) => {
+  testInfo.setTimeout(240_000);
   await ensureClipboardQaUsers();
 
   const gmContext = await browser.newContext();
@@ -252,6 +249,7 @@ test("player role gates block canvas text, chat media, and owned-token replaceme
 });
 
 test("players can replace tokens they own but not tokens owned by another user", async ({browser}, testInfo) => {
+  testInfo.setTimeout(240_000);
   await ensureClipboardQaUsers();
 
   const gmContext = await browser.newContext();

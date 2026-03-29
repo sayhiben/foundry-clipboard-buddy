@@ -4,7 +4,7 @@ const globals = require("globals");
 module.exports = [
   {
     ignores: [
-      "clipboard-image.js",
+      "foundry-paste-eater.js",
       "coverage/**",
       "dist/**",
       "node_modules/**",
@@ -14,7 +14,7 @@ module.exports = [
   },
   js.configs.recommended,
   {
-    files: ["clipboard-image.js", "src/**/*.js", "playwright.config.js", "vitest.config.js", "eslint.config.js", "scripts/**/*.js", "test/**/*.js"],
+    files: ["foundry-paste-eater.js", "src/**/*.js", "playwright.config.js", "vitest.config.js", "eslint.config.js", "scripts/**/*.js", "test/**/*.js"],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "script",

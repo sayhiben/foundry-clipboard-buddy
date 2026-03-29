@@ -1,5 +1,6 @@
 const {
   CLIPBOARD_IMAGE_MODULE_ID,
+  CLIPBOARD_IMAGE_LEGACY_MODULE_ID,
   CLIPBOARD_IMAGE_TEXT_NOTE_FLAG,
   CLIPBOARD_IMAGE_TEXT_NOTE_JOURNAL_PREFIX,
   CLIPBOARD_IMAGE_TEXT_NOTE_PAGE_NAME,
@@ -41,7 +42,12 @@ async function _clipboardAppendTextToPage(page, text) {
 }
 
 function _clipboardGetAssociatedTextNoteData(document) {
-  return document?.getFlag?.(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_TEXT_NOTE_FLAG) || null;
+  const currentValue = document?.getFlag?.(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_TEXT_NOTE_FLAG) || null;
+  if (currentValue) return currentValue;
+
+  return document?.flags?.[CLIPBOARD_IMAGE_LEGACY_MODULE_ID]?.[CLIPBOARD_IMAGE_TEXT_NOTE_FLAG] ||
+    document?._source?.flags?.[CLIPBOARD_IMAGE_LEGACY_MODULE_ID]?.[CLIPBOARD_IMAGE_TEXT_NOTE_FLAG] ||
+    null;
 }
 
 async function _clipboardEnsureAssociatedTextPage(document, text) {
@@ -121,6 +127,22 @@ async function _clipboardEnsurePlaceableTextNote(document, text, fallbackPositio
     pageId: page.id,
     noteId: note?.id || null,
   });
+  const legacyModule = game?.modules?.get?.(CLIPBOARD_IMAGE_LEGACY_MODULE_ID);
+  if (
+    typeof document?.unsetFlag === "function" &&
+    legacyModule?.active
+  ) {
+    try {
+      await document.unsetFlag(CLIPBOARD_IMAGE_LEGACY_MODULE_ID, CLIPBOARD_IMAGE_TEXT_NOTE_FLAG);
+    } catch (error) {
+      _clipboardLog("debug", "Unable to clear the legacy note flag scope after migration.", {
+        documentName: document.documentName,
+        documentId: document.id,
+        legacyModuleId: CLIPBOARD_IMAGE_LEGACY_MODULE_ID,
+        error: error instanceof Error ? error.message : `${error}`,
+      });
+    }
+  }
 
   _clipboardLog("info", "Created or updated a placeable text note", {
     documentName: document.documentName,

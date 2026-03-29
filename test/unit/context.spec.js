@@ -132,7 +132,7 @@ describe("canvas context helpers", () => {
     });
 
     it("strips generated upload suffixes from pasted document names", () => {
-      expect(api._clipboardGetPastedDocumentName("folder/test-token-1774745045587.png?clipboard-image=1774745045596")).toBe("test-token");
+      expect(api._clipboardGetPastedDocumentName("folder/test-token-1774745045587.png?foundry-paste-eater=1774745045596")).toBe("test-token");
     });
 
     it("throws when token actor creation is unavailable", async () => {
@@ -151,7 +151,7 @@ describe("canvas context helpers", () => {
     });
 
     it("can create actorless pasted tokens when backing actors are disabled", async () => {
-      env.settingsValues.set("clipboard-image.create-backing-actors", false);
+      env.settingsValues.set("foundry-paste-eater.create-backing-actors", false);
 
       await expect(api._clipboardGetPlaceableStrategy("Token").createData({
         path: "image.png",
@@ -228,7 +228,7 @@ describe("canvas context helpers", () => {
     });
 
     it("uses the configured default empty-canvas target instead of the active layer", () => {
-      env.settingsValues.set("clipboard-image.default-empty-canvas-target", "token");
+      env.settingsValues.set("foundry-paste-eater.default-empty-canvas-target", "token");
       globalThis.canvas.activeLayer = globalThis.canvas.tiles;
 
       const context = api._clipboardResolvePasteContext({requireCanvasFocus: false});
@@ -296,7 +296,7 @@ describe("canvas context helpers", () => {
     });
 
     it("blocks selected token replacement entirely when the feature toggle is disabled", () => {
-      env.settingsValues.set("clipboard-image.enable-token-replacement", false);
+      env.settingsValues.set("foundry-paste-eater.enable-token-replacement", false);
       const token = env.createControlledPlaceable("Token", {id: "token-a"});
       globalThis.canvas.tokens.controlled = [token];
       globalThis.canvas.activeLayer = globalThis.canvas.tokens;

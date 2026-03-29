@@ -161,7 +161,7 @@ test("chat media display modes change the chat preview markup", async ({page}, t
     await expect.poll(async () => (await getStateSnapshot(page)).messages.length).toBe(beforeThumbnail.messages.length + 1);
     const afterThumbnail = await getStateSnapshot(page);
     const [thumbnailMessage] = getNewDocuments(beforeThumbnail, afterThumbnail, "messages");
-    expect(thumbnailMessage.content).toContain("clipboard-image-chat-thumbnail");
+    expect(thumbnailMessage.content).toContain("foundry-paste-eater-chat-thumbnail");
     expect(thumbnailMessage.content).toContain("<img");
 
     await setModuleSettings(page, {"chat-media-display": "full-preview"});
@@ -174,7 +174,7 @@ test("chat media display modes change the chat preview markup", async ({page}, t
     await expect.poll(async () => (await getStateSnapshot(page)).messages.length).toBe(beforeFull.messages.length + 1);
     const afterFull = await getStateSnapshot(page);
     const [fullPreviewMessage] = getNewDocuments(beforeFull, afterFull, "messages");
-    expect(fullPreviewMessage.content).toContain("clipboard-image-chat-full-preview");
+    expect(fullPreviewMessage.content).toContain("foundry-paste-eater-chat-full-preview");
     expect(fullPreviewMessage.content).toContain("<img");
 
     await setModuleSettings(page, {"chat-media-display": "link-only"});
@@ -244,9 +244,9 @@ test("scene paste prompt mode controls whether the scene tool reads directly or 
     ]);
 
     const beforeAuto = await getStateSnapshot(page);
-    await invokeSceneTool(page, "tiles", "clipboard-image-paste");
+    await invokeSceneTool(page, "tiles", "foundry-paste-eater-paste");
     await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(beforeAuto.tiles.length + 1);
-    await expect(page.locator("#clipboard-image-scene-paste-prompt")).toHaveCount(0);
+    await expect(page.locator("#foundry-paste-eater-scene-paste-prompt")).toHaveCount(0);
 
     await restoreClipboardRead(page);
     await setModuleSettings(page, {"scene-paste-prompt-mode": "always"});
@@ -254,22 +254,22 @@ test("scene paste prompt mode controls whether the scene tool reads directly or 
       {filename: "test-token.png", mimeType: "image/png"},
     ]);
     const beforeAlways = await getStateSnapshot(page);
-    await invokeSceneTool(page, "tiles", "clipboard-image-paste");
-    await expect(page.locator("#clipboard-image-scene-paste-target")).toBeVisible();
+    await invokeSceneTool(page, "tiles", "foundry-paste-eater-paste");
+    await expect(page.locator("#foundry-paste-eater-scene-paste-target")).toBeVisible();
     await page.waitForTimeout(300);
     const afterAlways = await getStateSnapshot(page);
     expect(afterAlways.tiles.length).toBe(beforeAlways.tiles.length);
-    await page.locator('#clipboard-image-scene-paste-prompt [data-action="cancel"]').click();
+    await page.locator('#foundry-paste-eater-scene-paste-prompt [data-action="cancel"]').click();
 
     await restoreClipboardRead(page);
     await setModuleSettings(page, {"scene-paste-prompt-mode": "never"});
     await stubClipboardRead(page, [{}]);
     const beforeNever = await getStateSnapshot(page);
-    await invokeSceneTool(page, "tiles", "clipboard-image-paste");
+    await invokeSceneTool(page, "tiles", "foundry-paste-eater-paste");
     await page.waitForTimeout(300);
     const afterNever = await getStateSnapshot(page);
     expect(afterNever.tiles.length).toBe(beforeNever.tiles.length);
-    await expect(page.locator("#clipboard-image-scene-paste-prompt")).toHaveCount(0);
+    await expect(page.locator("#foundry-paste-eater-scene-paste-prompt")).toHaveCount(0);
   } finally {
     await restoreClipboardRead(page).catch(() => {});
     await restoreModuleSettings(page, previousSettings);
@@ -285,7 +285,7 @@ test("verbose logging controls whether successful workflows emit browser console
   const messages = [];
   const listener = message => {
     const text = message.text();
-    if (text.includes("Clipboard Image [")) messages.push(text);
+    if (text.includes("Foundry Paste Eater [")) messages.push(text);
   };
   page.on("console", listener);
 
@@ -334,7 +334,7 @@ test("upload destination config saves custom folders and uses them for later upl
 
   try {
     await openUploadDestinationConfig(page);
-    const app = page.locator("#clipboard-image-destination-config");
+    const app = page.locator("#foundry-paste-eater-destination-config");
     await app.locator('select[name="source"]').selectOption("data");
     await app.locator('input[name="target"]').fill(customFolder);
     await expect.poll(() => getUploadDestinationSummary(page)).toContain(customFolder);
@@ -342,9 +342,9 @@ test("upload destination config saves custom folders and uses them for later upl
     await expect(app).toHaveCount(0);
 
     const storedSettings = await page.evaluate(() => ({
-      source: game.settings.get("clipboard-image", "image-location-source"),
-      target: game.settings.get("clipboard-image", "image-location"),
-      bucket: game.settings.get("clipboard-image", "image-location-bucket"),
+      source: game.settings.get("foundry-paste-eater", "image-location-source"),
+      target: game.settings.get("foundry-paste-eater", "image-location"),
+      bucket: game.settings.get("foundry-paste-eater", "image-location-bucket"),
     }));
     expect(storedSettings).toEqual({
       source: "data",

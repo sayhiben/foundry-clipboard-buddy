@@ -169,7 +169,7 @@ function _clipboardLog(level, message, details) {
   if ((level === "debug" || level === "info") && !_clipboardVerboseLoggingEnabled()) return;
 
   const logger = console[level] || console.log;
-  const prefix = `Clipboard Image [${level.toUpperCase()}]: ${message}`;
+  const prefix = `Foundry Paste Eater [${level.toUpperCase()}]: ${message}`;
   if (details === undefined) {
     logger(prefix);
     return;
@@ -203,13 +203,13 @@ function _clipboardBuildErrorReport(error, options = {}) {
   const shortMessage = error instanceof Error && error.message
     ? error.message
     : "Failed to handle media input. Check the console.";
-  const playerMessage = options.playerMessage || `Clipboard Image: ${shortMessage}`;
-  const gmMessage = options.gmMessage || "Clipboard Image encountered an error. Review the attached logfile for full details.";
+  const playerMessage = options.playerMessage || `Foundry Paste Eater: ${shortMessage}`;
+  const gmMessage = options.gmMessage || "Foundry Paste Eater encountered an error. Review the attached logfile for full details.";
 
   return {
     id: _clipboardCreateReportId(),
     timestamp,
-    title: options.title || "Clipboard Image Error",
+    title: options.title || "Foundry Paste Eater Error",
     operation: options.operation || null,
     playerMessage,
     gmMessage,
@@ -231,7 +231,7 @@ function _clipboardBuildErrorReport(error, options = {}) {
 
 function _clipboardFormatErrorReport(report) {
   const parts = [
-    "Clipboard Image Error Report",
+    "Foundry Paste Eater Error Report",
     `Report ID: ${report.id}`,
     `Timestamp: ${report.timestamp}`,
     `Title: ${report.title}`,
@@ -266,7 +266,7 @@ function _clipboardFormatErrorReport(report) {
 
 function _clipboardCreateReportFile(report) {
   const safeTimestamp = report.timestamp.replaceAll(":", "-");
-  const filename = `clipboard-image-error-${safeTimestamp}.log`;
+  const filename = `foundry-paste-eater-error-${safeTimestamp}.log`;
   const content = _clipboardFormatErrorReport(report);
   const url = globalThis.URL?.createObjectURL?.(new Blob([content], {type: "text/plain"})) || "";
   return {filename, content, url};
@@ -298,15 +298,15 @@ function _clipboardOpenGmErrorDialog(report, options = {}) {
   const file = _clipboardCreateReportFile(report);
   const userName = _clipboardEscapeHtml(report.user?.name || "Unknown User");
   const summary = _clipboardEscapeHtml(report.summary || "Unknown error");
-  const playerMessage = _clipboardEscapeHtml(report.playerMessage || "Clipboard Image encountered an error.");
+  const playerMessage = _clipboardEscapeHtml(report.playerMessage || "Foundry Paste Eater encountered an error.");
   const linkMarkup = file.url
     ? `<p><a href="${_clipboardEscapeHtml(file.url)}" download="${_clipboardEscapeHtml(file.filename)}" target="_blank" rel="noopener">Download module logfile</a></p>`
     : "";
   const origin = options.receivedFromSocket
-    ? "Another user encountered a Clipboard Image error."
-    : "This client encountered a Clipboard Image error.";
+    ? "Another user encountered a Foundry Paste Eater error."
+    : "This client encountered a Foundry Paste Eater error.";
   const content = `
-    <div class="clipboard-image-error-dialog">
+    <div class="foundry-paste-eater-error-dialog">
       <p>${_clipboardEscapeHtml(origin)}</p>
       <p><strong>User:</strong> ${userName}</p>
       <p><strong>Summary:</strong> ${summary}</p>
@@ -317,7 +317,7 @@ function _clipboardOpenGmErrorDialog(report, options = {}) {
 
   if (typeof globalThis.Dialog === "function") {
     new globalThis.Dialog({
-      title: report.title || "Clipboard Image Error",
+      title: report.title || "Foundry Paste Eater Error",
       content,
       buttons: {
         close: {
@@ -347,7 +347,7 @@ function _clipboardHandleSocketReport(payload) {
   if (!game?.user?.isGM) return false;
   if (!payload.report) return false;
 
-  ui.notifications.error(`Clipboard Image: ${payload.report.summary}`);
+  ui.notifications.error(`Foundry Paste Eater: ${payload.report.summary}`);
   _clipboardOpenGmErrorDialog(payload.report, {receivedFromSocket: true});
   return true;
 }
