@@ -4,6 +4,7 @@ const {
   _clipboardDescribePasteContext,
   _clipboardDescribeReplacementTarget,
   _clipboardLog,
+  _clipboardReportError,
   _clipboardSerializeError,
   _clipboardDescribeFile,
 } = require("./diagnostics");
@@ -189,15 +190,11 @@ async function _clipboardExecutePasteWorkflow(workflow, options = {}) {
     });
     return result;
   } catch (error) {
-    if (notifyError) {
-      const message = error instanceof Error && error.message
-        ? `Clipboard Image: ${error.message}`
-        : "Clipboard Image: Failed to handle media input. Check the console.";
-      ui.notifications.error(message);
-    }
-    _clipboardLog("error", "Failed to handle media input", {
-      options,
-      error: _clipboardSerializeError(error),
+    _clipboardReportError(error, {
+      operation: "execute-paste-workflow",
+      details: {options},
+      notifyLocal: notifyError,
+      logMessage: "Failed to handle media input",
     });
     return false;
   } finally {

@@ -25,6 +25,7 @@ The suite is designed to cover the browser-driven flows that can be validated ag
 - Copied-object priority handling
 - Chat upload button flow
 - Permissions and feature-toggle flows in `test/playwright/permissions.spec.js`, including non-GM scene controls, minimum-role gates, and owned-token replacement
+- Error-reporting flows in `test/playwright/error-reporting.spec.js`, including player alerts, GM relay dialogs, and verbose logfile download behavior
 
 It intentionally does not try to replace all manual QA. Browser permission prompts, real `navigator.clipboard.read()` behavior, Safari/iOS/Android specifics, remote-host CORS failures, Forge integration, and visual animation/video playback still belong in manual testing.
 

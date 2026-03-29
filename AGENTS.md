@@ -64,6 +64,7 @@
 - Role gates and feature toggles should disable workflows cleanly. Do not silently reroute a disabled token paste into tile creation, or vice versa.
 - Scene-control visibility is no longer a simple `isGM` check. It depends on both the world settings and the current user's configured role.
 - The Playwright permission coverage lives in `test/playwright/permissions.spec.js`, not only in `smoke.spec.js`. Keep multi-user browser flows isolated from the single-page smoke setup when they need separate GM and player sessions.
+- Browser-level error reporting coverage now lives in `test/playwright/error-reporting.spec.js`. Keep player alert, GM relay, and verbose-log download assertions there instead of bloating the main smoke file.
 - In this local Foundry setup, browser-driven user creation or role changes are not reliable. The Playwright harness seeds the existing `Clipboard QA` users directly through the world user store, with `Clipboard QA 2` and `Clipboard QA 3` acting as Players.
 - Player media-upload tests need a destination folder that already exists. Pre-create the upload directory as GM before exercising player chat-media or token-replacement uploads, or the failure will come from Foundry's directory-creation rules rather than the module policy layer.
 
@@ -76,6 +77,7 @@
 - Prefer shared helpers over duplicating picker/upload flow logic between scene and chat paths.
 - Keep logging routed through `_clipboardLog`; do not add new raw `console.*` calls unless there is a strong reason.
 - When adding structured log output, prefer the existing `_clipboardDescribe...` helpers or add similarly scoped helpers.
+- Route user-visible failures through the centralized diagnostics reporter instead of ad hoc `ui.notifications.error(...)` calls, so player, GM, and verbose-debug outputs stay consistent.
 - Keep permission and feature-policy logic centralized in `src/settings.js` or another dedicated policy seam. Do not scatter direct `game.settings.get(...)` checks throughout unrelated modules.
 - Keep modules domain-driven. Avoid reintroducing a single giant runtime file or a generic `utils.js` dumping ground.
 - Keep UI/event wiring thin. Prefer moving real behavior into `src/workflows.js`, `src/storage.js`, `src/notes.js`, `src/chat.js`, or similarly focused modules.
@@ -94,6 +96,7 @@
 - When extending the S3 smoke, prefer environment-driven updates to Foundry's AWS JSON config such as endpoint or path-style overrides. That keeps S3-compatible provider testing realistic without adding fake module-level storage settings.
 - If a Playwright browser install is missing, install it explicitly with `npx playwright install <browser>` before diagnosing runtime behavior.
 - Enable the module's `Verbose logging` setting when diagnosing failures; the browser console output is intentionally detailed and high-signal.
+- The error-reporting path now has three audiences: acting users get a short alert, connected GMs get a richer dialog plus logfile link, and verbose-debug clients get an automatic logfile download.
 - Keep automated tests aligned with real Foundry behavior, not idealized behavior.
 - When adding a new setting, add at least one unit test that proves the enabled path and one that proves the disabled or restricted path.
 - For canvas rendering assertions, document data alone is not always enough. In Firefox, inspect rendered mesh/texture state rather than assuming `placeable.width` matches the visible mesh.

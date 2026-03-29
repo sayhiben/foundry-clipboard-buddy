@@ -136,6 +136,8 @@ function loadRuntime(options = {}) {
   const onHandlers = {};
   const registeredSettings = [];
   const registeredMenus = [];
+  const socketHandlers = new Map();
+  const dialogInstances = [];
   const settingsValues = new Map([
     ["clipboard-image.image-location-source", "auto"],
     ["clipboard-image.image-location", "pasted_images"],
@@ -205,6 +207,8 @@ function loadRuntime(options = {}) {
     onHandlers,
     registeredSettings,
     registeredMenus,
+    socketHandlers,
+    dialogInstances,
     settingsValues,
     settingsRegistry,
     journalEntries,
@@ -290,6 +294,7 @@ function loadRuntime(options = {}) {
   globalThis.game = {
     user: {
       id: "user-1",
+      name: "Gamemaster",
       isGM: true,
       role: 4,
     },
@@ -334,6 +339,16 @@ function loadRuntime(options = {}) {
     },
     actors: {
       get: id => actors.get(id),
+    },
+    world: {
+      id: "world-1",
+      title: "Test World",
+    },
+    socket: {
+      on: vi.fn((channel, callback) => {
+        socketHandlers.set(channel, callback);
+      }),
+      emit: vi.fn(),
     },
   };
 
@@ -431,6 +446,7 @@ function loadRuntime(options = {}) {
   };
 
   globalThis.fetch = vi.fn();
+  globalThis.saveDataToFile = vi.fn();
   globalThis.console = {
     debug: vi.fn(),
     error: vi.fn(),
@@ -439,6 +455,15 @@ function loadRuntime(options = {}) {
     warn: vi.fn(),
   };
   globalThis.ForgeVTT = undefined;
+  globalThis.Dialog = class MockDialog {
+    constructor(data) {
+      this.data = data;
+      this.render = vi.fn(() => this);
+      dialogInstances.push(this);
+    }
+  };
+  globalThis.URL.createObjectURL = vi.fn(() => "blob:clipboard-image-log");
+  globalThis.URL.revokeObjectURL = vi.fn();
 
   Object.defineProperty(window.navigator, "clipboard", {
     configurable: true,
@@ -461,6 +486,7 @@ function loadRuntime(options = {}) {
   env.createPage = data => createPage(data);
   env.createPlaceableDocument = (documentName, data) => createPlaceableDocument(documentName, data);
   env.createControlledPlaceable = (documentName, data) => createControlledPlaceable(documentName, data);
+  env.emitSocket = (channel, payload) => socketHandlers.get(channel)?.(payload);
 
   return env;
 }

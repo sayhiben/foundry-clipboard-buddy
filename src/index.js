@@ -27,6 +27,7 @@ Hooks.once("init", function() {
 });
 
 Hooks.once("ready", function() {
+  diagnostics._clipboardRegisterErrorReporting();
   diagnostics._clipboardLog("info", "clipboard-image module is ready.", {
     clipboardReadAvailable: Boolean(navigator.clipboard?.read),
     verboseLogging: diagnostics._clipboardVerboseLoggingEnabled(),

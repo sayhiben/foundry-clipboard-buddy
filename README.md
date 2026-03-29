@@ -209,6 +209,7 @@ Open Foundry's Game Settings and look for the module settings/menu:
   Chooses whether the explicit scene-control paste button uses automatic browser behavior, always opens the manual paste prompt, or only uses direct clipboard reads.
 - `Verbose logging`
   Client-level debugging setting that writes detailed clipboard-image diagnostics to the browser console.
+  When enabled, client-side error reports also download a full module logfile automatically for that client.
 
 By default, pasted media is uploaded under:
 
@@ -268,6 +269,11 @@ The logs include:
 - upload destination resolution
 - paste-context decisions
 - create vs replace behavior
+
+When an actual module error is raised:
+- the acting user gets a short popup notification
+- connected GM clients get a richer error dialog with a downloadable module logfile
+- clients with `Verbose logging` enabled automatically get the full verbose logfile as a download
 
 ## Credits
 

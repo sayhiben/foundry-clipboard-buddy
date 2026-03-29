@@ -193,6 +193,15 @@ These flows should stay true across the test matrix:
 5. For S3-compatible storage, test a missing or invalid bucket selection.
    Expected: the module reports a clear upload error and does not create broken content.
 
+### 10A. Error Reporting
+
+1. Force a real module failure, such as selecting S3-compatible storage without a bucket and then pasting media.
+   Expected: the acting user gets a short popup notification.
+2. Repeat that failure while a GM is connected from another client.
+   Expected: the GM receives a richer Clipboard Image error dialog with a downloadable module logfile link.
+3. Enable `Verbose logging` on a client, then trigger the same failure again.
+   Expected: that client automatically downloads a verbose Clipboard Image logfile in addition to the normal alert.
+
 ### 10. Browser And Platform Validation
 
 1. In Chrome or Edge, test `Ctrl+V`, browser paste, direct media URLs, text-note creation, and upload fallback.
@@ -244,6 +253,7 @@ Review the browser console while testing and confirm:
 - With `Verbose logging` enabled, clipboard-image logs clearly describe clipboard parsing, upload destination, media download, paste routing, and create vs replace outcomes
 - No unhandled exceptions are emitted in successful flows
 - Expected failures show clear notifications
+- Expected failures reach the acting user, connected GMs, and verbose-debug clients through the new error-reporting flow
 - Chat-targeted paste never duplicates onto the canvas
 - Selected-placeable replacement never resizes or repositions existing tokens or tiles
 - Contextual text paste never creates duplicate note pins for the same linked placeable unless intended

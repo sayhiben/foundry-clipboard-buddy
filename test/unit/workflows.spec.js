@@ -179,6 +179,9 @@ describe("paste and handler workflows", () => {
       await expect(api._clipboardExecutePasteWorkflow(async () => {
         throw new Error("quiet");
       }, {notifyError: false, respectCopiedObjects: false})).resolves.toBe(false);
+
+      expect(globalThis.ui.notifications.error).not.toHaveBeenCalled();
+      expect(env.dialogInstances).toHaveLength(0);
     });
 
     it("uses a generic message for non-Error failures", async () => {

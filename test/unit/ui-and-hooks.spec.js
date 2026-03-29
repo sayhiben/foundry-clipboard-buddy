@@ -1093,6 +1093,7 @@ describe("ui and hook integration helpers", () => {
       });
 
       secondEnv.onceHandlers.ready();
+      expect(globalThis.game.socket.on).toHaveBeenCalledWith("module.clipboard-image", secondEnv.api._clipboardHandleSocketReport);
       expect(globalThis.ui.notifications.info).toHaveBeenCalledWith(
         "Clipboard Image: Direct clipboard reads are unavailable here. Browser paste events and upload fallbacks are still available where enabled."
       );

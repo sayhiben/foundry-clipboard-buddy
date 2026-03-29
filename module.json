@@ -14,6 +14,7 @@
 		"verified": "13.351",
 		"maximum": "13"
 	},
+	"socket": true,
 	"scripts": [ "clipboard-image.js" ],
 	"styles": [ "clipboard-image.css" ],
 	"url": "https://github.com/sayhiben/foundry-clipboard-buddy",

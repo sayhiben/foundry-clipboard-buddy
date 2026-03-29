@@ -1,4 +1,4 @@
-import {beforeEach, describe, expect, it} from "vitest";
+import {beforeEach, describe, expect, it, vi} from "vitest";
 
 import {loadRuntime} from "./runtime-env.js";
 import {createDataTransfer} from "./spec-helpers.js";
@@ -21,6 +21,15 @@ describe("diagnostics and settings helpers", () => {
       env.settingsRegistry.set("clipboard-image.verbose-logging", {});
       env.settingsValues.set("clipboard-image.verbose-logging", true);
       expect(api._clipboardVerboseLoggingEnabled()).toBe(true);
+    });
+
+    it("returns false when reading the setting throws", () => {
+      env.settingsRegistry.set("clipboard-image.verbose-logging", {});
+      globalThis.game.settings.get.mockImplementationOnce(() => {
+        throw new Error("settings failure");
+      });
+
+      expect(api._clipboardVerboseLoggingEnabled()).toBe(false);
     });
   });
 
@@ -128,6 +137,12 @@ describe("diagnostics and settings helpers", () => {
     it("suppresses info logs when verbose logging is disabled", () => {
       api._clipboardLog("info", "hidden info");
       expect(console.info).not.toHaveBeenCalled();
+      expect(api._clipboardGetLogHistory()).toEqual([
+        expect.objectContaining({
+          level: "info",
+          message: "hidden info",
+        }),
+      ]);
     });
 
     it("always emits warn and error logs", () => {
@@ -135,6 +150,227 @@ describe("diagnostics and settings helpers", () => {
       api._clipboardLog("error", "error", {ok: false});
       expect(console.warn).toHaveBeenCalled();
       expect(console.error).toHaveBeenCalled();
+    });
+
+    it("sanitizes complex log payloads for report output", () => {
+      const circular = {};
+      circular.self = circular;
+
+      api._clipboardLog("error", "complex", {
+        count: 1n,
+        handler() {},
+        blob: new Blob(["x"], {type: "text/plain"}),
+        url: new URL("https://example.com/path"),
+        circular,
+        deep: {
+          one: {
+            two: {
+              three: {
+                four: true,
+              },
+            },
+          },
+        },
+      });
+
+      expect(api._clipboardGetLogHistory().at(-1)).toMatchObject({
+        details: {
+          count: "1",
+          handler: "[Function handler]",
+          blob: {type: "text/plain", size: 1},
+          url: "https://example.com/path",
+          circular: {self: "[Circular]"},
+          deep: {
+            one: {
+              two: "[MaxDepth]",
+            },
+          },
+        },
+      });
+    });
+
+    it("keeps only the most recent bounded log history", () => {
+      for (let index = 0; index < 105; index += 1) {
+        api._clipboardLog("warn", `entry-${index}`);
+      }
+
+      expect(api._clipboardGetLogHistory()).toHaveLength(100);
+      expect(api._clipboardGetLogHistory()[0]).toMatchObject({message: "entry-5"});
+      expect(api._clipboardGetLogHistory().at(-1)).toMatchObject({message: "entry-104"});
+    });
+  });
+
+  describe("error reporting", () => {
+    it("builds formatted error reports with recent log history", () => {
+      api._clipboardLog("warn", "warn before error", {ok: true});
+      const report = api._clipboardBuildErrorReport(new Error("boom"), {
+        operation: "unit-test",
+        details: {
+          nested: {
+            value: 1,
+          },
+        },
+      });
+
+      expect(report).toMatchObject({
+        operation: "unit-test",
+        summary: "boom",
+        user: {
+          id: "user-1",
+          name: "Gamemaster",
+        },
+      });
+      expect(report.logs.at(-1)).toMatchObject({
+        level: "warn",
+        message: "warn before error",
+      });
+      expect(api._clipboardFormatErrorReport(report)).toContain("Clipboard Image Error Report");
+      expect(api._clipboardFormatErrorReport(report)).toContain("\"nested\"");
+    });
+
+    it("reports errors locally to GMs with a logfile link", () => {
+      const report = api._clipboardReportError(new Error("gm failed"), {
+        operation: "gm-test",
+        details: {foo: "bar"},
+      });
+
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Clipboard Image: gm failed");
+      expect(env.dialogInstances).toHaveLength(1);
+      expect(env.dialogInstances[0].data.content).toContain("Download module logfile");
+      expect(report.operation).toBe("gm-test");
+      expect(globalThis.game.socket.emit).not.toHaveBeenCalled();
+    });
+
+    it("can suppress local gm notifications while still returning a report", () => {
+      const report = api._clipboardReportError(new Error("silent gm"), {
+        notifyLocal: false,
+      });
+
+      expect(report.summary).toBe("silent gm");
+      expect(globalThis.ui.notifications.error).not.toHaveBeenCalled();
+      expect(env.dialogInstances).toHaveLength(0);
+    });
+
+    it("relays player-side errors to GMs over the module socket", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      globalThis.game.user.name = "Player One";
+
+      api._clipboardReportError(new Error("player failed"), {
+        operation: "player-test",
+      });
+
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Clipboard Image: player failed");
+      expect(globalThis.game.socket.emit).toHaveBeenCalledWith("module.clipboard-image", expect.objectContaining({
+        type: "clipboard-error-report",
+        report: expect.objectContaining({
+          operation: "player-test",
+          user: expect.objectContaining({
+            name: "Player One",
+            isGM: false,
+          }),
+        }),
+      }));
+      expect(env.dialogInstances).toHaveLength(0);
+    });
+
+    it("downloads a verbose logfile when verbose logging is enabled", () => {
+      env.settingsRegistry.set("clipboard-image.verbose-logging", {});
+      env.settingsValues.set("clipboard-image.verbose-logging", true);
+
+      api._clipboardReportError(new Error("download me"));
+
+      expect(globalThis.saveDataToFile).toHaveBeenCalledWith(
+        expect.stringContaining("Clipboard Image Error Report"),
+        "text/plain",
+        expect.stringMatching(/^clipboard-image-error-/)
+      );
+    });
+
+    it("creates report files even when object urls are unavailable", () => {
+      const originalCreateObjectURL = globalThis.URL.createObjectURL;
+      globalThis.URL.createObjectURL = undefined;
+
+      const file = api._clipboardCreateReportFile(api._clipboardBuildErrorReport(new Error("no object url")));
+
+      expect(file).toMatchObject({
+        filename: expect.stringMatching(/^clipboard-image-error-/),
+        url: "",
+      });
+      globalThis.URL.createObjectURL = originalCreateObjectURL;
+    });
+
+    it("falls back to an anchor download when saveDataToFile is unavailable", () => {
+      const report = api._clipboardBuildErrorReport(new Error("anchor download"));
+      const createElement = document.createElement.bind(document);
+      const click = vi.fn();
+      globalThis.saveDataToFile = undefined;
+      const createElementSpy = vi.spyOn(document, "createElement").mockImplementation(tagName => {
+        const element = createElement(tagName);
+        if (tagName === "a") element.click = click;
+        return element;
+      });
+
+      api._clipboardDownloadReportFile(report);
+
+      expect(click).toHaveBeenCalled();
+      createElementSpy.mockRestore();
+    });
+
+    it("handles relayed socket reports for GMs", () => {
+      const handled = api._clipboardHandleSocketReport({
+        type: "clipboard-error-report",
+        report: api._clipboardBuildErrorReport(new Error("remote boom"), {
+          operation: "remote-test",
+        }),
+      });
+
+      expect(handled).toBe(true);
+      expect(env.dialogInstances).toHaveLength(1);
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Clipboard Image: remote boom");
+    });
+
+    it("tolerates missing dialog support on GM clients", () => {
+      globalThis.Dialog = undefined;
+
+      expect(() => api._clipboardReportError(new Error("no dialog"))).not.toThrow();
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Clipboard Image: no dialog");
+      expect(env.dialogInstances).toHaveLength(0);
+    });
+
+    it("ignores invalid or non-gm socket reports", () => {
+      expect(api._clipboardHandleSocketReport(null)).toBe(false);
+      expect(api._clipboardHandleSocketReport({type: "other"})).toBe(false);
+      expect(api._clipboardHandleSocketReport({type: "clipboard-error-report"})).toBe(false);
+
+      globalThis.game.user.isGM = false;
+      expect(api._clipboardHandleSocketReport({
+        type: "clipboard-error-report",
+        report: api._clipboardBuildErrorReport(new Error("ignored")),
+      })).toBe(false);
+    });
+
+    it("can build a generic report for non-Error failures", () => {
+      const report = api._clipboardBuildErrorReport("plain failure");
+      expect(report.summary).toBe("Failed to handle media input. Check the console.");
+      expect(report.playerMessage).toBe("Clipboard Image: Failed to handle media input. Check the console.");
+    });
+
+    it("tolerates missing socket emit support for player relays", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      globalThis.game.socket.emit = undefined;
+
+      expect(() => api._clipboardReportError(new Error("no socket"))).not.toThrow();
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Clipboard Image: no socket");
+    });
+
+    it("registers the socket listener only when sockets are available", () => {
+      api._clipboardRegisterErrorReporting();
+      expect(globalThis.game.socket.on).toHaveBeenCalledWith("module.clipboard-image", api._clipboardHandleSocketReport);
+
+      globalThis.game.socket.on = undefined;
+      expect(() => api._clipboardRegisterErrorReporting()).not.toThrow();
     });
   });
 
