@@ -215,6 +215,8 @@ describe("diagnostics and settings helpers", () => {
       expect(report).toMatchObject({
         operation: "unit-test",
         summary: "boom",
+        contentSummary: "some content",
+        attemptDescription: "Gamemaster attempted to paste some content",
         user: {
           id: "user-1",
           name: "Gamemaster",
@@ -234,9 +236,12 @@ describe("diagnostics and settings helpers", () => {
         details: {foo: "bar"},
       });
 
-      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Foundry Paste Eater: gm failed");
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith(
+        "Gamemaster attempted to paste some content but encountered an error: gm failed"
+      );
       expect(env.dialogInstances).toHaveLength(1);
       expect(env.dialogInstances[0].data.content).toContain("Download module logfile");
+      expect(env.dialogInstances[0].data.content).toContain("GM guidance:");
       expect(report.operation).toBe("gm-test");
       expect(globalThis.game.socket.emit).not.toHaveBeenCalled();
     });
@@ -260,11 +265,14 @@ describe("diagnostics and settings helpers", () => {
         operation: "player-test",
       });
 
-      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Foundry Paste Eater: player failed");
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith(
+        "Player One attempted to paste some content but encountered an error: player failed"
+      );
       expect(globalThis.game.socket.emit).toHaveBeenCalledWith("module.foundry-paste-eater", expect.objectContaining({
         type: "clipboard-error-report",
         report: expect.objectContaining({
           operation: "player-test",
+          attemptDescription: "Player One attempted to paste some content",
           user: expect.objectContaining({
             name: "Player One",
             isGM: false,
@@ -285,6 +293,17 @@ describe("diagnostics and settings helpers", () => {
         "text/plain",
         expect.stringMatching(/^foundry-paste-eater-error-/)
       );
+    });
+
+    it("can disable automatic logfile downloads even when verbose logging is enabled", () => {
+      env.settingsRegistry.set("foundry-paste-eater.verbose-logging", {});
+      env.settingsValues.set("foundry-paste-eater.verbose-logging", true);
+
+      api._clipboardReportError(new Error("do not download"), {
+        autoDownload: false,
+      });
+
+      expect(globalThis.saveDataToFile).not.toHaveBeenCalled();
     });
 
     it("creates report files even when object urls are unavailable", () => {
@@ -317,6 +336,16 @@ describe("diagnostics and settings helpers", () => {
       createElementSpy.mockRestore();
     });
 
+    it("omits the gm logfile link when object urls are unavailable", () => {
+      const originalCreateObjectURL = globalThis.URL.createObjectURL;
+      globalThis.URL.createObjectURL = undefined;
+
+      api._clipboardReportError(new Error("no dialog link"));
+
+      expect(env.dialogInstances[0].data.content).not.toContain("Download module logfile");
+      globalThis.URL.createObjectURL = originalCreateObjectURL;
+    });
+
     it("handles relayed socket reports for GMs", () => {
       const handled = api._clipboardHandleSocketReport({
         type: "clipboard-error-report",
@@ -327,14 +356,79 @@ describe("diagnostics and settings helpers", () => {
 
       expect(handled).toBe(true);
       expect(env.dialogInstances).toHaveLength(1);
-      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Foundry Paste Eater: remote boom");
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith(
+        "Gamemaster attempted to paste some content but encountered an error: remote boom"
+      );
+    });
+
+    it("registers the socket error handler only once per page", () => {
+      api._clipboardRegisterErrorReporting();
+      api._clipboardRegisterErrorReporting();
+
+      expect(globalThis.game.socket.on).toHaveBeenCalledTimes(1);
+      expect(globalThis.game.socket.on).toHaveBeenCalledWith(
+        "module.foundry-paste-eater",
+        api._clipboardHandleSocketReport
+      );
+      expect(globalThis.game.socket.__clipboardRegisteredChannels).toBeInstanceOf(Set);
+      expect(globalThis.game.socket.__clipboardRegisteredChannels.has("module.foundry-paste-eater")).toBe(true);
+    });
+
+    it("falls back to broadcast messages for relayed gm notifications", () => {
+      const report = api._clipboardBuildErrorReport(new Error("remote boom"));
+      report.playerMessage = "";
+      report.broadcastMessage = "Player One attempted to paste an image but encountered an error: remote boom";
+
+      expect(api._clipboardHandleSocketReport({
+        type: "clipboard-error-report",
+        report,
+      })).toBe(true);
+
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith(report.broadcastMessage);
+    });
+
+    it("falls back to summaries for relayed gm notifications when no other copy is available", () => {
+      const report = api._clipboardBuildErrorReport(new Error("remote boom"));
+      report.playerMessage = "";
+      report.broadcastMessage = "";
+
+      expect(api._clipboardHandleSocketReport({
+        type: "clipboard-error-report",
+        report,
+      })).toBe(true);
+
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("remote boom");
+    });
+
+    it("fills sparse relayed gm reports with default dialog copy", () => {
+      expect(api._clipboardHandleSocketReport({
+        type: "clipboard-error-report",
+        report: {
+          id: "report-1",
+          timestamp: new Date().toISOString(),
+          summary: "remote boom",
+          playerMessage: "",
+          broadcastMessage: "",
+          user: {},
+          world: {},
+          browser: {},
+          logs: [],
+        },
+      })).toBe(true);
+
+      expect(env.dialogInstances[0].data.title).toBe("Foundry Paste Eater Error");
+      expect(env.dialogInstances[0].data.content).toContain("Unknown User");
+      expect(env.dialogInstances[0].data.content).toContain("remote boom");
+      expect(env.dialogInstances[0].data.content).toContain("Review the attached logfile for full details.");
     });
 
     it("tolerates missing dialog support on GM clients", () => {
       globalThis.Dialog = undefined;
 
       expect(() => api._clipboardReportError(new Error("no dialog"))).not.toThrow();
-      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Foundry Paste Eater: no dialog");
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith(
+        "Gamemaster attempted to paste some content but encountered an error: no dialog"
+      );
       expect(env.dialogInstances).toHaveLength(0);
     });
 
@@ -353,7 +447,9 @@ describe("diagnostics and settings helpers", () => {
     it("can build a generic report for non-Error failures", () => {
       const report = api._clipboardBuildErrorReport("plain failure");
       expect(report.summary).toBe("Failed to handle media input. Check the console.");
-      expect(report.playerMessage).toBe("Foundry Paste Eater: Failed to handle media input. Check the console.");
+      expect(report.playerMessage).toBe(
+        "Gamemaster attempted to paste some content but encountered an error: Failed to handle media input. Check the console."
+      );
     });
 
     it("tolerates missing socket emit support for player relays", () => {
@@ -362,7 +458,54 @@ describe("diagnostics and settings helpers", () => {
       globalThis.game.socket.emit = undefined;
 
       expect(() => api._clipboardReportError(new Error("no socket"))).not.toThrow();
-      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Foundry Paste Eater: no socket");
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith(
+        "Gamemaster attempted to paste some content but encountered an error: no socket"
+      );
+    });
+
+    it("can relay player errors without showing a local toast", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      globalThis.game.user.name = "Player One";
+
+      api._clipboardReportError(new Error("relay only"), {
+        notifyLocal: false,
+      });
+
+      expect(globalThis.ui.notifications.error).not.toHaveBeenCalled();
+      expect(globalThis.game.socket.emit).toHaveBeenCalledWith("module.foundry-paste-eater", expect.objectContaining({
+        type: "clipboard-error-report",
+      }));
+    });
+
+    it("uses content summaries and explicit resolutions when available", () => {
+      const error = new Error("permission denied");
+      error.clipboardContentSummary = "an image";
+      error.clipboardResolution = "A GM can fix this in Foundry's core settings.";
+
+      const report = api._clipboardBuildErrorReport(error);
+      expect(report.playerMessage).toBe(
+        "Gamemaster attempted to paste an image but encountered an error: permission denied A GM can fix this in Foundry's core settings."
+      );
+      expect(report.gmMessage).toBe(
+        "Gamemaster attempted to paste an image. A GM can fix this in Foundry's core settings."
+      );
+    });
+
+    it("allows report copy overrides to replace the default player and gm guidance", () => {
+      const report = api._clipboardBuildErrorReport(new Error("permission denied"), {
+        contentSummary: "a video",
+        resolution: "Ask a GM to review storage access.",
+        playerMessage: "Custom player copy",
+        gmMessage: "Custom gm copy",
+      });
+
+      expect(report.broadcastMessage).toBe(
+        "Gamemaster attempted to paste a video but encountered an error: permission denied"
+      );
+      expect(report.playerMessage).toBe("Custom player copy");
+      expect(report.gmMessage).toBe("Custom gm copy");
+      expect(report.resolution).toBe("Ask a GM to review storage access.");
     });
 
     it("registers the socket listener only when sockets are available", () => {
@@ -506,6 +649,20 @@ describe("diagnostics and settings helpers", () => {
   });
 
   describe("_clipboardCreateFolderIfMissing", () => {
+    it("rethrows missing-bucket validation instead of falling through to directory creation", async () => {
+      await expect(api._clipboardCreateFolderIfMissing({
+        source: "s3",
+        target: "worlds/example/pasted_images",
+        bucket: "",
+        endpoint: "https://r2.example.com",
+      })).rejects.toMatchObject({
+        clipboardSummary: "S3-compatible destinations require a bucket selection.",
+      });
+
+      expect(env.MockFilePicker.browse).not.toHaveBeenCalled();
+      expect(env.MockFilePicker.createDirectory).not.toHaveBeenCalled();
+    });
+
     it("skips directory creation for s3 destinations", async () => {
       await expect(api._clipboardCreateFolderIfMissing({
         source: "s3",
@@ -543,6 +700,27 @@ describe("diagnostics and settings helpers", () => {
       })).resolves.toBeUndefined();
     });
 
+    it("normalizes odd slash patterns while creating only missing directory segments", async () => {
+      env.MockFilePicker.browse
+        .mockRejectedValueOnce(new Error("missing"))
+        .mockRejectedValueOnce(new Error("missing"))
+        .mockResolvedValueOnce({});
+      env.MockFilePicker.createDirectory.mockResolvedValueOnce({});
+
+      await expect(api._clipboardCreateFolderIfMissing({
+        source: "data",
+        target: "/alpha//beta/",
+        bucket: "",
+      })).resolves.toBeUndefined();
+
+      expect(env.MockFilePicker.browse.mock.calls).toEqual([
+        ["data", "/alpha//beta/", {}],
+        ["data", "alpha", {}],
+        ["data", "alpha/beta", {}],
+      ]);
+      expect(env.MockFilePicker.createDirectory).toHaveBeenCalledWith("data", "alpha", {});
+    });
+
     it("rethrows create-directory errors that are not already-exists", async () => {
       env.MockFilePicker.createDirectory.mockRejectedValueOnce(new Error("nope"));
       env.MockFilePicker.browse.mockRejectedValueOnce(new Error("missing")).mockRejectedValueOnce(new Error("missing"));
@@ -552,6 +730,35 @@ describe("diagnostics and settings helpers", () => {
         target: "fail/path",
         bucket: "",
       })).rejects.toThrow("nope");
+    });
+
+    it("wraps upload-folder permission errors with Foundry-core guidance", async () => {
+      env.MockFilePicker.browse.mockRejectedValueOnce(new Error("You do not have permission to browse this location"));
+
+      await expect(api._clipboardCreateFolderIfMissing({
+        source: "data",
+        target: "fail/path",
+        bucket: "",
+      })).rejects.toMatchObject({
+        clipboardSummary: "Foundry denied permission to create or access the upload folder in the active storage destination.",
+        clipboardResolution: expect.stringContaining("Foundry's core settings"),
+      });
+    });
+
+    it("wraps nested upload-folder permission errors with Foundry-core guidance", async () => {
+      env.MockFilePicker.browse
+        .mockRejectedValueOnce(new Error("missing"))
+        .mockRejectedValueOnce(new Error("missing"));
+      env.MockFilePicker.createDirectory.mockRejectedValueOnce(new Error("permission denied"));
+
+      await expect(api._clipboardCreateFolderIfMissing({
+        source: "data",
+        target: "fail/path",
+        bucket: "",
+      })).rejects.toMatchObject({
+        clipboardSummary: "Foundry denied permission to create or access the upload folder in the active storage destination.",
+        clipboardResolution: expect.stringContaining("Foundry's core settings"),
+      });
     });
   });
 

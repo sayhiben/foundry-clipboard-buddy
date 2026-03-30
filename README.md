@@ -6,6 +6,7 @@ Foundry Paste Eater lets you paste or upload media and contextual text into:
 - Tiles
 - Tokens
 - Scene notes
+- Focused document art fields
 - Chat
 
 The Foundry manifest title is `Foundry Paste Eater`.
@@ -36,6 +37,7 @@ Repository:
 
 - If one or more tokens are selected, pasted media replaces their texture in place.
 - If one or more tiles are selected, pasted media replaces their texture in place.
+- If one or more scene notes are selected, pasted media replaces their note icon or texture in place.
 - If nothing is selected, new media uses the configured empty-canvas target. By default that is the active layer, which means the Tokens layer creates a token and other layers create a tile.
 - New pasted tokens create a backing world Actor by default so they can be opened and edited normally afterward.
 - On a fresh scene, Foundry usually opens on the Tokens layer, so default settings will create a token until you switch to Tile Controls or change the module target setting.
@@ -46,8 +48,16 @@ Repository:
 ### Text on the canvas
 
 - If a token or tile is selected, pasted text appends to a Journal-backed note associated with that placeable.
+- If a scene note is selected, pasted text appends to the Journal page linked to that note and creates a text page when needed.
 - If no supported placeable is selected, pasted text creates a standalone scene note at the mouse position.
 - If pasted content looks like a media URL but does not resolve to supported media, canvas paste falls back to note creation instead of failing silently.
+
+### Focused document art fields
+
+- If a supported art field is focused, pasted media goes there before canvas or chat handling.
+- Actor and Item portrait fields (`img`) accept pasted image media.
+- Token-style art fields such as `texture.src` and `prototypeToken.texture.src` accept pasted image and video media.
+- The module updates the focused field value and the visible preview in the open app.
 
 ### Chat behavior
 
@@ -81,42 +91,50 @@ These placeholder callouts are grouped by feature area so recorded media can be 
 > INSERT `05-tile-replace-multi.gif` HERE
 > Select two tiles and paste once so the README shows multi-selection replacement and in-place preservation clearly.
 
-> INSERT `06-direct-media-url-canvas.gif` HERE
+> INSERT `06-note-replace-in-place.gif` HERE
+> Select an existing scene note, paste media once, and make it obvious that the note icon changes in place without creating a new tile.
+
+> INSERT `07-direct-media-url-canvas.gif` HERE
 > Paste a direct media URL onto the canvas to show URL download plus normal create or replace behavior.
 
 ### Text notes
 
-> INSERT `07-standalone-note-from-text.gif` HERE
+> INSERT `08-standalone-note-from-text.gif` HERE
 > Paste plain text onto open map space to show standalone Journal-backed note creation.
 
-> INSERT `08-linked-note-append.gif` HERE
-> Select a token or tile, paste text twice, and show the same linked note being reused with appended content.
+> INSERT `09-linked-note-append.gif` HERE
+> Select a token, tile, or scene note, paste text twice, and show the same linked note or journal page being reused with appended content.
+
+### Document art fields
+
+> INSERT `10-actor-portrait-paste.gif` HERE
+> Focus an Actor portrait field, Item portrait field, or token-config texture field, paste media, and show that the field preview updates without creating canvas or chat content.
 
 ### Chat
 
-> INSERT `09-chat-image-and-video.gif` HERE
+> INSERT `11-chat-image-and-video.gif` HERE
 > Focus chat, paste an image, then paste a video, so the README shows chat-only routing and inline media previews.
 
-> INSERT `10-chat-drag-drop-and-upload.gif` HERE
+> INSERT `12-chat-drag-drop-and-upload.gif` HERE
 > Drag media into chat, then use the `Upload Chat Media` button to show the non-clipboard chat entry points.
 
-> INSERT `11-direct-media-url-chat.gif` HERE
+> INSERT `13-direct-media-url-chat.gif` HERE
 > Paste a direct media URL into chat so readers can see that remote media can become a normal uploaded chat post.
 
 ### Scene controls and fallbacks
 
-> INSERT `12-scene-paste-prompt-fallback.gif` HERE
+> INSERT `14-scene-paste-prompt-fallback.gif` HERE
 > Click `Paste Media`, let the manual paste prompt appear, paste into it, and show the prompt closing after successful creation.
 
-> INSERT `13-scene-upload-tool.gif` HERE
+> INSERT `15-scene-upload-tool.gif` HERE
 > Use the scene `Upload Media` button so the fallback path is visible without relying on clipboard permissions.
 
-> INSERT `14-hidden-mode.gif` HERE
+> INSERT `16-hidden-mode.gif` HERE
 > Hold `Ctrl` or `Cmd` with `Caps Lock`, paste new canvas media, and show the created tile or token as hidden.
 
 ### Admin and configuration
 
-> INSERT `15-upload-destination-config.gif` HERE
+> INSERT `17-upload-destination-config.gif` HERE
 > Open the Upload destination settings, change the target folder or source, then paste media so the README captures the storage configuration workflow.
 
 ## Supported Input Types

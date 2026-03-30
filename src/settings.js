@@ -237,6 +237,24 @@ function _clipboardCanReplaceTiles() {
     _clipboardSettingEnabled(CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING);
 }
 
+function _clipboardRefreshSceneControlsUi() {
+  const activeControl = ui?.controls?.control?.name ||
+    canvas?.activeLayer?.options?.name ||
+    "tiles";
+
+  ui?.controls?.initialize?.({control: activeControl});
+  ui?.controls?.render?.(true);
+}
+
+function _clipboardRefreshChatUi() {
+  ui?.chat?.render?.(true);
+}
+
+function _clipboardRefreshUiForSettingsChange({sceneControls = false, chat = false} = {}) {
+  if (sceneControls) _clipboardRefreshSceneControlsUi();
+  if (chat) _clipboardRefreshChatUi();
+}
+
 async function _clipboardMigrateLegacySettings() {
   if (CLIPBOARD_IMAGE_MODULE_ID === CLIPBOARD_IMAGE_LEGACY_MODULE_ID) return [];
 
@@ -265,6 +283,9 @@ async function _clipboardMigrateLegacySettings() {
 }
 
 function _clipboardRegisterSettings() {
+  const refreshSceneControls = () => _clipboardRefreshUiForSettingsChange({sceneControls: true});
+  const refreshChatUi = () => _clipboardRefreshUiForSettingsChange({chat: true});
+
   game.settings.registerMenu(CLIPBOARD_IMAGE_MODULE_ID, "upload-destination", {
     name: "Upload destination",
     label: "Configure",
@@ -318,6 +339,7 @@ function _clipboardRegisterSettings() {
     type: String,
     choices: _clipboardGetRoleChoices(),
     default: CLIPBOARD_IMAGE_ROLE_PLAYER,
+    onChange: refreshSceneControls,
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING, {
@@ -338,6 +360,7 @@ function _clipboardRegisterSettings() {
     type: String,
     choices: _clipboardGetRoleChoices(),
     default: CLIPBOARD_IMAGE_ROLE_PLAYER,
+    onChange: refreshChatUi,
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING, {
@@ -347,6 +370,7 @@ function _clipboardRegisterSettings() {
     config: true,
     type: Boolean,
     default: false,
+    onChange: refreshSceneControls,
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING, {
@@ -356,6 +380,7 @@ function _clipboardRegisterSettings() {
     config: true,
     type: Boolean,
     default: true,
+    onChange: refreshChatUi,
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING, {
@@ -365,6 +390,7 @@ function _clipboardRegisterSettings() {
     config: true,
     type: Boolean,
     default: true,
+    onChange: refreshChatUi,
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_TOKEN_CREATION_SETTING, {
@@ -410,6 +436,7 @@ function _clipboardRegisterSettings() {
     config: true,
     type: Boolean,
     default: true,
+    onChange: refreshSceneControls,
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING, {
@@ -419,6 +446,7 @@ function _clipboardRegisterSettings() {
     config: true,
     type: Boolean,
     default: true,
+    onChange: refreshSceneControls,
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING, {
@@ -516,6 +544,9 @@ module.exports = {
   _clipboardCanCreateTiles,
   _clipboardCanReplaceTokens,
   _clipboardCanReplaceTiles,
+  _clipboardRefreshSceneControlsUi,
+  _clipboardRefreshChatUi,
+  _clipboardRefreshUiForSettingsChange,
   _clipboardMigrateLegacySettings,
   _clipboardRegisterSettings,
 };

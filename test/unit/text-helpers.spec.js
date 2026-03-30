@@ -28,6 +28,11 @@ describe("text helpers", () => {
       expect(api._clipboardExtractTextFromHtml("<div>Hello<br>world</div><p>Next</p>")).toBe("Hello\nworld\n\nNext");
     });
 
+    it("normalizes nested block html into readable line breaks", () => {
+      expect(api._clipboardExtractTextFromHtml("<section><h2>Title</h2><div>Alpha<br>Beta</div><ul><li>One</li><li>Two</li></ul></section>"))
+        .toBe("Title\n\nAlpha\nBeta\n\n\nOne\n\nTwo");
+    });
+
     it("returns an empty string for empty html", () => {
       expect(api._clipboardExtractTextFromHtml("")).toBe("");
     });
@@ -48,6 +53,10 @@ describe("text helpers", () => {
 
     it("truncates long previews", () => {
       expect(api._clipboardGetTextPreview("A".repeat(60), 10)).toBe("AAAAAAAAA…");
+    });
+
+    it("skips leading blank lines before choosing a preview line", () => {
+      expect(api._clipboardGetTextPreview("\n\n  \nSecond line\nThird line")).toBe("Second line");
     });
 
     it("returns the configured html page format", () => {
@@ -96,6 +105,19 @@ describe("text helpers", () => {
         width: 2,
         height: 3,
       })).toEqual({x: 100, y: 150});
+    });
+
+    it("falls back to canvas dimensions when explicit grid sizes are unavailable", () => {
+      globalThis.canvas.grid.sizeX = 0;
+      globalThis.canvas.grid.sizeY = 0;
+
+      expect(api._clipboardGetDocumentCenter({
+        documentName: "Token",
+        x: 50,
+        y: 75,
+        width: 2,
+        height: 3,
+      })).toEqual({x: 150, y: 225});
     });
 
     it("falls back to the provided note position when no document exists", () => {

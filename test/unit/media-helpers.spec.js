@@ -535,12 +535,80 @@ describe("media helpers", () => {
       });
     });
 
+    it("prefers direct animated-media urls over rasterized pasted blobs", () => {
+      const pngBlob = new File(["x"], "copied-image.png", {type: "image/png"});
+      expect(api._clipboardExtractImageInputFromValues({
+        blob: pngBlob,
+        html: '<img src="https://example.com/dancing-cat.gif">',
+      }, {
+        blobMessage: "blob",
+        htmlMessage: "html",
+      })).toEqual({
+        url: "https://example.com/dancing-cat.gif",
+        text: "https://example.com/dancing-cat.gif",
+        fallbackBlob: pngBlob,
+      });
+    });
+
+    it("keeps animation-capable pasted blobs ahead of animated-media urls", () => {
+      const gifBlob = new File(["gif"], "copied-image.gif", {type: "image/gif"});
+      expect(api._clipboardExtractImageInputFromValues({
+        blob: gifBlob,
+        html: '<img src="https://example.com/dancing-cat.gif">',
+      }, {
+        blobMessage: "blob",
+        htmlMessage: "html",
+      })).toEqual({
+        blob: gifBlob,
+      });
+
+      const webpBlob = new File(["webp"], "copied-image.webp", {type: "image/webp"});
+      expect(api._clipboardExtractImageInputFromValues({
+        blob: webpBlob,
+        html: '<img src="https://example.com/dancing-cat.webp">',
+      }, {
+        blobMessage: "blob",
+        htmlMessage: "html",
+      })).toEqual({
+        blob: webpBlob,
+      });
+    });
+
+    it("detects rasterized fallback blobs by mime type or filename extension", () => {
+      expect(api._clipboardIsLikelyRasterizedImageBlob(new File(["x"], "copied-image.png", {type: "image/png"}))).toBe(true);
+      expect(api._clipboardIsLikelyRasterizedImageBlob(new File(["x"], "copied-image.jpg", {type: ""}))).toBe(true);
+      expect(api._clipboardIsLikelyRasterizedImageBlob(new File(["gif"], "copied-image.gif", {type: "image/gif"}))).toBe(false);
+      expect(api._clipboardIsLikelyRasterizedImageBlob(null)).toBe(false);
+    });
+
     it("extracts image input from async clipboard values", async () => {
       await expect(api._clipboardExtractImageInput([
         createClipboardItem({"text/uri-list": "https://example.com/file.png"}),
       ])).resolves.toEqual({
         url: "https://example.com/file.png",
         text: "https://example.com/file.png",
+      });
+    });
+
+    it("prefers animated-media urls from async clipboard items over rasterized image blobs", async () => {
+      const pngBlob = new File(["x"], "copied-image.png", {type: "image/png"});
+      await expect(api._clipboardExtractImageInput([
+        createClipboardItem({"image/png": pngBlob}),
+        createClipboardItem({"text/html": '<img src="https://example.com/dancing-cat.gif">'}),
+      ])).resolves.toEqual({
+        url: "https://example.com/dancing-cat.gif",
+        text: "https://example.com/dancing-cat.gif",
+        fallbackBlob: pngBlob,
+      });
+    });
+
+    it("keeps animation-capable async clipboard blobs ahead of animated-media urls", async () => {
+      const gifBlob = new File(["gif"], "copied-image.gif", {type: "image/gif"});
+      await expect(api._clipboardExtractImageInput([
+        createClipboardItem({"image/gif": gifBlob}),
+        createClipboardItem({"text/html": '<img src="https://example.com/dancing-cat.gif">'}),
+      ])).resolves.toEqual({
+        blob: gifBlob,
       });
     });
 
@@ -583,6 +651,48 @@ describe("media helpers", () => {
       expect(api._clipboardExtractTextInputFromDataTransfer(textTransfer)).toEqual({text: "https://example.com/file.png"});
       expect(api._clipboardExtractImageInputFromDataTransfer(textTransfer)).toEqual({
         blob: expect.any(File),
+      });
+    });
+
+    it("prefers animated-media urls from dataTransfer html over rasterized image blobs", () => {
+      const pngBlob = new File(["x"], "copied-image.png", {type: "image/png"});
+      const textTransfer = createDataTransfer({
+        items: [{
+          kind: "file",
+          type: "image/png",
+          getAsFile: () => pngBlob,
+        }],
+        files: [pngBlob],
+        data: {
+          "text/html": '<img src="https://example.com/dancing-cat.gif">',
+          "text/plain": "https://example.com/dancing-cat.gif",
+        },
+      });
+
+      expect(api._clipboardExtractImageInputFromDataTransfer(textTransfer)).toEqual({
+        url: "https://example.com/dancing-cat.gif",
+        text: "https://example.com/dancing-cat.gif",
+        fallbackBlob: pngBlob,
+      });
+    });
+
+    it("keeps animation-capable dataTransfer blobs ahead of animated-media urls", () => {
+      const gifBlob = new File(["gif"], "copied-image.gif", {type: "image/gif"});
+      const textTransfer = createDataTransfer({
+        items: [{
+          kind: "file",
+          type: "image/gif",
+          getAsFile: () => gifBlob,
+        }],
+        files: [gifBlob],
+        data: {
+          "text/html": '<img src="https://example.com/dancing-cat.gif">',
+          "text/plain": "https://example.com/dancing-cat.gif",
+        },
+      });
+
+      expect(api._clipboardExtractImageInputFromDataTransfer(textTransfer)).toEqual({
+        blob: gifBlob,
       });
     });
   });

@@ -2,7 +2,9 @@ const {test, expect} = require("@playwright/test");
 const {
   beginClipboardRun,
   cleanupClipboardRun,
+  closeOwnedContext,
   controlPlaceable,
+  createAuthenticatedPage,
   createActorBackedToken,
   dispatchFilePaste,
   dispatchTextPaste,
@@ -12,10 +14,10 @@ const {
   focusChatInput,
   getFixtureUrl,
   getSafeCanvasPoint,
-  getSceneToolState,
   getStateSnapshot,
   getTokenDocument,
-  loginToFoundry,
+  releaseAllControlledPlaceables,
+  resetFoundrySessions,
   restoreCorePermissions,
   restoreModuleSettings,
   setCanvasMousePosition,
@@ -24,6 +26,7 @@ const {
 } = require("./helpers/foundry");
 
 test.describe.configure({mode: "serial"});
+
 async function captureClipboardNotifications(page) {
   await page.evaluate(() => {
     window.__clipboardNotifications = {
@@ -47,6 +50,7 @@ async function captureClipboardNotifications(page) {
 }
 
 async function ensureClipboardQaUsers() {
+  await resetFoundrySessions();
   return ensureFoundryUsers([
     {name: "Gamemaster", role: 4, pronouns: ""},
     {name: "Clipboard QA 1", role: 4, pronouns: ""},
@@ -55,79 +59,21 @@ async function ensureClipboardQaUsers() {
   ]);
 }
 
-test("non-gm scene controls follow visibility and per-tool world settings", async ({browser}, testInfo) => {
-  testInfo.setTimeout(240_000);
-  await ensureClipboardQaUsers();
-
-  const gmContext = await browser.newContext();
-  const gmPage = await gmContext.newPage();
-  const playerContext = await browser.newContext();
-  const playerPage = await playerContext.newPage();
-  let previousSettings = null;
-
-  try {
-    await loginToFoundry(gmPage, {
-      user: process.env.FOUNDRY_GM_USER || "Gamemaster",
-      password: process.env.FOUNDRY_GM_PASSWORD ?? "",
-    });
-    previousSettings = await setModuleSettings(gmPage, {
-      "allow-non-gm-scene-controls": false,
-      "minimum-role-canvas-media": "PLAYER",
-      "enable-scene-paste-tool": true,
-      "enable-scene-upload-tool": true,
-    });
-
-    async function getPlayerToolState() {
-      await loginToFoundry(playerPage, {
-        user: "Clipboard QA 2",
-        password: "",
-      });
-      return {
-        paste: await getSceneToolState(playerPage, "tokens", "foundry-paste-eater-paste"),
-        upload: await getSceneToolState(playerPage, "tokens", "foundry-paste-eater-upload"),
-      };
-    }
-
-    let toolState = await getPlayerToolState();
-    expect(toolState.paste.visible).toBe(false);
-    expect(toolState.upload.visible).toBe(false);
-
-    await setModuleSettings(gmPage, {"allow-non-gm-scene-controls": true});
-    toolState = await getPlayerToolState();
-    expect(toolState.paste.visible).toBe(true);
-    expect(toolState.upload.visible).toBe(true);
-
-    await setModuleSettings(gmPage, {"enable-scene-upload-tool": false});
-    toolState = await getPlayerToolState();
-    expect(toolState.paste.visible).toBe(true);
-    expect(toolState.upload.visible).toBe(false);
-
-    await setModuleSettings(gmPage, {"enable-scene-paste-tool": false, "enable-scene-upload-tool": true});
-    toolState = await getPlayerToolState();
-    expect(toolState.paste.visible).toBe(false);
-    expect(toolState.upload.visible).toBe(true);
-  } finally {
-    await restoreModuleSettings(gmPage, previousSettings || {});
-    await playerContext.close();
-    await gmContext.close();
-  }
-});
-
 test("player role gates block canvas text, chat media, and owned-token replacement until settings permit them", async ({browser}, testInfo) => {
   testInfo.setTimeout(240_000);
   await ensureClipboardQaUsers();
 
-  const gmContext = await browser.newContext();
-  const gmPage = await gmContext.newPage();
+  let gmPage = null;
   let previousSettings = null;
   let previousPermissions = null;
   let run = null;
 
   try {
-    await loginToFoundry(gmPage, {
-      user: process.env.FOUNDRY_GM_USER || "Gamemaster",
+    const gmSession = await createAuthenticatedPage(browser, {
+      user: process.env.FOUNDRY_GM_USER || "Clipboard QA 1",
       password: process.env.FOUNDRY_GM_PASSWORD ?? "",
     });
+    gmPage = gmSession.page;
     run = await beginClipboardRun(gmPage, testInfo);
     await ensureUploadDirectory(gmPage, run.uploadFolder, {
       source: run.source,
@@ -156,16 +102,16 @@ test("player role gates block canvas text, chat media, and owned-token replaceme
     });
 
     async function withPlayerSession(callback) {
-      const playerContext = await browser.newContext();
-      const playerPage = await playerContext.newPage();
+      const playerSession = await createAuthenticatedPage(browser, {
+        user: "Clipboard QA 2",
+        password: "",
+      });
+      const playerContext = playerSession.context;
+      const playerPage = playerSession.page;
       try {
-        await loginToFoundry(playerPage, {
-          user: "Clipboard QA 2",
-          password: "",
-        });
         return await callback(playerPage);
       } finally {
-        await playerContext.close();
+        await closeOwnedContext(playerContext);
       }
     }
 
@@ -244,7 +190,7 @@ test("player role gates block canvas text, chat media, and owned-token replaceme
     await restoreCorePermissions(gmPage, previousPermissions);
     await restoreModuleSettings(gmPage, previousSettings || {});
     await cleanupClipboardRun(gmPage, run);
-    await gmContext.close();
+    await closeOwnedContext(gmPage);
   }
 });
 
@@ -252,17 +198,17 @@ test("players can replace tokens they own but not tokens owned by another user",
   testInfo.setTimeout(240_000);
   await ensureClipboardQaUsers();
 
-  const gmContext = await browser.newContext();
-  const gmPage = await gmContext.newPage();
+  let gmPage = null;
   let previousSettings = null;
   let previousPermissions = null;
   let run = null;
 
   try {
-    await loginToFoundry(gmPage, {
-      user: process.env.FOUNDRY_GM_USER || "Gamemaster",
+    const gmSession = await createAuthenticatedPage(browser, {
+      user: process.env.FOUNDRY_GM_USER || "Clipboard QA 1",
       password: process.env.FOUNDRY_GM_PASSWORD ?? "",
     });
+    gmPage = gmSession.page;
     run = await beginClipboardRun(gmPage, testInfo);
     await ensureUploadDirectory(gmPage, run.uploadFolder, {
       source: run.source,
@@ -299,13 +245,13 @@ test("players can replace tokens they own but not tokens owned by another user",
       ownerUserName: "Clipboard QA 3",
     });
 
-    const playerContext = await browser.newContext();
-    const playerPage = await playerContext.newPage();
+    const playerSession = await createAuthenticatedPage(browser, {
+      user: "Clipboard QA 2",
+      password: "",
+    });
+    const playerContext = playerSession.context;
+    const playerPage = playerSession.page;
     try {
-      await loginToFoundry(playerPage, {
-        user: "Clipboard QA 2",
-        password: "",
-      });
       await focusCanvas(playerPage);
       await playerPage.evaluate(() => canvas.tokens.activate());
 
@@ -326,23 +272,34 @@ test("players can replace tokens they own but not tokens owned by another user",
       });
       await playerPage.waitForTimeout(300);
       expect(await getTokenDocument(playerPage, otherToken.tokenId)).toEqual(beforeOther);
+    } finally {
+      await closeOwnedContext(playerContext);
+    }
 
-      await focusCanvas(playerPage);
-      await setCanvasMousePosition(playerPage, await getSafeCanvasPoint(playerPage, 13));
-      await playerPage.evaluate(() => canvas.tiles.activate());
-      const beforeNotes = await getStateSnapshot(playerPage);
-      await dispatchTextPaste(playerPage, {
+    const noteSession = await createAuthenticatedPage(browser, {
+      user: "Clipboard QA 2",
+      password: "",
+    });
+    const noteContext = noteSession.context;
+    const notePage = noteSession.page;
+    try {
+      await focusCanvas(notePage);
+      await releaseAllControlledPlaceables(notePage);
+      await setCanvasMousePosition(notePage, await getSafeCanvasPoint(notePage, 13));
+      await notePage.evaluate(() => canvas.tiles.activate());
+      const beforeNotes = await getStateSnapshot(notePage);
+      await dispatchTextPaste(notePage, {
         targetSelector: ".game",
         text: `${run.prefix} Player note`,
       });
-      await expect.poll(async () => (await getStateSnapshot(playerPage)).notes.length).toBe(beforeNotes.notes.length + 1);
+      await expect.poll(async () => (await getStateSnapshot(notePage)).notes.length).toBe(beforeNotes.notes.length + 1);
     } finally {
-      await playerContext.close();
+      await closeOwnedContext(noteContext);
     }
   } finally {
     await restoreCorePermissions(gmPage, previousPermissions);
     await restoreModuleSettings(gmPage, previousSettings || {});
     await cleanupClipboardRun(gmPage, run);
-    await gmContext.close();
+    await closeOwnedContext(gmPage);
   }
 });

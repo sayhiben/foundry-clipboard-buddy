@@ -1,6 +1,7 @@
-const {test, expect} = require("@playwright/test");
+const {test: base, expect} = require("@playwright/test");
 const {
   beginClipboardRun,
+  buildSharedFoundryTest,
   cleanupClipboardRun,
   closeUploadDestinationConfig,
   dispatchFilePaste,
@@ -12,8 +13,8 @@ const {
   getStateSnapshot,
   getUploadDestinationSummary,
   invokeSceneTool,
-  loginToFoundry,
   openUploadDestinationConfig,
+  resetFoundryUiState,
   restoreClipboardRead,
   restoreModuleSettings,
   setCanvasMousePosition,
@@ -21,16 +22,20 @@ const {
   stubClipboardRead,
 } = require("./helpers/foundry");
 
+const GM_CREDENTIALS = {
+  user: process.env.FOUNDRY_GM_USER || "Clipboard QA 1",
+  password: process.env.FOUNDRY_GM_PASSWORD ?? "",
+};
+
+const test = buildSharedFoundryTest(base, GM_CREDENTIALS, {acceptDownloads: true});
+
 test.describe.configure({mode: "serial"});
 
-test.beforeEach(async ({page}) => {
-  await loginToFoundry(page, {
-    user: process.env.FOUNDRY_GM_USER || process.env.FOUNDRY_USER || "Clipboard QA 1",
-    password: process.env.FOUNDRY_GM_PASSWORD ?? process.env.FOUNDRY_PASSWORD ?? "",
-  });
+test.beforeEach(async ({foundryPage: page}) => {
+  await resetFoundryUiState(page);
 });
 
-test.afterEach(async ({page}) => {
+test.afterEach(async ({foundryPage: page}) => {
   await restoreClipboardRead(page).catch(() => {});
 });
 
@@ -44,7 +49,7 @@ async function getTokenActorInfo(page, tokenId) {
   }, tokenId);
 }
 
-test("default empty-canvas target steers new media creation across all configured modes", async ({page}, testInfo) => {
+test("default empty-canvas target steers new media creation across all configured modes", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
     "default-empty-canvas-target": "active-layer",
@@ -96,7 +101,7 @@ test("default empty-canvas target steers new media creation across all configure
   }
 });
 
-test("create-backing-actors controls whether new pasted tokens get backing actors", async ({page}, testInfo) => {
+test("create-backing-actors controls whether new pasted tokens get backing actors", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
     "default-empty-canvas-target": "token",
@@ -142,7 +147,7 @@ test("create-backing-actors controls whether new pasted tokens get backing actor
   }
 });
 
-test("chat media display modes change the chat preview markup", async ({page}, testInfo) => {
+test("chat media display modes change the chat preview markup", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
     "enable-chat-media": true,
@@ -196,7 +201,7 @@ test("chat media display modes change the chat preview markup", async ({page}, t
   }
 });
 
-test("canvas text paste mode can disable or re-enable note creation", async ({page}, testInfo) => {
+test("canvas text paste mode can disable or re-enable note creation", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
     "canvas-text-paste-mode": "disabled",
@@ -229,7 +234,7 @@ test("canvas text paste mode can disable or re-enable note creation", async ({pa
   }
 });
 
-test("scene paste prompt mode controls whether the scene tool reads directly or opens the prompt", async ({page}, testInfo) => {
+test("scene paste prompt mode controls whether the scene tool reads directly or opens the prompt", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
     "enable-scene-paste-tool": true,
@@ -277,7 +282,7 @@ test("scene paste prompt mode controls whether the scene tool reads directly or 
   }
 });
 
-test("verbose logging controls whether successful workflows emit browser console diagnostics", async ({page}, testInfo) => {
+test("verbose logging controls whether successful workflows emit browser console diagnostics", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo, {verboseLogging: false});
   const previousSettings = await setModuleSettings(page, {
     "verbose-logging": false,
@@ -323,7 +328,7 @@ test("verbose logging controls whether successful workflows emit browser console
   }
 });
 
-test("upload destination config saves custom folders and uses them for later uploads", async ({page}, testInfo) => {
+test("upload destination config saves custom folders and uses them for later uploads", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
     "image-location-source": "data",

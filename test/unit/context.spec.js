@@ -34,6 +34,27 @@ describe("canvas context helpers", () => {
       expect(api._clipboardGetPlaceableStrategy("Unknown").documentName).toBe("Tile");
     });
 
+    it("returns the note strategy for the notes layer", () => {
+      globalThis.canvas.activeLayer = globalThis.canvas.notes;
+      expect(api._clipboardGetActiveDocumentName()).toBe("Note");
+      expect(api._clipboardGetPlaceableStrategy("Note").documentName).toBe("Note");
+      expect(api._clipboardGetPlaceableStrategy("Note").getLayer()).toBe(globalThis.canvas.notes);
+      expect(api._clipboardGetCreateDocumentName("Note")).toBe("Tile");
+    });
+
+    it("exposes controlled documents for token, tile, and note strategies", () => {
+      const token = env.createControlledPlaceable("Token", {id: "token-a"});
+      const tile = env.createControlledPlaceable("Tile", {id: "tile-a"});
+      const note = env.createControlledPlaceable("Note", {id: "note-a"});
+      globalThis.canvas.tokens.controlled = [token];
+      globalThis.canvas.tiles.controlled = [tile];
+      globalThis.canvas.notes.controlled = [note];
+
+      expect(api._clipboardGetPlaceableStrategy("Token").getControlledDocuments()).toEqual([token.document]);
+      expect(api._clipboardGetPlaceableStrategy("Tile").getControlledDocuments()).toEqual([tile.document]);
+      expect(api._clipboardGetPlaceableStrategy("Note").getControlledDocuments()).toEqual([note.document]);
+    });
+
     it("builds actor-backed token create data", async () => {
       api._clipboardSetRuntimeState({hiddenMode: true});
       await expect(api._clipboardGetPlaceableStrategy("Token").createData({
@@ -131,6 +152,11 @@ describe("canvas context helpers", () => {
       expect(api._clipboardGetPastedDocumentName("%E0%A4%A.png")).toBe("%E0%A4%A");
     });
 
+    it("uses the explicit tile target when configured", () => {
+      env.settingsValues.set("foundry-paste-eater.default-empty-canvas-target", "tile");
+      expect(api._clipboardGetCreateDocumentName("Token")).toBe("Tile");
+    });
+
     it("strips generated upload suffixes from pasted document names", () => {
       expect(api._clipboardGetPastedDocumentName("folder/test-token-1774745045587.png?foundry-paste-eater=1774745045596")).toBe("test-token");
     });
@@ -174,6 +200,46 @@ describe("canvas context helpers", () => {
   });
 
   describe("replacement target and paste context", () => {
+    it("reads controlled placeables from controlledObjects maps", () => {
+      const note = env.createControlledPlaceable("Note", {id: "note-a"});
+      globalThis.canvas.notes.controlled = [];
+      globalThis.canvas.notes.controlledObjects.set(note.document.id, note);
+
+      expect(api._clipboardGetControlledPlaceables(globalThis.canvas.notes)).toEqual([note]);
+      expect(api._clipboardGetReplacementTarget("Note")).toMatchObject({
+        documentName: "Note",
+        documents: [note.document],
+        requestedCount: 1,
+        blocked: false,
+      });
+    });
+
+    it("can read controlled placeables from iterable sets", () => {
+      const tile = env.createControlledPlaceable("Tile", {id: "tile-a"});
+      globalThis.canvas.tiles.controlled = new Set([tile]);
+
+      expect(api._clipboardGetControlledPlaceables(globalThis.canvas.tiles)).toEqual([tile]);
+    });
+
+    it("can read controlled placeables from maps and generic iterables", () => {
+      const token = env.createControlledPlaceable("Token", {id: "token-a"});
+      const tile = env.createControlledPlaceable("Tile", {id: "tile-a"});
+      const note = env.createControlledPlaceable("Note", {id: "note-a"});
+      globalThis.canvas.tokens.controlled = new Map([[token.document.id, token]]);
+      globalThis.canvas.tiles.controlled = {
+        values: () => [tile][Symbol.iterator](),
+      };
+      globalThis.canvas.notes.controlled = {
+        [Symbol.iterator]: function* () {
+          yield note;
+        },
+      };
+
+      expect(api._clipboardGetControlledPlaceables(globalThis.canvas.tokens)).toEqual([token]);
+      expect(api._clipboardGetControlledPlaceables(globalThis.canvas.tiles)).toEqual([tile]);
+      expect(api._clipboardGetControlledPlaceables(globalThis.canvas.notes)).toEqual([note]);
+    });
+
     it("prefers controlled tokens when the tokens layer is active", () => {
       const token = env.createControlledPlaceable("Token", {id: "token-a"});
       const tile = env.createControlledPlaceable("Tile", {id: "tile-a"});
@@ -197,6 +263,19 @@ describe("canvas context helpers", () => {
       expect(api._clipboardGetReplacementTarget("Token")).toMatchObject({
         documentName: "Tile",
         documents: [tile.document],
+        requestedCount: 1,
+        blocked: false,
+      });
+    });
+
+    it("prefers controlled notes when the notes layer is active", () => {
+      const note = env.createControlledPlaceable("Note", {id: "note-a"});
+      globalThis.canvas.notes.controlled = [note];
+      globalThis.canvas.activeLayer = globalThis.canvas.notes;
+
+      expect(api._clipboardGetReplacementTarget("Note")).toMatchObject({
+        documentName: "Note",
+        documents: [note.document],
         requestedCount: 1,
         blocked: false,
       });
@@ -254,6 +333,76 @@ describe("canvas context helpers", () => {
         requestedCount: 1,
         blocked: true,
       });
+    });
+
+    it("allows replacing selected notes when the user can update them", () => {
+      const note = env.createControlledPlaceable("Note", {
+        id: "note-editable",
+        isOwner: true,
+      });
+      globalThis.canvas.notes.controlled = [note];
+      globalThis.canvas.activeLayer = globalThis.canvas.notes;
+
+      expect(api._clipboardGetReplacementTarget("Note")).toMatchObject({
+        documentName: "Note",
+        documents: [note.document],
+        blocked: false,
+      });
+    });
+
+    it("blocks note replacement when the user cannot use canvas media", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = 1;
+      env.settingsValues.set("foundry-paste-eater.minimum-role-canvas-media", "TRUSTED");
+      const note = env.createControlledPlaceable("Note", {
+        id: "note-blocked",
+        isOwner: true,
+      });
+      globalThis.canvas.notes.controlled = [note];
+      globalThis.canvas.activeLayer = globalThis.canvas.notes;
+
+      expect(api._clipboardGetReplacementTarget("Note")).toMatchObject({
+        documentName: "Note",
+        documents: [],
+        requestedCount: 1,
+        blocked: true,
+      });
+    });
+
+    it("filters base actor document types from the available actor type list", () => {
+      globalThis.game.system.documentTypes.Actor = ["base", "character", "npc"];
+      globalThis.CONST.BASE_DOCUMENT_TYPE = "base";
+      expect(api._clipboardGetAvailableActorTypes()).toEqual(["character", "npc"]);
+    });
+
+    it("falls back to game documentTypes when system document types are unavailable", () => {
+      globalThis.game.system.documentTypes.Actor = null;
+      globalThis.game.documentTypes = {
+        Actor: ["vehicle", "npc"],
+      };
+
+      expect(api._clipboardGetAvailableActorTypes()).toEqual(["vehicle", "npc"]);
+    });
+
+    it("falls back to the actor document class TYPES list when needed", () => {
+      globalThis.game.system.documentTypes.Actor = null;
+      globalThis.game.documentTypes = {
+        Actor: null,
+      };
+      globalThis.foundry.documents.Actor.TYPES = ["group", "npc", CONST.BASE_DOCUMENT_TYPE];
+
+      expect(api._clipboardGetAvailableActorTypes()).toEqual(["group", "npc"]);
+    });
+
+    it("falls back to the Foundry default token icon when actor default icons are unavailable", () => {
+      const originalDefaultIcon = globalThis.foundry.documents.Actor.DEFAULT_ICON;
+      globalThis.foundry.documents.Actor.DEFAULT_ICON = "";
+      globalThis.CONST.DEFAULT_TOKEN = "icons/svg/default-token.svg";
+      try {
+        expect(api._clipboardGetPastedTokenActorImage("movie.webm", "video")).toBe("icons/svg/default-token.svg");
+      } finally {
+        globalThis.foundry.documents.Actor.DEFAULT_ICON = originalDefaultIcon;
+      }
     });
 
     it("allows gms to replace selected tokens regardless of ownership", () => {

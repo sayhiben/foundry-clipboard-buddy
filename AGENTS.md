@@ -37,9 +37,11 @@
 - Chat-targeted media paste should create chat content only, never scene content.
 - Chat-targeted normal text should remain normal text.
 - Canvas-targeted plain text should create or update Journal-backed scene notes, not chat content.
+- Selected scene notes should behave like first-class paste targets: media replaces the note icon in place, and plain text appends to the linked Journal page.
 - Normal keyboard/browser canvas paste respects Foundry's copied-object buffer before module behavior runs.
 - Explicit scene-control `Paste Media` and `Upload Media` actions are media-only tools and do not defer to Foundry's copied-object buffer.
 - `Paste Media` is a hybrid flow: it should try direct clipboard reads first, then fall back to the manual paste prompt when browsers do not expose usable media there.
+- Focused supported art fields take precedence over canvas and chat routing for media paste. Actor and Item `img` fields accept images, while token-style `texture.src` fields accept image and video media.
 - Replacing selected tokens or tiles must preserve size and position.
 - Empty-canvas media targeting is now configurable. Default behavior follows the active layer, but tests and docs must respect the `default-empty-canvas-target` setting.
 - New pasted tokens create backing Actors by default, but that is also configurable. When the setting is disabled, tests should expect actorless tokens instead of treating that as a regression.
@@ -68,9 +70,13 @@
 - Browser-level error reporting coverage now lives in `test/playwright/error-reporting.spec.js`. Keep player alert, GM relay, and verbose-log download assertions there instead of bloating the main smoke file.
 - Setting-focused browser coverage now lives in `test/playwright/config.spec.js`, while setting-registration and persistence assertions live in `test/unit/ui-and-hooks.spec.js`. When adding a new setting, update both the smoke coverage and the registration audit instead of relying on only one layer.
 - In this local Foundry setup, browser-driven user creation or role changes are not reliable. The Playwright harness seeds the existing `Clipboard QA` users directly through the world user store, with `Clipboard QA 2` and `Clipboard QA 3` acting as Players.
+- In this local Foundry setup, pure scene-control visibility checks are most reliable as a single-session simulated player view on a GM client. Reserve real multi-user browser sessions for ownership, upload, and actual paste-path assertions.
 - Player media-upload tests need a destination folder that already exists. Pre-create the upload directory as GM before exercising player chat-media or token-replacement uploads, or the failure will come from Foundry's directory-creation rules rather than the module policy layer.
 - The Playwright harness now recovers if the test world has no active scene. It waits for `game.ready`, activates an existing scene or creates a throwaway one, and only then waits for `canvas.ready`. Do not assume the local world will always boot with an active scene already selected.
+- The main single-user browser specs now reuse a logged-in Foundry page per spec worker instead of creating a brand-new session for every test. Keep that shared-page model, but reload the page in `beforeEach` so DOM state does not leak between tests.
+- Playwright global setup now writes a reusable default GM storage-state file under `test/playwright/.auth/` when `FOUNDRY_STORAGE_STATE` is not provided. Prefer reusing that auth state over reimplementing slower login flows.
 - In this local setup, an expired AWS session often surfaces as a blank or `null` S3 endpoint in the destination UI and `Failed to determine S3 endpoint` server logs. Reauthenticate with `aws login`, refresh Foundry's AWS JSON config from the current CLI session, and restart Foundry before treating it as a module regression.
+- In this local setup, Foundry loads the live module from `/Users/sayhiben/dev/foundry-latest/userdata/Data/modules/foundry-paste-eater`, not directly from the repo root. After changing runtime or browser-facing assets, sync the repo into that module directory before trusting smoke or manual validation results.
 
 ## Coding Style & Maintainability
 - Use JavaScript with 2-space indentation and keep style consistent with the files under `src/`.
@@ -94,8 +100,13 @@
 - Use the Playwright smoke suite for stable automatable flows.
 - Use `TESTING.md` for manual QA cases that still matter: browser permission prompts, Safari/iOS/Android behavior, Forge/S3 integration, and visual animation/video validation.
 - Read `test/README.md` before changing the suite; it documents required env vars and current scope.
+- The local Foundry V13 test server lives in `/Users/sayhiben/dev/foundry-latest`. Start Docker first with `open -a Docker` if needed, then run `docker compose up --build -d` from that folder. Verify it is reachable with `curl -I http://127.0.0.1:30000/`.
+- If the `foundry-v13-dev` container crash-loops with `classic_level.node: invalid ELF header`, rebuild after ensuring `/Users/sayhiben/dev/foundry-latest/Dockerfile` copies the matching Linux `classic-level` prebuild into `resources/app/node_modules/classic-level/build/Release/classic_level.node` for the current Docker architecture.
+- If Foundry logs `Software license verification failed`, open `http://127.0.0.1:30000/license` once in a browser. In this local setup, Foundry can regenerate the signature into `/Users/sayhiben/dev/foundry-latest/userdata/Config/license.json`; a container restart afterward clears the warning.
+- If Foundry logs `Failed to determine S3 endpoint: UnknownError`, refresh `/Users/sayhiben/dev/foundry-latest/userdata/Config/aws-foundry-store.json` from `aws configure export-credentials --format process`, preserve the bucket list, and restart the container.
 - When changing settings behavior, exercise both layers: unit coverage for registration/defaults/policy and Playwright coverage for the live Configure Settings and world-behavior path.
 - When debugging browser tests, headed Chromium is often more reliable than headless Foundry in this environment.
+- Do not swing to the extremes of either one totally fresh browser session per smoke test or one never-reloaded page for the entire suite. The current compromise is intentional: shared authenticated session, explicit page reload between tests.
 - Headless Chromium in this local Foundry setup needs two workarounds: use Playwright's full `chromium` channel instead of `chrome-headless-shell`, and keep the software-WebGL launch flags (`--use-angle=swiftshader`, `--enable-webgl`, `--ignore-gpu-blocklist`). Without them, Foundry either crashes in PIXI with a `getExtension` error before the join form appears or stalls at 90% loading after login.
 - On macOS, headed Playwright browsers steal typing focus. Prefer headless for unattended runs, and only switch to headed when you need visual canvas or browser-permission debugging.
 - When debugging Firefox-specific rendering or SVG behavior, run a targeted headed Firefox smoke. Chrome passing does not prove Firefox correctness here.

@@ -1,26 +1,22 @@
 const {defineConfig} = require("@playwright/test");
+const {
+  getDefaultFoundryStorageStatePath,
+  getPlaywrightBrowserName,
+  getPlaywrightChromiumChannel,
+  getPlaywrightHeadless,
+  getPlaywrightLaunchOptions,
+} = require("./test/playwright/helpers/browser");
 
-const browserName = process.env.PW_BROWSER || "chromium";
-const defaultHeadless = process.env.CI ? true : false;
-const headless = process.env.PW_HEADLESS === "true"
-  ? true
-  : process.env.PW_HEADLESS === "false"
-    ? false
-    : defaultHeadless;
-const chromiumHeadlessArgs = headless && browserName === "chromium"
-  ? [
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--enable-webgl",
-    "--ignore-gpu-blocklist",
-  ]
-  : [];
-const chromiumHeadlessChannel = headless && browserName === "chromium" ? "chromium" : undefined;
+const browserName = getPlaywrightBrowserName();
+const headless = getPlaywrightHeadless();
+const chromiumHeadlessChannel = getPlaywrightChromiumChannel(browserName, headless);
+const launchOptions = getPlaywrightLaunchOptions(browserName, headless);
 
 module.exports = defineConfig({
   testDir: "./test/playwright",
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
+  globalSetup: require.resolve("./test/playwright/global-setup.js"),
   retries: process.env.CI ? 1 : 0,
   timeout: 120_000,
   expect: {
@@ -33,12 +29,12 @@ module.exports = defineConfig({
   use: {
     baseURL: process.env.FOUNDRY_URL || process.env.FOUNDRY_JOIN_URL || process.env.FOUNDRY_BASE_URL || "http://127.0.0.1:30000",
     headless,
-    launchOptions: chromiumHeadlessArgs.length ? {args: chromiumHeadlessArgs} : undefined,
+    launchOptions: Object.keys(launchOptions).length ? launchOptions : undefined,
     viewport: {width: 1600, height: 1000},
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
-    storageState: process.env.FOUNDRY_STORAGE_STATE || undefined,
+    storageState: process.env.FOUNDRY_STORAGE_STATE || getDefaultFoundryStorageStatePath(),
   },
   projects: [
     {

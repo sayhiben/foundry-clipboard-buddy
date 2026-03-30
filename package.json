@@ -1,6 +1,6 @@
 {
   "name": "foundry-paste-eater",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Paste media, URLs, and contextual text into tiles, tokens, notes, and chat.",
   "main": "foundry-paste-eater.js",
   "scripts": {

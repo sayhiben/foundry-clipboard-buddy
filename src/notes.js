@@ -155,6 +155,70 @@ async function _clipboardEnsurePlaceableTextNote(document, text, fallbackPositio
   return true;
 }
 
+function _clipboardGetSceneNoteEntryAndPage(noteDocument) {
+  const entry = noteDocument?.entryId ? game.journal?.get?.(noteDocument.entryId) : null;
+  const page = noteDocument?.pageId ? entry?.pages?.get?.(noteDocument.pageId) : null;
+  return {entry, page};
+}
+
+async function _clipboardEnsureSceneNoteTextPage(noteDocument, text) {
+  const {entry, page} = _clipboardGetSceneNoteEntryAndPage(noteDocument);
+  if (page?.type === "text") {
+    _clipboardLog("info", "Appending pasted text to an existing selected scene note page", {
+      noteId: noteDocument.id,
+      entryId: entry.id,
+      pageId: page.id,
+    });
+    await _clipboardAppendTextToPage(page, text);
+    return {entry, page};
+  }
+
+  if (entry) {
+    _clipboardLog("info", "Creating a new text page for a selected scene note", {
+      noteId: noteDocument.id,
+      entryId: entry.id,
+    });
+    const createdPages = await entry.createEmbeddedDocuments("JournalEntryPage", [
+      _clipboardCreateTextPageData(text, CLIPBOARD_IMAGE_TEXT_NOTE_PAGE_NAME),
+    ]);
+    const createdPage = createdPages[0] || null;
+    if (createdPage) {
+      await noteDocument.update({
+        pageId: createdPage.id,
+      });
+    }
+    return {
+      entry,
+      page: createdPage,
+    };
+  }
+
+  const noteName = noteDocument?.text || noteDocument?.name || `${CLIPBOARD_IMAGE_TEXT_NOTE_JOURNAL_PREFIX}: ${_clipboardGetTextPreview(text)}`;
+  const created = await _clipboardCreateTextJournalEntry(text, noteName);
+  if (created.entry?.id && created.page?.id) {
+    await noteDocument.update({
+      entryId: created.entry.id,
+      pageId: created.page.id,
+      text: noteName,
+    });
+  }
+  return created;
+}
+
+async function _clipboardAppendTextToSceneNote(noteDocument, text) {
+  const {entry, page} = await _clipboardEnsureSceneNoteTextPage(noteDocument, text);
+  if (!entry || !page) {
+    throw new Error("Failed to create or update a journal page for the selected scene note");
+  }
+
+  _clipboardLog("info", "Created or updated text for a selected scene note", {
+    noteId: noteDocument?.id || null,
+    entryId: entry.id,
+    pageId: page.id,
+  });
+  return true;
+}
+
 async function _clipboardCreateStandaloneTextNote(text, context) {
   const position = context.mousePos;
   if (!position) return false;
@@ -186,5 +250,8 @@ module.exports = {
   _clipboardGetAssociatedTextNoteData,
   _clipboardEnsureAssociatedTextPage,
   _clipboardEnsurePlaceableTextNote,
+  _clipboardGetSceneNoteEntryAndPage,
+  _clipboardEnsureSceneNoteTextPage,
+  _clipboardAppendTextToSceneNote,
   _clipboardCreateStandaloneTextNote,
 };

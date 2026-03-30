@@ -172,7 +172,9 @@ describe("paste and handler workflows", () => {
         throw new Error("bad");
       })).resolves.toBe(false);
 
-      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith("Foundry Paste Eater: bad");
+      expect(globalThis.ui.notifications.error).toHaveBeenCalledWith(
+        "Gamemaster attempted to paste some content but encountered an error: bad"
+      );
     });
 
     it("can suppress user notifications", async () => {
@@ -190,7 +192,7 @@ describe("paste and handler workflows", () => {
       })).resolves.toBe(false);
 
       expect(globalThis.ui.notifications.error).toHaveBeenCalledWith(
-        "Foundry Paste Eater: Failed to handle media input. Check the console."
+        "Gamemaster attempted to paste some content but encountered an error: Failed to handle media input. Check the console."
       );
     });
   });
@@ -202,6 +204,33 @@ describe("paste and handler workflows", () => {
         contextOptions: {fallbackToCenter: true},
       })).resolves.toBe(true);
       restoreImage();
+    });
+
+    it("uses a pre-resolved replacement context even if selection state changes before upload completes", async () => {
+      const restoreImage = withMockImage();
+      const note = env.createControlledPlaceable("Note", {id: "note-a"});
+      globalThis.canvas.notes.controlled = [note];
+      globalThis.canvas.notes.controlledObjects.set(note.document.id, note);
+      globalThis.canvas.activeLayer = globalThis.canvas.notes;
+
+      const context = api._clipboardResolvePasteContext({requireCanvasFocus: false});
+
+      globalThis.canvas.notes.controlled = [];
+      globalThis.canvas.notes.controlledObjects.clear();
+      globalThis.canvas.activeLayer = globalThis.canvas.tiles;
+
+      await expect(api._clipboardHandleImageBlob(new File(["x"], "image.png", {type: "image/png"}), {
+        context,
+      })).resolves.toBe(true);
+      restoreImage();
+
+      expect(globalThis.canvas.scene.updateEmbeddedDocuments).toHaveBeenCalledWith("Note", [
+        expect.objectContaining({
+          _id: "note-a",
+          "texture.src": expect.stringMatching(/^pasted_images\/image-\d+\.png\?foundry-paste-eater=\d+$/),
+        }),
+      ]);
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
     });
 
     it("handles url media input", async () => {
@@ -224,6 +253,185 @@ describe("paste and handler workflows", () => {
       })).rejects.toThrow("cannot download and re-upload");
 
       expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
+    it("fills a focused actor art field with uploaded media instead of creating canvas content", async () => {
+      const restoreImage = withMockImage();
+      const appRoot = document.createElement("section");
+      appRoot.dataset.appid = "actor-app";
+      appRoot.innerHTML = `
+        <input type="text" name="img" value="">
+        <img data-edit="img" src="icons/svg/mystery-man.svg">
+      `;
+      document.body.append(appRoot);
+      globalThis.ui.windows["actor-app"] = {
+        object: {documentName: "Actor"},
+      };
+      const field = appRoot.querySelector('input[name="img"]');
+      field.focus();
+
+      await expect(api._clipboardHandleArtFieldImageInput(
+        {blob: new File(["x"], "portrait.png", {type: "image/png"})},
+        field
+      )).resolves.toBe(true);
+
+      restoreImage();
+      expect(field.value).toMatch(/^pasted_images\/portrait-\d+\.png\?foundry-paste-eater=\d+$/);
+      expect(appRoot.querySelector('[data-edit="img"]').src).toContain("pasted_images/portrait-");
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
+    it("fills a focused item art field with uploaded media instead of creating canvas content", async () => {
+      const restoreImage = withMockImage();
+      const appRoot = document.createElement("section");
+      appRoot.dataset.appid = "item-app";
+      appRoot.innerHTML = `
+        <input type="text" name="img" value="">
+        <img data-edit="img" src="icons/svg/item-bag.svg">
+      `;
+      document.body.append(appRoot);
+      globalThis.ui.windows["item-app"] = {
+        object: {documentName: "Item"},
+      };
+      const field = appRoot.querySelector('input[name="img"]');
+      field.focus();
+
+      await expect(api._clipboardHandleArtFieldImageInput(
+        {blob: new File(["x"], "item-art.png", {type: "image/png"})},
+        field
+      )).resolves.toBe(true);
+
+      restoreImage();
+      expect(field.value).toMatch(/^pasted_images\/item-art-\d+\.png\?foundry-paste-eater=\d+$/);
+      expect(appRoot.querySelector('[data-edit="img"]').src).toContain("pasted_images/item-art-");
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
+    it("fills a focused token texture field with uploaded video instead of creating canvas content", async () => {
+      const appRoot = document.createElement("section");
+      appRoot.dataset.appid = "token-app";
+      appRoot.innerHTML = `
+        <input type="text" name="prototypeToken.texture.src" value="">
+        <video data-edit="prototypeToken.texture.src" src=""></video>
+      `;
+      document.body.append(appRoot);
+      globalThis.ui.windows["token-app"] = {
+        object: {documentName: "Token"},
+      };
+      const field = appRoot.querySelector('input[name="prototypeToken.texture.src"]');
+      field.focus();
+
+      await expect(api._clipboardHandleArtFieldImageInput(
+        {blob: new File(["x"], "token-art.webm", {type: "video/webm"})},
+        field
+      )).resolves.toBe(true);
+
+      expect(field.value).toMatch(/^pasted_images\/token-art-\d+\.webm\?foundry-paste-eater=\d+$/);
+      expect(appRoot.querySelector('[data-edit="prototypeToken.texture.src"]').src).toContain("pasted_images/token-art-");
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the original direct media url for a focused art field when download is blocked", async () => {
+      globalThis.fetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      const appRoot = document.createElement("section");
+      appRoot.dataset.appid = "actor-app";
+      appRoot.innerHTML = '<input type="text" name="img" value=""><img data-edit="img" src="">';
+      document.body.append(appRoot);
+      globalThis.ui.windows["actor-app"] = {
+        object: {documentName: "Actor"},
+      };
+      const field = appRoot.querySelector('input[name="img"]');
+
+      await expect(api._clipboardHandleArtFieldImageInput({
+        url: "https://example.com/file.svg",
+      }, field)).resolves.toBe(true);
+
+      expect(field.value).toBe("https://example.com/file.svg");
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the pasted blob for a focused art field when a preferred direct media url download is blocked", async () => {
+      globalThis.fetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      const restoreImage = withMockImage();
+      const appRoot = document.createElement("section");
+      appRoot.dataset.appid = "actor-app";
+      appRoot.innerHTML = '<input type="text" name="img" value=""><img data-edit="img" src="">';
+      document.body.append(appRoot);
+      globalThis.ui.windows["actor-app"] = {
+        object: {documentName: "Actor"},
+      };
+      const field = appRoot.querySelector('input[name="img"]');
+
+      await expect(api._clipboardHandleArtFieldImageInput({
+        url: "https://example.com/dancing-cat.gif",
+        text: "https://example.com/dancing-cat.gif",
+        fallbackBlob: new File(["x"], "copied-image.png", {type: "image/png"}),
+      }, field)).resolves.toBe(true);
+
+      restoreImage();
+      expect(field.value).toMatch(/^pasted_images\/copied-image-\d+\.png\?foundry-paste-eater=\d+$/);
+      expect(appRoot.querySelector('[data-edit="img"]').src).toContain("pasted_images/copied-image-");
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
+    it("rejects unsupported video media for focused actor portrait fields", async () => {
+      const appRoot = document.createElement("section");
+      appRoot.dataset.appid = "actor-app";
+      appRoot.innerHTML = '<input type="text" name="img" value="">';
+      document.body.append(appRoot);
+      globalThis.ui.windows["actor-app"] = {
+        object: {documentName: "Actor"},
+      };
+      const field = appRoot.querySelector('input[name="img"]');
+
+      await expect(api._clipboardHandleArtFieldImageInput(
+        {blob: new File(["x"], "portrait.webm", {type: "video/webm"})},
+        field
+      )).rejects.toThrow("does not support pasted video media");
+    });
+
+    it("fails clearly when a blocked direct video url targets an image-only art field", async () => {
+      globalThis.fetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      const appRoot = document.createElement("section");
+      appRoot.dataset.appid = "actor-app";
+      appRoot.innerHTML = '<input type="text" name="img" value="">';
+      document.body.append(appRoot);
+      globalThis.ui.windows["actor-app"] = {
+        object: {documentName: "Actor"},
+      };
+      const field = appRoot.querySelector('input[name="img"]');
+
+      await expect(api._clipboardHandleArtFieldImageInput({
+        url: "https://example.com/portrait.webm",
+      }, field)).rejects.toMatchObject({
+        message: "The focused img field does not support pasted video media.",
+        clipboardContentSummary: "a video",
+      });
+    });
+
+    it("annotates focused art-field write failures with the attempted clipboard content", async () => {
+      const restoreImage = withMockImage();
+      const appRoot = document.createElement("section");
+      appRoot.dataset.appid = "actor-app";
+      appRoot.innerHTML = '<input type="text" name="img" value=""><img data-edit="img" src="">';
+      document.body.append(appRoot);
+      globalThis.ui.windows["actor-app"] = {
+        object: {documentName: "Actor"},
+      };
+      const field = appRoot.querySelector('input[name="img"]');
+      field.dispatchEvent = vi.fn(() => {
+        throw new Error("field write failed");
+      });
+
+      await expect(api._clipboardHandleArtFieldImageInput(
+        {blob: new File(["x"], "portrait.png", {type: "image/png"})},
+        field
+      )).rejects.toMatchObject({
+        message: "field write failed",
+        clipboardContentSummary: "an image",
+      });
+
+      restoreImage();
     });
 
     it("returns false for empty media input", async () => {
@@ -347,6 +555,36 @@ describe("paste and handler workflows", () => {
       expect(globalThis.foundry.documents.ChatMessage.create).not.toHaveBeenCalled();
     });
 
+    it("falls back to the pasted blob when a preferred direct media url download is blocked on canvas", async () => {
+      document.body.innerHTML = '<div class="game" tabindex="0"></div>';
+      document.querySelector(".game").focus();
+      globalThis.fetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      const restoreImage = withMockImage();
+
+      await expect(api._clipboardHandleImageInput({
+        url: "https://example.com/dancing-cat.gif",
+        text: "https://example.com/dancing-cat.gif",
+        fallbackBlob: new File(["x"], "copied-image.png", {type: "image/png"}),
+      }, {
+        contextOptions: {fallbackToCenter: true},
+      })).resolves.toBe(true);
+
+      restoreImage();
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalled();
+    });
+
+    it("falls back to the pasted blob when a preferred direct media url download is blocked in chat", async () => {
+      globalThis.fetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+      await expect(api._clipboardHandleChatImageInput({
+        url: "https://example.com/dancing-cat.gif",
+        text: "https://example.com/dancing-cat.gif",
+        fallbackBlob: new File(["x"], "copied-image.png", {type: "image/png"}),
+      })).resolves.toBe(true);
+
+      expect(globalThis.foundry.documents.ChatMessage.create).toHaveBeenCalled();
+    });
+
     it("does not fall back to note text when a direct media url download is blocked on canvas", async () => {
       document.body.innerHTML = '<div class="game" tabindex="0"></div>';
       document.querySelector(".game").focus();
@@ -357,6 +595,17 @@ describe("paste and handler workflows", () => {
       }, {
         contextOptions: {fallbackToCenter: true},
       })).rejects.toThrow("cannot download and re-upload");
+    });
+
+    it("rejects video media for selected note replacements", async () => {
+      globalThis.canvas.activeLayer = globalThis.canvas.notes;
+      globalThis.canvas.notes.controlled = [env.createControlledPlaceable("Note", {id: "note-video"})];
+
+      await expect(api._clipboardHandleImageBlob(new File(["x"], "clip.webm", {type: "video/webm"}), {
+        contextOptions: {fallbackToCenter: true, requireCanvasFocus: false},
+      })).rejects.toThrow("Selected note targets do not support pasted video media");
+
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
     });
   });
 
@@ -370,6 +619,32 @@ describe("paste and handler workflows", () => {
     it("creates a standalone text note when no placeable is selected", async () => {
       globalThis.canvas.activeLayer = globalThis.canvas.tiles;
       await expect(api._clipboardHandleTextInput({text: "Standalone"})).resolves.toBe(true);
+    });
+
+    it("appends text to selected scene notes", async () => {
+      const entry = env.createJournalEntry({
+        id: "entry-note",
+        name: "Note Entry",
+        pages: [{
+          id: "page-note",
+          type: "text",
+          text: {content: "<p>Before</p>", format: 1},
+        }],
+      });
+      const note = env.createControlledPlaceable("Note", {
+        id: "note-1",
+        entryId: entry.id,
+        pageId: "page-note",
+        text: "Target Note",
+      });
+      globalThis.canvas.notes.controlled = [note];
+      globalThis.canvas.activeLayer = globalThis.canvas.notes;
+
+      await expect(api._clipboardHandleTextInput({text: "After"})).resolves.toBe(true);
+      expect(entry.pages.get("page-note").update).toHaveBeenCalledWith({
+        "text.content": "<p>Before</p><hr><p>After</p>",
+        "text.format": 9,
+      });
     });
 
     it("returns false for empty text", async () => {

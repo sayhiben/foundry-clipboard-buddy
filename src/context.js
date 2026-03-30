@@ -11,6 +11,7 @@ const {
   CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN,
 } = require("./constants");
 const {
+  _clipboardCanUseCanvasMedia,
   _clipboardCanCreateTokens,
   _clipboardCanCreateTiles,
   _clipboardCanReplaceTokens,
@@ -62,6 +63,26 @@ function _clipboardCanUserModifyDocument(document, action = "update") {
   return false;
 }
 
+function _clipboardGetControlledPlaceables(layer) {
+  const controlledObjects = layer?.controlledObjects;
+  if (controlledObjects?.size && typeof controlledObjects.values === "function") {
+    return Array.from(controlledObjects.values()).filter(Boolean);
+  }
+
+  const controlled = layer?.controlled;
+  if (Array.isArray(controlled)) return controlled.filter(Boolean);
+  if (controlled instanceof Map) return Array.from(controlled.values()).filter(Boolean);
+  if (controlled instanceof Set) return Array.from(controlled.values()).filter(Boolean);
+  if (controlled && typeof controlled.values === "function") {
+    return Array.from(controlled.values()).filter(Boolean);
+  }
+  if (controlled && typeof controlled[Symbol.iterator] === "function") {
+    return Array.from(controlled).filter(Boolean);
+  }
+
+  return [];
+}
+
 function _clipboardCanReplaceDocument(documentName, document) {
   if (documentName === "Token") {
     if (!_clipboardCanReplaceTokens()) return false;
@@ -73,6 +94,11 @@ function _clipboardCanReplaceDocument(documentName, document) {
 
   if (documentName === "Tile") {
     return _clipboardCanReplaceTiles() &&
+      _clipboardCanUserModifyDocument(document, "update");
+  }
+
+  if (documentName === "Note") {
+    return _clipboardCanUseCanvasMedia() &&
       _clipboardCanUserModifyDocument(document, "update");
   }
 
@@ -195,7 +221,7 @@ async function _clipboardCreatePastedTokenActor({path, mediaKind, width, height}
 const CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES = {
   Token: {
     documentName: "Token",
-    getControlledDocuments: () => (canvas?.tokens?.controlled || []).map(token => token.document),
+    getControlledDocuments: () => _clipboardGetControlledPlaceables(canvas?.tokens).map(token => token.document),
     getLayer: () => canvas?.tokens,
     createData: async ({path, imgWidth, imgHeight, mousePos, mediaKind}) => {
       const snappedPosition = _clipboardGetTokenPosition(mousePos);
@@ -233,7 +259,7 @@ const CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES = {
   },
   Tile: {
     documentName: "Tile",
-    getControlledDocuments: () => (canvas?.tiles?.controlled || []).map(tile => tile.document),
+    getControlledDocuments: () => _clipboardGetControlledPlaceables(canvas?.tiles).map(tile => tile.document),
     getLayer: () => canvas?.tiles,
     createData: ({path, imgWidth, imgHeight, mousePos, mediaKind}) => {
       const dimensions = _clipboardScaleTileDimensions(imgWidth, imgHeight, canvas.dimensions);
@@ -258,15 +284,23 @@ const CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES = {
       return [createData];
     },
   },
+  Note: {
+    documentName: "Note",
+    getControlledDocuments: () => _clipboardGetControlledPlaceables(canvas?.notes).map(note => note.document),
+    getLayer: () => canvas?.notes,
+  },
 };
 
 const CLIPBOARD_IMAGE_REPLACEMENT_ORDER = {
-  Token: ["Token", "Tile"],
-  Tile: ["Tile", "Token"],
+  Token: ["Token", "Tile", "Note"],
+  Tile: ["Tile", "Token", "Note"],
+  Note: ["Note", "Token", "Tile"],
 };
 
 function _clipboardGetActiveDocumentName() {
-  return canvas?.activeLayer === canvas?.tokens ? "Token" : "Tile";
+  if (canvas?.activeLayer === canvas?.tokens) return "Token";
+  if (canvas?.activeLayer === canvas?.notes) return "Note";
+  return "Tile";
 }
 
 function _clipboardGetCreateDocumentName(activeDocumentName = _clipboardGetActiveDocumentName()) {
@@ -277,7 +311,7 @@ function _clipboardGetCreateDocumentName(activeDocumentName = _clipboardGetActiv
       return "Tile";
     case CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER:
     default:
-      return activeDocumentName;
+      return activeDocumentName === "Note" ? "Tile" : activeDocumentName;
   }
 }
 
@@ -288,10 +322,28 @@ function _clipboardGetPlaceableStrategy(documentName = _clipboardGetCreateDocume
 function _clipboardGetReplacementTarget(activeDocumentName = _clipboardGetActiveDocumentName()) {
   for (const documentName of CLIPBOARD_IMAGE_REPLACEMENT_ORDER[activeDocumentName]) {
     const strategy = _clipboardGetPlaceableStrategy(documentName);
-    const documents = strategy.getControlledDocuments();
+    const layer = strategy.getLayer?.();
+    const controlledPlaceables = _clipboardGetControlledPlaceables(layer);
+    const documents = controlledPlaceables.map(placeable => placeable.document).filter(Boolean);
+    _clipboardLog("debug", "Evaluating controlled placeables for replacement", {
+      activeDocumentName,
+      candidateDocumentName: strategy.documentName,
+      layerName: layer?.options?.name || layer?.name || null,
+      controlledType: layer?.controlled?.constructor?.name || typeof layer?.controlled,
+      controlledCount: controlledPlaceables.length,
+      controlledIds: controlledPlaceables.map(placeable => placeable.document?.id || placeable.id || null),
+      controlledObjectsSize: layer?.controlledObjects?.size ?? null,
+    });
     if (!documents.length) continue;
 
     const eligibleDocuments = documents.filter(document => _clipboardCanReplaceDocument(strategy.documentName, document));
+    _clipboardLog("debug", "Resolved eligible replacement documents", {
+      activeDocumentName,
+      candidateDocumentName: strategy.documentName,
+      requestedCount: documents.length,
+      eligibleIds: eligibleDocuments.map(document => document.id),
+      blocked: eligibleDocuments.length < 1,
+    });
 
     return {
       documentName: strategy.documentName,
@@ -379,6 +431,7 @@ module.exports = {
   _clipboardGetCanvasCenter,
   _clipboardGetTokenPosition,
   _clipboardCanUserModifyDocument,
+  _clipboardGetControlledPlaceables,
   _clipboardCanReplaceDocument,
   _clipboardCanCreateDocument,
   _clipboardGetPastedDocumentName,

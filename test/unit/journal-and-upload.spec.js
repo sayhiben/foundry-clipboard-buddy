@@ -187,6 +187,41 @@ describe("journal, note, and upload workflows", () => {
       expect(note.update).toHaveBeenCalled();
     });
 
+    it("creates a new scene note when the stored note id no longer resolves", async () => {
+      const createdPage = await api._clipboardEnsureAssociatedTextPage(
+        env.createPlaceableDocument("Token", {name: "Stale Note"}),
+        "seed"
+      );
+      env.journalEntries.set(createdPage.entry.id, createdPage.entry);
+      const document = env.createPlaceableDocument("Token", {
+        id: "token-stale-note",
+        name: "Stale Note",
+        flags: {
+          "foundry-paste-eater": {
+            textNote: {
+              entryId: createdPage.entry.id,
+              pageId: createdPage.page.id,
+              noteId: "missing-note-id",
+            },
+          },
+        },
+      });
+
+      await expect(api._clipboardEnsurePlaceableTextNote(document, "More text", {x: 30, y: 40})).resolves.toBe(true);
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("Note", [
+        expect.objectContaining({
+          entryId: createdPage.entry.id,
+          pageId: createdPage.page.id,
+          text: "Stale Note Notes",
+        }),
+      ]);
+      expect(document.setFlag).toHaveBeenCalledWith("foundry-paste-eater", "textNote", expect.objectContaining({
+        entryId: createdPage.entry.id,
+        pageId: createdPage.page.id,
+        noteId: expect.any(String),
+      }));
+    });
+
     it("ignores legacy scope cleanup errors after storing the new note flag", async () => {
       globalThis.game.modules.set("clipboard-image", {active: true});
       const document = env.createPlaceableDocument("Token", {
@@ -204,6 +239,18 @@ describe("journal, note, and upload workflows", () => {
       await expect(api._clipboardEnsurePlaceableTextNote(document, "Some text", {x: 10, y: 20})).resolves.toBe(true);
       expect(document.setFlag).toHaveBeenCalled();
       expect(document.unsetFlag).toHaveBeenCalledWith("clipboard-image", "textNote");
+    });
+
+    it("stores the new note flag even when legacy cleanup is unavailable", async () => {
+      globalThis.game.modules.set("clipboard-image", {active: true});
+      const document = env.createPlaceableDocument("Token", {
+        id: "token-no-cleanup",
+        name: "No Cleanup",
+      });
+      document.unsetFlag = undefined;
+
+      await expect(api._clipboardEnsurePlaceableTextNote(document, "Some text", {x: 10, y: 20})).resolves.toBe(true);
+      expect(document.setFlag).toHaveBeenCalled();
     });
 
     it("throws when it cannot produce a valid note target", async () => {
@@ -225,6 +272,94 @@ describe("journal, note, and upload workflows", () => {
         mousePos: {x: 100, y: 200},
       })).resolves.toBe(true);
       expect(globalThis.canvas.notes.activate).toHaveBeenCalled();
+    });
+  });
+
+  describe("selected scene note helpers", () => {
+    it("appends pasted text to an existing selected scene note page", async () => {
+      const entry = env.createJournalEntry({
+        id: "entry-note",
+        name: "Scene Note",
+        pages: [{
+          id: "page-note",
+          type: "text",
+          text: {content: "<p>Existing</p>", format: 1},
+        }],
+      });
+      const note = env.createPlaceableDocument("Note", {
+        id: "note-1",
+        entryId: entry.id,
+        pageId: "page-note",
+        text: "Target Note",
+      });
+
+      await expect(api._clipboardAppendTextToSceneNote(note, "Appended")).resolves.toBe(true);
+      expect(entry.pages.get("page-note").update).toHaveBeenCalledWith({
+        "text.content": "<p>Existing</p><hr><p>Appended</p>",
+        "text.format": 9,
+      });
+    });
+
+    it("creates a new text page when a selected scene note points at a missing page", async () => {
+      const entry = env.createJournalEntry({
+        id: "entry-note-missing",
+        name: "Scene Note",
+        pages: [],
+      });
+      const note = env.createPlaceableDocument("Note", {
+        id: "note-2",
+        entryId: entry.id,
+        pageId: "missing-page",
+        text: "Target Note",
+      });
+
+      await expect(api._clipboardAppendTextToSceneNote(note, "New page")).resolves.toBe(true);
+      expect(entry.createEmbeddedDocuments).toHaveBeenCalled();
+      expect(note.update).toHaveBeenCalledWith({
+        pageId: expect.any(String),
+      });
+    });
+
+    it("creates a new text page when a selected scene note points at a non-text page", async () => {
+      const entry = env.createJournalEntry({
+        id: "entry-note-image",
+        name: "Scene Note",
+        pages: [{
+          id: "page-image",
+          type: "image",
+        }],
+      });
+      const note = env.createPlaceableDocument("Note", {
+        id: "note-image",
+        entryId: entry.id,
+        pageId: "page-image",
+        text: "Target Note",
+      });
+
+      await expect(api._clipboardAppendTextToSceneNote(note, "Converted page")).resolves.toBe(true);
+      expect(entry.createEmbeddedDocuments).toHaveBeenCalledWith("JournalEntryPage", [
+        expect.objectContaining({
+          name: "Notes",
+          type: "text",
+        }),
+      ]);
+      expect(note.update).toHaveBeenCalledWith({
+        pageId: expect.any(String),
+      });
+    });
+
+    it("creates a journal entry for a selected scene note that is not linked yet", async () => {
+      const note = env.createPlaceableDocument("Note", {
+        id: "note-unlinked",
+        text: "Loose Note",
+      });
+
+      await expect(api._clipboardAppendTextToSceneNote(note, "Seed text")).resolves.toBe(true);
+      expect(note.update).toHaveBeenCalledWith({
+        entryId: expect.any(String),
+        pageId: expect.any(String),
+        text: "Loose Note",
+      });
     });
   });
 
@@ -274,6 +409,30 @@ describe("journal, note, and upload workflows", () => {
         target: "folder",
         bucket: "",
       })).rejects.toThrow("usable media path");
+    });
+
+    it("wraps storage permission failures with gm-facing guidance", async () => {
+      env.MockFilePicker.upload.mockRejectedValueOnce(new Error("You do not have permission to upload files to this location"));
+
+      await expect(api._clipboardUploadBlob(new File(["x"], "upload.png", {type: "image/png"}), {
+        source: "s3",
+        target: "folder",
+        bucket: "shared-bucket",
+        endpoint: "https://storage.example.com",
+      })).rejects.toMatchObject({
+        clipboardSummary: "Foundry denied permission to upload pasted media in the active storage destination.",
+        clipboardResolution: expect.stringContaining("Foundry's core settings"),
+      });
+    });
+
+    it("preserves non-permission upload failures without rewriting them", async () => {
+      env.MockFilePicker.upload.mockRejectedValueOnce(new Error("upload transport failed"));
+
+      await expect(api._clipboardUploadBlob(new File(["x"], "upload.png", {type: "image/png"}), {
+        source: "data",
+        target: "folder",
+        bucket: "",
+      })).rejects.toThrow("upload transport failed");
     });
 
     it("downloads and wraps supported media urls", async () => {

@@ -10,10 +10,12 @@ The suite is designed to cover the browser-driven flows that can be validated ag
 - Canvas image paste into Tiles
 - Canvas image paste into Tokens
 - Selected token and tile replacement, including multi-selection updates
+- Selected note icon replacement
 - Canvas video paste into Tiles and Tokens
 - Selected tile replacement with video media
 - Mixed file-and-text paste payloads
-- Contextual plain-text note creation, append, selected-tile note creation, and multi-placeable text application
+- Contextual plain-text note creation, append, selected-tile note creation, selected-note append, and multi-placeable text application
+- Focused Actor, Item, and token-config art-field routing
 - Non-media URL fallback to contextual text notes
 - HTML `img[src]` media URL extraction
 - Hidden-mode paste with `Caps Lock`
@@ -55,7 +57,7 @@ The suite uses these environment variables:
   Password for the selected user, when required by the world.
   If the selected Foundry user has a blank password, make sure you unset any inherited `FOUNDRY_PASSWORD` environment variable instead of accidentally reusing a stale value.
 - `FOUNDRY_STORAGE_STATE`
-  Optional Playwright storage-state JSON path for a pre-authenticated session.
+  Optional Playwright storage-state JSON path for a pre-authenticated session. If omitted, Playwright global setup logs in once as the default GM user and writes a reusable storage-state file under `test/playwright/.auth/`.
 - `PW_BROWSER`
   Browser name for the Playwright project. Defaults to `chromium`.
 - `PW_HEADLESS`
@@ -121,7 +123,10 @@ npm run test:smoke:s3
 
 ## Notes
 
+- The main single-user browser specs (`smoke.spec.js`, `config.spec.js`, and `s3.spec.js`) reuse one authenticated Foundry page per spec worker instead of logging in again for every test. That shared page is reloaded in `beforeEach` so the DOM starts clean without paying the full login cost repeatedly.
+- Multi-user specs still create separate authenticated contexts per user, but they reuse cached storage state where possible instead of rejoining from scratch on every session.
 - The suite uses the active scene and creates temporary artifacts inside it, then cleans up the created scene documents and journals after each test.
+- In this local setup, Foundry loads the live module from `/Users/sayhiben/dev/foundry-latest/userdata/Data/modules/foundry-paste-eater`, not directly from the repo root. After changing runtime files, sync the repo into that module directory before trusting browser smoke or manual validation.
 - If the local world boots without an active scene, the Playwright harness now activates an existing scene or creates a temporary one before continuing so `canvas.ready` can succeed.
 - The permissions smoke spec reseeds the local QA users from Foundry's world user store before it runs. The expected local roles are `Gamemaster` and `Clipboard QA 1` as GMs, with `Clipboard QA 2` and `Clipboard QA 3` as Players.
 - Local Playwright runs default to headed Chromium because Foundry's graphics stack is not reliable under headless Chromium in this environment.

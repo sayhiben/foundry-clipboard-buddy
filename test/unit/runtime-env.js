@@ -104,6 +104,12 @@ function createPlaceableDocument(documentName, data = {}) {
     y: data.y ?? 0,
     width: data.width ?? 1,
     height: data.height ?? 1,
+    entryId: data.entryId ?? null,
+    pageId: data.pageId ?? null,
+    text: data.text ?? "",
+    texture: {
+      src: data.texture?.src || "",
+    },
     actor: data.actor || null,
     isOwner: data.isOwner ?? true,
     object: data.object || null,
@@ -131,6 +137,16 @@ function createPlaceableDocument(documentName, data = {}) {
         document._source.flags[scope] = {...scopedFlags};
       }
       return null;
+    }),
+    update: vi.fn(async updateData => {
+      for (const [key, value] of Object.entries(updateData || {})) {
+        if (key === "texture.src") {
+          document.texture.src = value;
+          continue;
+        }
+        document[key] = value;
+      }
+      return document;
     }),
   };
   document.flags = Object.fromEntries(Array.from(flags.entries(), ([scope, value]) => [scope, {...value}]));
@@ -272,6 +288,22 @@ function loadRuntime(options = {}) {
   };
 
   globalThis.ui = {
+    chat: {
+      render: vi.fn(),
+    },
+    controls: {
+      control: {name: "tiles"},
+      controls: [
+        {name: "tiles", tools: []},
+        {name: "tokens", tools: []},
+      ],
+      initialize: vi.fn(({control} = {}) => {
+        if (control) {
+          globalThis.ui.controls.control = {name: control};
+        }
+      }),
+      render: vi.fn(),
+    },
     notifications: {
       error: vi.fn(),
       info: vi.fn(),
@@ -301,16 +333,21 @@ function loadRuntime(options = {}) {
     },
     tokens: {
       controlled: [],
+      controlledObjects: new Map(),
       activate: vi.fn(),
       options: {name: "tokens"},
     },
     tiles: {
       controlled: [],
+      controlledObjects: new Map(),
       activate: vi.fn(),
       options: {name: "tiles"},
     },
     notes: {
+      controlled: [],
+      controlledObjects: new Map(),
       activate: vi.fn(),
+      options: {name: "notes"},
     },
   };
   globalThis.canvas.activeLayer = globalThis.canvas.tiles;
@@ -336,6 +373,9 @@ function loadRuntime(options = {}) {
         const scope = config?.scope || "world";
         const storage = scope === "client" ? clientStorage : worldStorage;
         storage.set(settingsKey, {key: settingsKey, value});
+        if (typeof config?.onChange === "function") {
+          await config.onChange(value);
+        }
         return value;
       }),
       register: vi.fn((moduleId, key, config) => {

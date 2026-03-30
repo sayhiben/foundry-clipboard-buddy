@@ -2,9 +2,11 @@ const fs = require("fs");
 const path = require("path");
 const {execFileSync} = require("child_process");
 const {expect} = require("@playwright/test");
+const {getDefaultFoundryStorageStatePath} = require("./browser");
 
 const MODULE_ID = "foundry-paste-eater";
 const DEFAULT_TIMEOUT = 120_000;
+const AUTH_STATE_CACHE = new Map();
 const CHAT_INPUT_SELECTORS = [
   "form textarea[name='content']",
   "#chat-form textarea",
@@ -19,6 +21,134 @@ const FOUNDRY_WORLD_ID = process.env.FOUNDRY_WORLD_ID || "";
 
 function getFoundryUrl() {
   return process.env.FOUNDRY_URL || process.env.FOUNDRY_JOIN_URL || process.env.FOUNDRY_BASE_URL || "http://127.0.0.1:30000";
+}
+
+function getDefaultFoundryGmUser() {
+  return process.env.FOUNDRY_GM_USER || "Clipboard QA 1";
+}
+
+function getDefaultFoundryTestUser() {
+  return process.env.FOUNDRY_TEST_USER || process.env.FOUNDRY_PLAYER_USER || "Clipboard QA 1";
+}
+
+function resolveFoundryCredentials(credentials = {}, {gm = false} = {}) {
+  return {
+    user: credentials.user ?? (
+      gm
+        ? getDefaultFoundryGmUser()
+        : getDefaultFoundryTestUser()
+    ),
+    password: credentials.password ?? (
+      gm
+        ? (process.env.FOUNDRY_GM_PASSWORD ?? "")
+        : (process.env.FOUNDRY_TEST_PASSWORD ?? process.env.FOUNDRY_PLAYER_PASSWORD ?? "")
+    ),
+  };
+}
+
+function _clipboardGetAuthCacheKey(credentials) {
+  return JSON.stringify({
+    url: getFoundryUrl(),
+    user: credentials.user || "",
+    password: credentials.password || "",
+  });
+}
+
+function _clipboardCanUseDefaultAuthState(credentials, options = {}) {
+  if (!options.gm) return false;
+
+  const defaultCredentials = resolveFoundryCredentials({}, {gm: true});
+  return credentials.user === defaultCredentials.user && credentials.password === defaultCredentials.password;
+}
+
+function _clipboardReadDefaultAuthState(credentials, options = {}) {
+  if (!_clipboardCanUseDefaultAuthState(credentials, options)) return null;
+
+  const storageStatePath = process.env.FOUNDRY_STORAGE_STATE || getDefaultFoundryStorageStatePath();
+  if (!storageStatePath || !fs.existsSync(storageStatePath)) return null;
+
+  try {
+    return JSON.parse(fs.readFileSync(storageStatePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function getCachedFoundryAuthState(credentials = {}, options = {}) {
+  const resolvedCredentials = resolveFoundryCredentials(credentials, options);
+  const cacheKey = _clipboardGetAuthCacheKey(resolvedCredentials);
+  const cachedState = AUTH_STATE_CACHE.get(cacheKey);
+  if (cachedState) {
+    return {
+      credentials: resolvedCredentials,
+      storageState: cachedState,
+    };
+  }
+
+  const storedState = _clipboardReadDefaultAuthState(resolvedCredentials, options);
+  if (storedState) {
+    AUTH_STATE_CACHE.set(cacheKey, storedState);
+    return {
+      credentials: resolvedCredentials,
+      storageState: storedState,
+    };
+  }
+
+  return {
+    credentials: resolvedCredentials,
+    storageState: null,
+  };
+}
+
+async function createAuthenticatedPage(browser, credentials = {}, options = {}) {
+  const cached = options.reuseAuth === false
+    ? {
+      credentials: resolveFoundryCredentials(credentials, options),
+      storageState: null,
+    }
+    : getCachedFoundryAuthState(credentials, options);
+  const contextOptions = {
+    acceptDownloads: Boolean(options.acceptDownloads),
+  };
+  if (cached.storageState) {
+    contextOptions.storageState = cached.storageState;
+  }
+  const context = await browser.newContext(contextOptions);
+  const page = await context.newPage();
+
+  try {
+    await loginToFoundry(page, cached.credentials);
+    await stabilizeFoundryUiState(page);
+    if (options.reuseAuth !== false) {
+      AUTH_STATE_CACHE.set(_clipboardGetAuthCacheKey(cached.credentials), await context.storageState());
+    }
+  } catch (error) {
+    await context.close().catch(() => {});
+    throw error;
+  }
+
+  return {
+    context,
+    page,
+    credentials: cached.credentials,
+  };
+}
+
+function buildSharedFoundryTest(baseTest, credentials = {}, options = {}) {
+  return baseTest.extend({
+    foundryPage: [async ({browser}, use) => {
+      const session = await createAuthenticatedPage(browser, credentials, {gm: true, ...options});
+      try {
+        await use(session.page);
+      } finally {
+        await session.context.close().catch(() => {});
+      }
+    }, {scope: "worker"}],
+  });
+}
+
+function getLoginAttemptTimeout() {
+  return Number(process.env.FOUNDRY_LOGIN_TIMEOUT_MS || 60_000);
 }
 
 function _clipboardDockerText(args) {
@@ -134,22 +264,23 @@ function sanitizeId(value) {
     .slice(0, 48) || "run";
 }
 
-async function waitForFoundryReady(page) {
-  await waitForFoundryCoreReady(page);
+async function waitForFoundryReady(page, options = {}) {
+  await waitForFoundryCoreReady(page, options);
   await ensureModuleActive(page);
   await expect.poll(() => page.evaluate(moduleId => game.modules.get(moduleId)?.active ?? false, MODULE_ID), {
-    timeout: DEFAULT_TIMEOUT,
+    timeout: options.timeout ?? DEFAULT_TIMEOUT,
     message: `${MODULE_ID} module is not active in the loaded Foundry world`,
   }).toBe(true);
 }
 
-async function waitForFoundryCoreReady(page) {
+async function waitForFoundryCoreReady(page, options = {}) {
+  const timeout = options.timeout ?? DEFAULT_TIMEOUT;
   await page.waitForFunction(() => globalThis.game?.ready, null, {
-    timeout: DEFAULT_TIMEOUT,
+    timeout,
   });
   await ensureActiveScene(page);
   await page.waitForFunction(() => globalThis.game?.ready && globalThis.canvas?.ready && Boolean(globalThis.canvas?.scene), null, {
-    timeout: DEFAULT_TIMEOUT,
+    timeout,
   });
 }
 
@@ -232,6 +363,68 @@ async function ensureActiveScene(page) {
   });
 }
 
+async function isJoinPromptVisible(page) {
+  return page.evaluate(() => Boolean(
+    document.querySelector("button[type='submit'], button[name='join']") ||
+    document.querySelector("select[name='userid']") ||
+    document.querySelector("input[name='userid'], input[name='username'], input[type='password']")
+  )).catch(() => false);
+}
+
+async function populateFoundryJoinForm(page, credentials) {
+  const user = credentials.user || "";
+  const password = credentials.password ?? "";
+
+  const userSelect = page.locator("select[name='userid']").first();
+  if (await userSelect.count()) {
+    if (!user) {
+      throw new Error("FOUNDRY_USER is required when Foundry shows a user selection prompt.");
+    }
+
+    const options = await userSelect.locator("option").evaluateAll(selectOptions => selectOptions.map(option => ({
+      value: option.value,
+      label: option.textContent?.trim() || "",
+      disabled: Boolean(option.disabled),
+    })));
+    const matchedOption = options.find(option => option.value === user || option.label === user);
+    if (!matchedOption) {
+      throw new Error(`Could not find a Foundry user option matching "${user}".`);
+    }
+    if (matchedOption.disabled) {
+      throw new Error(`Foundry user "${user}" is already connected or otherwise unavailable on the join screen.`);
+    }
+
+    await userSelect.evaluate((select, value) => {
+      select.value = value;
+      const option = Array.from(select.options).find(entry => entry.value === value);
+      if (option) option.selected = true;
+      select.dispatchEvent(new Event("input", {bubbles: true}));
+      select.dispatchEvent(new Event("change", {bubbles: true}));
+    }, matchedOption.value);
+  }
+
+  const userInput = page.locator("input[name='userid'], input[name='username']").first();
+  if (await userInput.count()) {
+    if (!user) {
+      throw new Error("FOUNDRY_USER is required when Foundry shows a user input field.");
+    }
+    await userInput.fill(user);
+  }
+
+  const passwordInput = page.locator("input[type='password']").first();
+  if (await passwordInput.count()) {
+    await passwordInput.fill(password);
+  }
+}
+
+async function resetFoundrySessions() {
+  const environment = _clipboardResolveFoundryTestEnvironment();
+  _clipboardRestartFoundry(environment.containerName);
+  if (environment.containerName) {
+    await _clipboardWaitForFoundryServer();
+  }
+}
+
 async function loginToFoundry(page, credentials = {}) {
   attachClipboardConsoleLogging(page);
   await page.goto(getFoundryUrl(), {waitUntil: "domcontentloaded"});
@@ -252,38 +445,9 @@ async function loginToFoundry(page, credentials = {}) {
     return;
   }
 
-  const user = credentials.user ?? process.env.FOUNDRY_USER ?? process.env.FOUNDRY_USERNAME ?? "";
-  const password = credentials.password ?? process.env.FOUNDRY_PASSWORD ?? "";
-
-  const userSelect = page.locator("select[name='userid']").first();
-  if (await userSelect.count()) {
-    if (!user) {
-      throw new Error("FOUNDRY_USER is required when Foundry shows a user selection prompt.");
-    }
-
-    const options = await userSelect.locator("option").evaluateAll(selectOptions => selectOptions.map(option => ({
-      value: option.value,
-      label: option.textContent?.trim() || "",
-    })));
-    const matchedOption = options.find(option => option.value === user || option.label === user);
-    if (!matchedOption) {
-      throw new Error(`Could not find a Foundry user option matching "${user}".`);
-    }
-    await userSelect.selectOption(matchedOption.value);
-  }
-
-  const userInput = page.locator("input[name='userid'], input[name='username']").first();
-  if (await userInput.count()) {
-    if (!user) {
-      throw new Error("FOUNDRY_USER is required when Foundry shows a user input field.");
-    }
-    await userInput.fill(user);
-  }
-
-  const passwordInput = page.locator("input[type='password']").first();
-  if (await passwordInput.count()) {
-    await passwordInput.fill(password);
-  }
+  const resolvedCredentials = resolveFoundryCredentials(credentials, {
+    gm: !credentials.user || credentials.user === getDefaultFoundryGmUser(),
+  });
 
   const joinButton = await findFirstVisibleLocator(page, [
     "button[type='submit']",
@@ -296,20 +460,50 @@ async function loginToFoundry(page, credentials = {}) {
     throw new Error("Could not find a Foundry login or join button. Set FOUNDRY_STORAGE_STATE or verify FOUNDRY_URL.");
   }
 
-  await Promise.all([
-    page.waitForLoadState("networkidle").catch(() => {}),
-    joinButton.click(),
-  ]);
-  await waitForFoundryReady(page);
+  let lastError = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await populateFoundryJoinForm(page, resolvedCredentials);
+    await Promise.all([
+      page.waitForLoadState("networkidle").catch(() => {}),
+      joinButton.click(),
+    ]);
+
+    try {
+      await waitForFoundryReady(page, {timeout: getLoginAttemptTimeout()});
+      return;
+    } catch (error) {
+      lastError = error;
+      const joinPromptVisible = await isJoinPromptVisible(page);
+      if (!joinPromptVisible || attempt === 3) break;
+      await page.waitForTimeout(500);
+    }
+  }
+
+  throw lastError || new Error("Timed out logging into Foundry.");
 }
 
 function attachClipboardConsoleLogging(page) {
   if (page.__clipboardConsoleLoggingAttached) return;
 
   page.__clipboardConsoleLoggingAttached = true;
-  page.on("console", message => {
+  page.on("console", async message => {
     const text = message.text();
     if (!text.includes(CLIPBOARD_LOG_PREFIX)) return;
+
+    const values = [];
+    for (const argument of message.args()) {
+      try {
+        values.push(await argument.jsonValue());
+      } catch {
+        values.push(await argument.evaluate(value => String(value)).catch(() => "[Unserializable]"));
+      }
+    }
+
+    if (values.length > 1) {
+      console.log(`[browser:${message.type()}]`, ...values);
+      return;
+    }
+
     console.log(`[browser:${message.type()}] ${text}`);
   });
 }
@@ -333,6 +527,8 @@ async function findFirstVisibleLocator(page, selectors) {
 }
 
 async function beginClipboardRun(page, testInfo, options = {}) {
+  await waitForFoundryReady(page);
+
   const runId = `${Date.now()}-${sanitizeId(testInfo.title)}`;
   const prefix = `[PW ${runId}]`;
   const uploadFolder = await page.evaluate(({runId, overrideTarget}) => {
@@ -343,24 +539,38 @@ async function beginClipboardRun(page, testInfo, options = {}) {
   const bucket = source === "s3" ? (options.bucket || "") : "";
   const verboseLogging = Object.hasOwn(options, "verboseLogging") ? Boolean(options.verboseLogging) : true;
 
-  const previousSettings = await page.evaluate(async ({moduleId, uploadFolder, source, bucket, verboseLogging}) => {
-    const previousSource = await game.settings.get(moduleId, "image-location-source");
-    const previousTarget = await game.settings.get(moduleId, "image-location");
-    const previousBucket = await game.settings.get(moduleId, "image-location-bucket");
-    const previousVerboseLogging = await game.settings.get(moduleId, "verbose-logging");
+  async function applyRunSettings() {
+    return page.evaluate(async ({moduleId, uploadFolder, source, bucket, verboseLogging}) => {
+      const previousSource = await game.settings.get(moduleId, "image-location-source");
+      const previousTarget = await game.settings.get(moduleId, "image-location");
+      const previousBucket = await game.settings.get(moduleId, "image-location-bucket");
+      const previousVerboseLogging = await game.settings.get(moduleId, "verbose-logging");
 
-    await game.settings.set(moduleId, "image-location-source", source);
-    await game.settings.set(moduleId, "image-location", uploadFolder);
-    await game.settings.set(moduleId, "image-location-bucket", bucket);
-    await game.settings.set(moduleId, "verbose-logging", verboseLogging);
+      await game.settings.set(moduleId, "image-location-source", source);
+      await game.settings.set(moduleId, "image-location", uploadFolder);
+      await game.settings.set(moduleId, "image-location-bucket", bucket);
+      await game.settings.set(moduleId, "verbose-logging", verboseLogging);
 
-    return {
-      source: previousSource,
-      target: previousTarget,
-      bucket: previousBucket,
-      verboseLogging: previousVerboseLogging,
-    };
-  }, {moduleId: MODULE_ID, uploadFolder, source, bucket, verboseLogging});
+      return {
+        source: previousSource,
+        target: previousTarget,
+        bucket: previousBucket,
+        verboseLogging: previousVerboseLogging,
+      };
+    }, {moduleId: MODULE_ID, uploadFolder, source, bucket, verboseLogging});
+  }
+
+  let previousSettings;
+  try {
+    previousSettings = await applyRunSettings();
+  } catch (error) {
+    const message = String(error?.message || error);
+    if (!/not a registered game setting/i.test(message)) throw error;
+
+    await page.reload({waitUntil: "domcontentloaded"});
+    await waitForFoundryReady(page);
+    previousSettings = await applyRunSettings();
+  }
 
   await releaseAllControlledPlaceables(page);
 
@@ -400,6 +610,17 @@ async function restoreModuleSettings(page, previous, {moduleId = MODULE_ID} = {}
       ui.controls.render(true);
     }, {moduleId, previous});
   } catch (error) {
+    if (/Execution context was destroyed|Cannot find context/i.test(String(error?.message || error))) {
+      await page.waitForLoadState("domcontentloaded").catch(() => {});
+      await page.evaluate(async ({moduleId, previous}) => {
+        for (const [key, value] of Object.entries(previous)) {
+          await game.settings.set(moduleId, key, value);
+        }
+        ui.controls.initialize({control: canvas.activeLayer?.options?.name || "tiles"});
+        ui.controls.render(true);
+      }, {moduleId, previous});
+      return;
+    }
     if (/Target page, context or browser has been closed|Test ended/i.test(String(error?.message || error))) return;
     throw error;
   }
@@ -428,6 +649,13 @@ async function restoreCorePermissions(page, previous) {
       await game.settings.set("core", "permissions", previous);
     }, previous);
   } catch (error) {
+    if (/Execution context was destroyed|Cannot find context/i.test(String(error?.message || error))) {
+      await page.waitForLoadState("domcontentloaded").catch(() => {});
+      await page.evaluate(async previous => {
+        await game.settings.set("core", "permissions", previous);
+      }, previous);
+      return;
+    }
     if (/Target page, context or browser has been closed|Test ended/i.test(String(error?.message || error))) return;
     throw error;
   }
@@ -435,65 +663,74 @@ async function restoreCorePermissions(page, previous) {
 
 async function cleanupClipboardRun(page, run) {
   if (!run) return;
+  if (page?.isClosed?.()) return;
 
-  await page.evaluate(async ({moduleId, run}) => {
-    const messageIds = game.messages.contents
-      .filter(message => (message.content || "").includes(run.uploadFolder) || (message.content || "").includes(run.prefix))
-      .map(message => message.id);
-    for (const id of messageIds) {
-      await game.messages.get(id)?.delete();
+  try {
+    await page.evaluate(async ({moduleId, run}) => {
+      const messageIds = game.messages.contents
+        .filter(message => (message.content || "").includes(run.uploadFolder) || (message.content || "").includes(run.prefix))
+        .map(message => message.id);
+      for (const id of messageIds) {
+        await game.messages.get(id)?.delete();
+      }
+
+      const journalIds = game.journal.contents
+        .filter(entry => (entry.name || "").includes(run.prefix))
+        .map(entry => entry.id);
+
+      const noteIds = canvas.scene.notes.contents
+        .filter(note => journalIds.includes(note.entryId) || (note.text || "").includes(run.prefix))
+        .map(note => note.id);
+      if (noteIds.length) {
+        await canvas.scene.deleteEmbeddedDocuments("Note", noteIds);
+      }
+
+      const tokenIds = canvas.scene.tokens.contents
+        .filter(token =>
+          (token.name || "").includes(run.prefix) ||
+          (token.texture?.src || "").includes(run.uploadFolder)
+        )
+        .map(token => token.id);
+      if (tokenIds.length) {
+        await canvas.scene.deleteEmbeddedDocuments("Token", tokenIds);
+      }
+
+      const tileIds = canvas.scene.tiles.contents
+        .filter(tile => (tile.texture?.src || "").includes(run.uploadFolder))
+        .map(tile => tile.id);
+      if (tileIds.length) {
+        await canvas.scene.deleteEmbeddedDocuments("Tile", tileIds);
+      }
+
+      const actorIds = game.actors.contents
+        .filter(actor =>
+          (actor.name || "").includes(run.prefix) ||
+          (actor.img || "").includes(run.uploadFolder) ||
+          (actor.prototypeToken?.texture?.src || "").includes(run.uploadFolder)
+        )
+        .map(actor => actor.id);
+      for (const id of actorIds) {
+        await game.actors.get(id)?.delete();
+      }
+
+      for (const id of journalIds) {
+        await game.journal.get(id)?.delete();
+      }
+
+      await game.settings.set(moduleId, "image-location-source", run.previousSettings.source);
+      await game.settings.set(moduleId, "image-location", run.previousSettings.target);
+      await game.settings.set(moduleId, "image-location-bucket", run.previousSettings.bucket);
+      await game.settings.set(moduleId, "verbose-logging", run.previousSettings.verboseLogging);
+    }, {moduleId: MODULE_ID, run});
+
+    await releaseAllControlledPlaceables(page);
+  } catch (error) {
+    const message = String(error?.message || error || "");
+    if (/ENOENT|Execution context was destroyed|Cannot find context|Target page, context or browser has been closed|Test ended/i.test(message)) {
+      return;
     }
-
-    const journalIds = game.journal.contents
-      .filter(entry => (entry.name || "").includes(run.prefix))
-      .map(entry => entry.id);
-
-    const noteIds = canvas.scene.notes.contents
-      .filter(note => journalIds.includes(note.entryId) || (note.text || "").includes(run.prefix))
-      .map(note => note.id);
-    if (noteIds.length) {
-      await canvas.scene.deleteEmbeddedDocuments("Note", noteIds);
-    }
-
-    const tokenIds = canvas.scene.tokens.contents
-      .filter(token =>
-        (token.name || "").includes(run.prefix) ||
-        (token.texture?.src || "").includes(run.uploadFolder)
-      )
-      .map(token => token.id);
-    if (tokenIds.length) {
-      await canvas.scene.deleteEmbeddedDocuments("Token", tokenIds);
-    }
-
-    const tileIds = canvas.scene.tiles.contents
-      .filter(tile => (tile.texture?.src || "").includes(run.uploadFolder))
-      .map(tile => tile.id);
-    if (tileIds.length) {
-      await canvas.scene.deleteEmbeddedDocuments("Tile", tileIds);
-    }
-
-    const actorIds = game.actors.contents
-      .filter(actor =>
-        (actor.name || "").includes(run.prefix) ||
-        (actor.img || "").includes(run.uploadFolder) ||
-        (actor.prototypeToken?.texture?.src || "").includes(run.uploadFolder)
-      )
-      .map(actor => actor.id);
-    for (const id of actorIds) {
-      await game.actors.get(id)?.delete();
-    }
-
-    for (const id of journalIds) {
-      await game.journal.get(id)?.delete();
-    }
-
-    await game.settings.set(moduleId, "image-location-source", run.previousSettings.source);
-    await game.settings.set(moduleId, "image-location", run.previousSettings.target);
-    await game.settings.set(moduleId, "image-location-bucket", run.previousSettings.bucket);
-    await game.settings.set(moduleId, "verbose-logging", run.previousSettings.verboseLogging);
-  }, {moduleId: MODULE_ID, run});
-
-  await releaseAllControlledPlaceables(page);
+    throw error;
+  }
 }
 
 async function ensureUploadDirectory(page, directoryPath, {source = "data", bucket = ""} = {}) {
@@ -681,13 +918,25 @@ async function controlPlaceable(page, documentName, id) {
   await page.evaluate(({documentName, id}) => {
     canvas.tokens?.releaseAll?.();
     canvas.tiles?.releaseAll?.();
+    canvas.notes?.releaseAll?.();
 
-    const layer = documentName === "Token" ? canvas.tokens : canvas.tiles;
+    const layer = documentName === "Token"
+      ? canvas.tokens
+      : documentName === "Note"
+        ? canvas.notes
+        : canvas.tiles;
     const object = layer.placeables.find(placeable => placeable.document.id === id);
     if (!object) {
       throw new Error(`Could not find ${documentName} ${id} to control.`);
     }
+    layer.activate?.();
+    canvas.activeLayer = layer;
     object.control({releaseOthers: true});
+    layer.controlledObjects?.set?.(object.id, object);
+    object.controlled = true;
+    if (!Array.isArray(layer.controlled) || !layer.controlled.some(placeable => placeable.document.id === id)) {
+      layer.controlled = [object];
+    }
   }, {documentName, id});
 }
 
@@ -695,14 +944,29 @@ async function controlPlaceables(page, placeables) {
   await page.evaluate(items => {
     canvas.tokens?.releaseAll?.();
     canvas.tiles?.releaseAll?.();
+    canvas.notes?.releaseAll?.();
 
     for (const item of items) {
-      const layer = item.documentName === "Token" ? canvas.tokens : canvas.tiles;
+      const layer = item.documentName === "Token"
+        ? canvas.tokens
+        : item.documentName === "Note"
+          ? canvas.notes
+          : canvas.tiles;
       const object = layer.placeables.find(placeable => placeable.document.id === item.id);
       if (!object) {
         throw new Error(`Could not find ${item.documentName} ${item.id} to control.`);
       }
+      layer.activate?.();
+      canvas.activeLayer = layer;
       object.control({releaseOthers: false});
+      layer.controlledObjects?.set?.(object.id, object);
+      object.controlled = true;
+      if (!Array.isArray(layer.controlled)) {
+        layer.controlled = [];
+      }
+      if (!layer.controlled.some(placeable => placeable.document.id === item.id)) {
+        layer.controlled.push(object);
+      }
     }
   }, placeables);
 }
@@ -729,47 +993,101 @@ async function clearCanvasMousePosition(page) {
   });
 }
 
-async function invokeSceneTool(page, controlName, toolName) {
-  await page.evaluate(({controlName, toolName, moduleId}) => {
-    ui.controls.initialize({control: controlName});
-    ui.controls.render(true);
+async function closeOwnedContext(target) {
+  const context = typeof target?.newPage === "function"
+    ? target
+    : target?.context?.();
+  if (!context) return;
 
+  try {
+    await context.close();
+  } catch (error) {
+    const message = String(error?.message || error || "");
+    if (/ENOENT|Target page, context or browser has been closed|Test ended/i.test(message)) return;
+    throw error;
+  }
+}
+
+async function clearChatInputs(page) {
+  await page.evaluate(selectors => {
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (element) {
+        element.value = "";
+      }
+    }
+  }, CHAT_INPUT_SELECTORS);
+}
+
+async function stabilizeFoundryUiState(page) {
+  await releaseAllControlledPlaceables(page);
+  await clearActiveLayerClipboardObjects(page, "Token");
+  await clearActiveLayerClipboardObjects(page, "Tile");
+  await clearCanvasMousePosition(page);
+  await page.evaluate(() => {
+    document.getElementById("foundry-paste-eater-scene-paste-prompt")?.remove?.();
+    document.activeElement?.blur?.();
+
+    for (const windowApp of Object.values(ui.windows || {})) {
+      windowApp?.close?.();
+    }
+
+    canvas.tiles?.activate?.();
+    ui.controls?.initialize?.({control: canvas.activeLayer?.options?.name || "tiles"});
+    ui.controls?.render?.(true);
+    ui.chat?.render?.(true);
+  });
+  await clearChatInputs(page);
+}
+
+async function resetFoundryUiState(page) {
+  await page.reload({waitUntil: "domcontentloaded"});
+  await waitForFoundryReady(page);
+  await stabilizeFoundryUiState(page);
+}
+
+async function invokeSceneTool(page, controlName, toolName) {
+  const controlButton = page.locator(`#scene-controls-layers [data-control="${controlName}"]`).first();
+  if (await controlButton.count()) {
+    await controlButton.click();
+  }
+
+  const toolButton = page.locator(`#scene-controls-tools [data-tool="${toolName}"]`).first();
+  if (await toolButton.count()) {
+    await toolButton.click();
+    return;
+  }
+
+  const debugState = await page.evaluate(({controlName, moduleId}) => {
     const controls = Array.isArray(ui.controls.controls)
       ? ui.controls.controls
       : Object.values(ui.controls.controls || {});
     const control = controls.find(entry => entry.name === controlName);
-    if (!control) {
-      throw new Error(`Could not find scene control ${controlName}.`);
-    }
-
-    const tools = Array.isArray(control.tools)
+    const tools = Array.isArray(control?.tools)
       ? control.tools
-      : Object.values(control.tools || {});
-    const tool = tools.find(entry => entry.name === toolName);
-    const handler = tool?.onClick || tool?.onChange;
-    if (!handler) {
-      const debugState = {
-        activeControl: ui.controls.control?.name || null,
-        configuredPaste: game.settings.get(moduleId, "enable-scene-paste-tool"),
-        configuredUpload: game.settings.get(moduleId, "enable-scene-upload-tool"),
-        availableTools: tools.map(entry => ({
-          name: entry?.name || null,
-          visible: entry?.visible ?? null,
-          title: entry?.title || null,
-        })),
-      };
-      throw new Error(`Could not find tool ${toolName} on control ${controlName}. Debug: ${JSON.stringify(debugState)}`);
-    }
+      : Object.values(control?.tools || {});
+    return {
+      activeControl: ui.controls.control?.name || null,
+      configuredPaste: game.settings.get(moduleId, "enable-scene-paste-tool"),
+      configuredUpload: game.settings.get(moduleId, "enable-scene-upload-tool"),
+      availableTools: tools.map(entry => ({
+        name: entry?.name || null,
+        visible: entry?.visible ?? null,
+        title: entry?.title || null,
+      })),
+    };
+  }, {controlName, moduleId: MODULE_ID});
 
-    handler(true);
-  }, {controlName, toolName, moduleId: MODULE_ID});
+  throw new Error(`Could not find tool ${toolName} on control ${controlName}. Debug: ${JSON.stringify(debugState)}`);
 }
 
 async function getSceneToolState(page, controlName, toolName) {
-  return page.evaluate(({controlName, toolName}) => {
-    ui.controls.initialize({control: controlName});
-    ui.controls.render(true);
+  const controlButton = page.locator(`#scene-controls-layers [data-control="${controlName}"]`).first();
+  if (await controlButton.count()) {
+    await controlButton.click();
+  }
 
+  return page.evaluate(({controlName, toolName}) => {
     const controls = Array.isArray(ui.controls.controls)
       ? ui.controls.controls
       : Object.values(ui.controls.controls || {});
@@ -1150,6 +1468,7 @@ async function getStateSnapshot(page) {
       entryId: note.entryId,
       pageId: note.pageId,
       text: note.text,
+      textureSrc: note.texture?.src || "",
       x: note.x,
       y: note.y,
     })),
@@ -1229,6 +1548,7 @@ async function getNoteDocument(page, id) {
       entryId: note.entryId,
       pageId: note.pageId,
       text: note.text,
+      textureSrc: note.texture?.src || "",
       x: note.x,
       y: note.y,
     };
@@ -1242,12 +1562,15 @@ function getNewDocuments(before, after, key) {
 
 module.exports = {
   beginClipboardRun,
+  buildSharedFoundryTest,
   clearActiveLayerClipboardObjects,
   clearCanvasMousePosition,
   cleanupClipboardRun,
+  closeOwnedContext,
   closeUploadDestinationConfig,
   controlPlaceable,
   controlPlaceables,
+  createAuthenticatedPage,
   createActorBackedToken,
   createTile,
   createToken,
@@ -1275,6 +1598,9 @@ module.exports = {
   invokeSceneTool,
   loginToFoundry,
   openUploadDestinationConfig,
+  resolveFoundryCredentials,
+  resetFoundrySessions,
+  resetFoundryUiState,
   restoreClipboardRead,
   restoreCorePermissions,
   releaseAllControlledPlaceables,

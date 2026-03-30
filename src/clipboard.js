@@ -106,6 +106,88 @@ function _clipboardExtractImageUrlFromHtml(html) {
   return _clipboardParseSupportedUrl(mediaElement?.getAttribute("src")?.trim());
 }
 
+function _clipboardGetUrlBackedImageInputCandidate(
+  {uriList = "", html = "", plainText = ""} = {},
+  {
+    uriListMessage,
+    htmlMessage,
+    plainTextMessage,
+  } = {}
+) {
+  const fallbackText = plainText || "";
+  const trimmedPlainText = fallbackText.trim();
+  const uriListUrl = _clipboardExtractImageUrlFromUriList(uriList);
+  if (uriListUrl) {
+    return {
+      imageInput: {
+        url: uriListUrl,
+        text: fallbackText || uriListUrl,
+      },
+      message: uriListMessage,
+    };
+  }
+
+  const htmlUrl = _clipboardExtractImageUrlFromHtml(html);
+  if (htmlUrl) {
+    return {
+      imageInput: {
+        url: htmlUrl,
+        text: fallbackText || htmlUrl,
+      },
+      message: htmlMessage,
+    };
+  }
+
+  const textUrl = _clipboardExtractImageUrlFromText(trimmedPlainText);
+  if (textUrl) {
+    return {
+      imageInput: {
+        url: textUrl,
+        text: fallbackText || textUrl,
+      },
+      message: plainTextMessage,
+    };
+  }
+
+  return null;
+}
+
+function _clipboardIsAnimationCapableUrl(url) {
+  return Boolean(url && /\.(?:apng|avif|gif|webp|m4v|mp4|mpeg|mpg|ogg|ogv|webm)(?:$|[?#])/i.test(url));
+}
+
+function _clipboardIsLikelyRasterizedImageBlob(blob) {
+  if (!blob) return false;
+
+  const mimeType = blob.type?.split(";").shift()?.trim()?.toLowerCase() || "";
+  if ([
+    "image/bmp",
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/tif",
+    "image/tiff",
+    "image/x-icon",
+  ].includes(mimeType)) {
+    return true;
+  }
+
+  const extension = blob.name?.split(".").pop()?.trim()?.toLowerCase() || "";
+  return ["bmp", "ico", "jpeg", "jpg", "png", "tif", "tiff"].includes(extension);
+}
+
+function _clipboardShouldPreferUrlCandidateOverBlob(blob, imageInput) {
+  if (!blob || !imageInput?.url) return false;
+
+  const blobMediaKind = _clipboardGetMediaKind({blob, filename: blob.name});
+  const urlMediaKind = _clipboardGetMediaKind({src: imageInput.url});
+  if (!urlMediaKind) return false;
+  if (urlMediaKind === "video") return true;
+  if (blobMediaKind !== "image") return false;
+  if (!_clipboardIsAnimationCapableUrl(imageInput.url)) return false;
+  return _clipboardIsLikelyRasterizedImageBlob(blob);
+}
+
 function _clipboardCreateLoggedImageInput(imageInput, message, details = undefined) {
   const logDetails = {
     imageInput: _clipboardDescribeImageInput(imageInput),
@@ -135,46 +217,33 @@ function _clipboardExtractImageInputFromValues(
     details,
   } = {}
 ) {
+  const urlCandidate = _clipboardGetUrlBackedImageInputCandidate({
+    uriList,
+    html,
+    plainText,
+  }, {
+    uriListMessage,
+    htmlMessage,
+    plainTextMessage,
+  });
+
+  if (blob && urlCandidate && _clipboardShouldPreferUrlCandidateOverBlob(blob, urlCandidate.imageInput)) {
+    return _clipboardCreateLoggedImageInput({
+      ...urlCandidate.imageInput,
+      fallbackBlob: blob,
+    }, "Preferred a direct animated-media URL over a rasterized pasted blob", details);
+  }
+
   if (blob) return _clipboardCreateLoggedImageInput({blob}, blobMessage, details);
 
-  const fallbackText = plainText || "";
-  const trimmedPlainText = fallbackText.trim();
-  const uriListUrl = _clipboardExtractImageUrlFromUriList(uriList);
-  if (uriListUrl) {
-    return _clipboardCreateLoggedImageInput({
-      url: uriListUrl,
-      text: fallbackText || uriListUrl,
-    }, uriListMessage, details);
-  }
-
-  const htmlUrl = _clipboardExtractImageUrlFromHtml(html);
-  if (htmlUrl) {
-    return _clipboardCreateLoggedImageInput({
-      url: htmlUrl,
-      text: fallbackText || htmlUrl,
-    }, htmlMessage, details);
-  }
-
-  const textUrl = _clipboardExtractImageUrlFromText(trimmedPlainText);
-  if (textUrl) {
-    return _clipboardCreateLoggedImageInput({
-      url: textUrl,
-      text: fallbackText || textUrl,
-    }, plainTextMessage, details);
-  }
+  if (urlCandidate) return _clipboardCreateLoggedImageInput(urlCandidate.imageInput, urlCandidate.message, details);
 
   return null;
 }
 
 async function _clipboardExtractImageInput(clipItems) {
-  const blob = await _clipboardExtractImageBlob(clipItems);
-  if (blob) {
-    return _clipboardExtractImageInputFromValues({blob}, {
-      blobMessage: "Resolved media input from async clipboard blob",
-    });
-  }
-
   return _clipboardExtractImageInputFromValues({
+    blob: await _clipboardExtractImageBlob(clipItems),
     uriList: await _clipboardReadClipboardText(clipItems, "text/uri-list"),
     html: await _clipboardReadClipboardText(clipItems, "text/html"),
     plainText: await _clipboardReadClipboardText(clipItems, "text/plain"),
@@ -293,6 +362,10 @@ module.exports = {
   _clipboardExtractImageUrlFromUriList,
   _clipboardExtractImageUrlFromText,
   _clipboardExtractImageUrlFromHtml,
+  _clipboardGetUrlBackedImageInputCandidate,
+  _clipboardIsAnimationCapableUrl,
+  _clipboardIsLikelyRasterizedImageBlob,
+  _clipboardShouldPreferUrlCandidateOverBlob,
   _clipboardCreateLoggedImageInput,
   _clipboardExtractTextInputFromValues,
   _clipboardExtractImageInputFromValues,

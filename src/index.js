@@ -5,6 +5,7 @@ const media = require("./media");
 const text = require("./text");
 const context = require("./context");
 const clipboard = require("./clipboard");
+const fieldTargets = require("./field-targets");
 const notes = require("./notes");
 const chat = require("./chat");
 const workflows = require("./workflows");
@@ -48,6 +49,7 @@ module.exports = {
     ...text,
     ...context,
     ...clipboard,
+    ...fieldTargets,
     ...notes,
     ...chat,
     ...workflows,

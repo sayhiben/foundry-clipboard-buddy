@@ -1,19 +1,27 @@
 const fs = require("fs");
 const path = require("path");
 const {execFileSync, spawnSync} = require("child_process");
-const {test, expect} = require("@playwright/test");
+const {test: base, expect} = require("@playwright/test");
 const {
   beginClipboardRun,
+  buildSharedFoundryTest,
   cleanupClipboardRun,
   dispatchFilePaste,
   focusCanvas,
   getSafeCanvasPoint,
   getStateSnapshot,
   getNewDocuments,
-  loginToFoundry,
+  resetFoundryUiState,
   restoreClipboardRead,
   setCanvasMousePosition,
 } = require("./helpers/foundry");
+
+const GM_CREDENTIALS = {
+  user: process.env.FOUNDRY_GM_USER || "Clipboard QA 1",
+  password: process.env.FOUNDRY_GM_PASSWORD ?? "",
+};
+
+const test = buildSharedFoundryTest(base, GM_CREDENTIALS, {acceptDownloads: true});
 
 const S3_BUCKET = process.env.FOUNDRY_S3_BUCKET || "";
 const HAS_AWS_CLI = spawnSync("aws", ["--version"], {stdio: "ignore"}).status === 0;
@@ -29,14 +37,40 @@ const FOUNDRY_S3_FORCE_PATH_STYLE = HAS_FOUNDRY_S3_FORCE_PATH_STYLE
   ? !/^(false|0|no)$/i.test(process.env.FOUNDRY_S3_FORCE_PATH_STYLE || "")
   : null;
 
+function _clipboardWrapAwsCliError(error, args) {
+  const details = [
+    error?.stderr,
+    error?.stdout,
+    error?.message,
+  ]
+    .filter(Boolean)
+    .map(value => String(value))
+    .join("\n");
+
+  if (/session has expired|reauthenticate using 'aws login'/i.test(details)) {
+    const command = `aws ${args.join(" ")}`;
+    return new Error(
+      `AWS CLI credentials are expired while running \`${command}\`. Run \`aws login\`, refresh Foundry's mirrored AWS config if needed, and rerun the S3 smoke.`,
+      {cause: error}
+    );
+  }
+
+  return error;
+}
+
 function _clipboardAwsJson(args) {
-  const output = execFileSync("aws", args, {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      AWS_PAGER: "",
-    },
-  }).trim();
+  let output;
+  try {
+    output = execFileSync("aws", args, {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        AWS_PAGER: "",
+      },
+    }).trim();
+  } catch (error) {
+    throw _clipboardWrapAwsCliError(error, args);
+  }
 
   if (!output) return null;
   return JSON.parse(output);
@@ -292,15 +326,15 @@ test.describe("S3-compatible storage integration", () => {
     await _clipboardRefreshFoundryS3Credentials();
   });
 
-  test.beforeEach(async ({page}) => {
-    await loginToFoundry(page);
+  test.beforeEach(async ({foundryPage: page}) => {
+    await resetFoundryUiState(page);
   });
 
-  test.afterEach(async ({page}) => {
+  test.afterEach(async ({foundryPage: page}) => {
     await restoreClipboardRead(page).catch(() => {});
   });
 
-  test("uploads pasted media into the configured storage bucket", async ({page}, testInfo) => {
+  test("uploads pasted media into the configured storage bucket", async ({foundryPage: page}, testInfo) => {
     const run = await beginClipboardRun(page, testInfo, {
       source: "s3",
       bucket: S3_BUCKET,

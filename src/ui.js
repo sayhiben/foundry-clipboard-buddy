@@ -24,6 +24,9 @@ const {
   _clipboardReadClipboardItems,
 } = require("./clipboard");
 const {
+  _clipboardGetFocusedArtFieldTarget,
+} = require("./field-targets");
+const {
   _clipboardResolvePasteContext,
   _clipboardCanPasteToContext,
 } = require("./context");
@@ -43,6 +46,7 @@ const {
   _clipboardHandleImageInput,
   _clipboardHandleChatImageInput,
   _clipboardHandleImageInputWithTextFallback,
+  _clipboardHandleArtFieldImageInput,
   _clipboardHandleTextInput,
   _clipboardHasPasteConflict,
   _clipboardHandleScenePasteAction,
@@ -310,9 +314,14 @@ function _clipboardOnChatDrop(event) {
   });
 }
 
-function _clipboardAttachChatUploadButton(root) {
-  if (!_clipboardCanUseChatUploadButton()) return;
-  if (root.querySelector(`[data-action="${CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION}"]`)) return;
+function _clipboardSyncChatUploadButton(root) {
+  const existingButtons = Array.from(root.querySelectorAll(`[data-action="${CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION}"]`));
+  if (!_clipboardCanUseChatUploadButton()) {
+    for (const button of existingButtons) button.remove();
+    return;
+  }
+
+  if (existingButtons.length) return;
 
   const form = root.matches("form") ? root : (root.querySelector("form") || root.closest("form"));
   if (!form) return;
@@ -328,14 +337,20 @@ function _clipboardAttachChatUploadButton(root) {
   form.append(button);
 }
 
+function _clipboardAttachChatUploadButton(root) {
+  _clipboardSyncChatUploadButton(root);
+}
+
 function _clipboardBindChatRoot(root) {
-  if (!root || CLIPBOARD_IMAGE_BOUND_CHAT_ROOTS.has(root)) return;
+  if (!root) return;
+
+  _clipboardSyncChatUploadButton(root);
+  if (CLIPBOARD_IMAGE_BOUND_CHAT_ROOTS.has(root)) return;
 
   root.setAttribute(require("./constants").CLIPBOARD_IMAGE_CHAT_ROOT_ATTRIBUTE, "true");
   root.addEventListener("dragover", _clipboardOnChatDragOver);
   root.addEventListener("dragleave", _clipboardOnChatDragLeave);
   root.addEventListener("drop", _clipboardOnChatDrop);
-  _clipboardAttachChatUploadButton(root);
   CLIPBOARD_IMAGE_BOUND_CHAT_ROOTS.add(root);
 }
 
@@ -386,6 +401,17 @@ function _clipboardOnPaste(event) {
 
   const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
   if (imageInput) {
+    const artFieldTarget = _clipboardGetFocusedArtFieldTarget(event.target);
+    if (artFieldTarget) {
+      if (_clipboardHasPasteConflict({respectCopiedObjects: false})) return;
+
+      _clipboardConsumePasteEvent(event);
+      void _clipboardExecutePasteWorkflow(() => _clipboardHandleArtFieldImageInput(imageInput, artFieldTarget), {
+        respectCopiedObjects: false,
+      });
+      return;
+    }
+
     if (_clipboardGetChatRootFromTarget(event.target)) {
       if (!_clipboardCanUseChatMedia()) return;
       if (_clipboardHasPasteConflict({respectCopiedObjects: false})) return;
@@ -397,12 +423,20 @@ function _clipboardOnPaste(event) {
       return;
     }
 
+    if (_clipboardIsEditableTarget(event.target)) {
+      _clipboardLog("info", "Ignoring pasted media in an unsupported editable target.", {
+        targetTagName: event.target?.tagName || null,
+        targetName: event.target?.name || event.target?.dataset?.edit || null,
+      });
+      return;
+    }
+
     const context = _clipboardResolvePasteContext();
     if (!_clipboardCanHandleCanvasPasteContext(context, "Ignoring pasted media because the canvas context is not eligible.")) return;
     if (_clipboardHasPasteConflict()) return;
 
     _clipboardConsumePasteEvent(event);
-    void _clipboardExecutePasteWorkflow(() => _clipboardHandleImageInputWithTextFallback(imageInput), {
+    void _clipboardExecutePasteWorkflow(() => _clipboardHandleImageInputWithTextFallback(imageInput, {context}), {
       respectCopiedObjects: false,
     });
     return;
@@ -417,7 +451,7 @@ function _clipboardOnPaste(event) {
   if (_clipboardHasPasteConflict()) return;
 
   _clipboardConsumePasteEvent(event);
-  void _clipboardExecutePasteWorkflow(() => _clipboardHandleTextInput(textInput), {
+  void _clipboardExecutePasteWorkflow(() => _clipboardHandleTextInput(textInput, {context}), {
     respectCopiedObjects: false,
   });
 }

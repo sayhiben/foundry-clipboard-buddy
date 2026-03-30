@@ -96,6 +96,109 @@ describe("ui and hook integration helpers", () => {
       restoreClick();
     });
 
+    it("detects focused actor, item, and token art fields", () => {
+      const actorRoot = document.createElement("section");
+      actorRoot.dataset.appid = "actor-sheet";
+      actorRoot.innerHTML = '<input type="text" name="img">';
+      document.body.append(actorRoot);
+      globalThis.ui.windows["actor-sheet"] = {object: {documentName: "Actor"}};
+
+      const itemRoot = document.createElement("section");
+      itemRoot.dataset.appid = "item-sheet";
+      itemRoot.innerHTML = '<input type="text" name="img">';
+      document.body.append(itemRoot);
+      globalThis.ui.windows["item-sheet"] = {object: {documentName: "Item"}};
+
+      const tokenRoot = document.createElement("section");
+      tokenRoot.dataset.appid = "token-config";
+      tokenRoot.innerHTML = '<input type="text" name="texture.src"><input type="text" name="prototypeToken.texture.src">';
+      document.body.append(tokenRoot);
+      globalThis.ui.windows["token-config"] = {object: {documentName: "Token"}};
+
+      expect(api._clipboardGetFocusedArtFieldTarget(actorRoot.querySelector('input[name="img"]'))).toMatchObject({
+        fieldName: "img",
+        documentName: "Actor",
+        mediaKinds: ["image"],
+      });
+      expect(api._clipboardGetFocusedArtFieldTarget(itemRoot.querySelector('input[name="img"]'))).toMatchObject({
+        fieldName: "img",
+        documentName: "Item",
+        mediaKinds: ["image"],
+      });
+      expect(api._clipboardGetFocusedArtFieldTarget(tokenRoot.querySelector('input[name="texture.src"]'))).toMatchObject({
+        fieldName: "texture.src",
+        documentName: "Token",
+        mediaKinds: ["image", "video"],
+      });
+      expect(api._clipboardGetFocusedArtFieldTarget(tokenRoot.querySelector('input[name="prototypeToken.texture.src"]'))).toMatchObject({
+        fieldName: "prototypeToken.texture.src",
+        documentName: "Token",
+        mediaKinds: ["image", "video"],
+      });
+    });
+
+    it("ignores unsupported editable texture fields instead of routing them to canvas", async () => {
+      const tileRoot = document.createElement("section");
+      tileRoot.dataset.appid = "tile-config";
+      tileRoot.innerHTML = '<input type="text" name="texture.src" value="tiles/original.png">';
+      document.body.append(tileRoot);
+      globalThis.ui.windows["tile-config"] = {object: {documentName: "Tile"}};
+      const field = tileRoot.querySelector('input[name="texture.src"]');
+      field.focus();
+
+      const file = new File(["x"], "tile-replacement.png", {type: "image/png"});
+      const event = new Event("paste", {bubbles: true, cancelable: true});
+      Object.defineProperty(event, "clipboardData", {
+        configurable: true,
+        value: createDataTransfer({
+          items: [{
+            kind: "file",
+            getAsFile: () => file,
+          }],
+          files: [file],
+        }),
+      });
+
+      field.dispatchEvent(event);
+      await flush();
+
+      expect(field.value).toBe("tiles/original.png");
+      expect(event.defaultPrevented).toBe(false);
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+      expect(globalThis.canvas.scene.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
+    it("routes pasted media into a focused art field before canvas handling", async () => {
+      const restoreImage = withMockImage();
+      const actorRoot = document.createElement("section");
+      actorRoot.dataset.appid = "actor-sheet";
+      actorRoot.innerHTML = '<input type="text" name="img"><img data-edit="img" src="">';
+      document.body.append(actorRoot);
+      globalThis.ui.windows["actor-sheet"] = {object: {documentName: "Actor"}};
+      const field = actorRoot.querySelector('input[name="img"]');
+      field.focus();
+
+      const file = new File(["x"], "portrait.png", {type: "image/png"});
+      const event = new Event("paste", {bubbles: true, cancelable: true});
+      Object.defineProperty(event, "clipboardData", {
+        configurable: true,
+        value: createDataTransfer({
+          items: [{
+            kind: "file",
+            getAsFile: () => file,
+          }],
+          files: [file],
+        }),
+      });
+
+      field.dispatchEvent(event);
+      await flush();
+
+      expect(field.value).toMatch(/^pasted_images\/portrait-\d+\.png\?foundry-paste-eater=\d+$/);
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+      restoreImage();
+    });
+
     it("warns when direct scene paste is unavailable", () => {
       const originalClipboard = window.navigator.clipboard;
       Object.defineProperty(window.navigator, "clipboard", {
@@ -144,6 +247,14 @@ describe("ui and hook integration helpers", () => {
       expect(window.navigator.clipboard.read).not.toHaveBeenCalled();
       expect(api._clipboardGetScenePastePrompt()).toBeTruthy();
       api._clipboardCloseScenePastePrompt();
+    });
+
+    it("omits the upload button from the scene paste prompt when uploads are disabled", () => {
+      env.settingsValues.set("foundry-paste-eater.enable-scene-upload-tool", false);
+      const prompt = api._clipboardOpenScenePastePrompt();
+
+      expect(prompt.querySelector('[data-action="upload"]')).toBeNull();
+      api._clipboardCloseScenePastePrompt(prompt);
     });
 
     it("supports direct-read-only scene paste tool mode", async () => {
@@ -347,6 +458,16 @@ describe("ui and hook integration helpers", () => {
       restoreClick();
     });
 
+    it("returns false from scene and chat actions when their settings disable them", () => {
+      env.settingsValues.set("foundry-paste-eater.enable-scene-paste-tool", false);
+      env.settingsValues.set("foundry-paste-eater.enable-scene-upload-tool", false);
+      env.settingsValues.set("foundry-paste-eater.enable-chat-media", false);
+
+      expect(api._clipboardHandleScenePasteAction()).toBe(false);
+      expect(api._clipboardHandleSceneUploadAction()).toBe(false);
+      expect(api._clipboardHandleChatUploadAction()).toBe(false);
+    });
+
     it("runs the chat upload action in isolation", async () => {
       const restoreClick = setInputClickBehavior(input => {
         Object.defineProperty(input, "files", {
@@ -454,6 +575,34 @@ describe("ui and hook integration helpers", () => {
 
       expect(controls.tiles.tools["foundry-paste-eater-paste"].visible).toBe(false);
       expect(controls.tiles.tools["foundry-paste-eater-upload"].visible).toBe(true);
+    });
+
+    it("shows both scene controls to allowed non-gm users", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      env.settingsValues.set("foundry-paste-eater.allow-non-gm-scene-controls", true);
+      env.settingsValues.set("foundry-paste-eater.enable-scene-paste-tool", true);
+      env.settingsValues.set("foundry-paste-eater.enable-scene-upload-tool", true);
+
+      const controls = {tiles: {tools: {}}, tokens: {tools: {}}};
+      api._clipboardAddSceneControlButtons(controls);
+
+      expect(controls.tiles.tools["foundry-paste-eater-paste"].visible).toBe(true);
+      expect(controls.tiles.tools["foundry-paste-eater-upload"].visible).toBe(true);
+    });
+
+    it("respects the upload-tool toggle for non-gm users independently", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      env.settingsValues.set("foundry-paste-eater.allow-non-gm-scene-controls", true);
+      env.settingsValues.set("foundry-paste-eater.enable-scene-paste-tool", true);
+      env.settingsValues.set("foundry-paste-eater.enable-scene-upload-tool", false);
+
+      const controls = {tiles: {tools: {}}, tokens: {tools: {}}};
+      api._clipboardAddSceneControlButtons(controls);
+
+      expect(controls.tiles.tools["foundry-paste-eater-paste"].visible).toBe(true);
+      expect(controls.tiles.tools["foundry-paste-eater-upload"].visible).toBe(false);
     });
 
     it("hides scene controls from non-gms when the world setting disallows them", () => {
@@ -1166,7 +1315,40 @@ describe("ui and hook integration helpers", () => {
         ASSISTANT: "Assistant GM",
         GAMEMASTER: "Gamemaster",
       });
+      for (const key of [
+        "minimum-role-canvas-media",
+        "minimum-role-chat-media",
+        "allow-non-gm-scene-controls",
+        "enable-chat-media",
+        "enable-chat-upload-button",
+        "enable-scene-paste-tool",
+        "enable-scene-upload-tool",
+      ]) {
+        expect(registeredByKey.get(key).onChange).toBeTypeOf("function");
+      }
       expect(env.settingsRegistry.size).toBe(Object.keys(expectedSettings).length);
+    });
+
+    it("rerenders scene controls when scene-control visibility settings change", async () => {
+      api._clipboardRegisterSettings();
+
+      globalThis.ui.controls.initialize.mockClear();
+      globalThis.ui.controls.render.mockClear();
+
+      await globalThis.game.settings.set("foundry-paste-eater", "allow-non-gm-scene-controls", true);
+
+      expect(globalThis.ui.controls.initialize).toHaveBeenCalledWith({control: "tiles"});
+      expect(globalThis.ui.controls.render).toHaveBeenCalledWith(true);
+    });
+
+    it("rerenders chat when chat visibility settings change", async () => {
+      api._clipboardRegisterSettings();
+
+      globalThis.ui.chat.render.mockClear();
+
+      await globalThis.game.settings.set("foundry-paste-eater", "enable-chat-upload-button", false);
+
+      expect(globalThis.ui.chat.render).toHaveBeenCalledWith(true);
     });
 
     it("wires init hooks without registering a custom paste keybinding", () => {

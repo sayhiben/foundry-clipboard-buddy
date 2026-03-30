@@ -9,9 +9,11 @@ This repository also ships a Playwright smoke suite under [test/README.md](./tes
 The automated suite is intended to cover stable browser-driven workflows such as:
 - Canvas image paste into tiles and tokens
 - Selected token and tile replacement, including multi-selection updates
+- Selected note icon replacement
 - Canvas video paste and selected tile video replacement
 - Mixed media-and-text clipboard payloads
-- Contextual text note creation, append, tile-linked notes, and multi-placeable text paste
+- Contextual text note creation, append, tile-linked notes, selected-note append, and multi-placeable text paste
+- Focused Actor, Item, and token-config art-field routing
 - Chat image and video paste, drag/drop, and upload
 - Chat non-media URL fallback
 - Direct media URL creation and replacement
@@ -93,7 +95,9 @@ These flows should stay true across the test matrix:
    Expected: every selected token updates in place.
 4. Select multiple tiles and paste media.
    Expected: every selected tile updates in place.
-5. Arrange a case where both tokens and tiles are selected on different layers, then paste once with Tokens active and once with Tiles active.
+5. Select one scene note and paste static image media.
+   Expected: only that note's icon or texture updates in place and no new tile is created.
+6. Arrange a case where both tokens and tiles are selected on different layers, then paste once with Tokens active and once with Tiles active.
    Expected: the active layer's supported selection wins each time.
 
 ### 3. Animated And Video Media
@@ -128,18 +132,31 @@ These flows should stay true across the test matrix:
    Expected: the same linked note is reused and the Journal page content is appended.
 3. Select one tile and paste plain text.
    Expected: the tile receives the same Journal-backed note behavior.
-4. Select multiple supported placeables on the active layer and paste plain text.
+4. Select one scene note and paste plain text.
+   Expected: the selected note reuses its linked Journal entry or page and appends the pasted text.
+5. Select multiple supported placeables on the active layer and paste plain text.
    Expected: each selected placeable receives the pasted text in its linked note.
-5. Clear selection and paste plain text onto open map space.
+6. Clear selection and paste plain text onto open map space.
    Expected: a standalone scene note is created at the mouse position.
-6. Paste multi-line text with blank lines onto open map space.
+7. Paste multi-line text with blank lines onto open map space.
    Expected: paragraph breaks and line breaks are preserved in the created Journal page.
-7. Move a token or tile that already has a linked note, then paste more text onto it.
+8. Move a token or tile that already has a linked note, then paste more text onto it.
    Expected: the same linked note is reused and its scene note position stays in sync with the placeable update flow.
-8. Paste a plain non-media URL onto the canvas.
+9. Paste a plain non-media URL onto the canvas.
    Expected: it is treated as text for note creation rather than media.
 
-### 6. Chat Media
+### 6. Focused Document Art Fields
+
+1. Open an Actor or Item sheet and focus the portrait field.
+   Expected: pasting image media updates the focused art field instead of creating canvas or chat content.
+2. Open a token-configuration style app with a `texture.src` or `prototypeToken.texture.src` field focused and paste media.
+   Expected: image or video media updates the focused field and visible preview instead of creating canvas or chat content.
+3. Paste a direct media URL into a focused supported art field.
+   Expected: the remote file is downloaded, uploaded, and the field value is updated to the uploaded path.
+4. Paste a remote media URL into a focused art field from a host that blocks browser-side downloads.
+   Expected: the original direct media URL is inserted into the field instead of creating broken canvas content.
+
+### 7. Chat Media
 
 1. Focus the chat input and paste a static image.
    Expected: chat posts a media message with a clickable thumbnail and an `Open full media` link.
@@ -156,7 +173,7 @@ These flows should stay true across the test matrix:
 7. Use the chat `Upload Chat Media` button.
    Expected: the file picker accepts image and video files and posts the selected media.
 
-### 7. Chat Plain Text
+### 8. Chat Plain Text
 
 1. Focus the chat input and paste plain text.
    Expected: it remains normal chat text.
@@ -165,7 +182,7 @@ These flows should stay true across the test matrix:
 3. Focus the chat input and paste text that contains a non-direct media page URL.
    Expected: the module does not swallow the text or create broken chat media output.
 
-### 8. Scene Controls And Fallback Paths
+### 9. Scene Controls And Fallback Paths
 
 1. Use the scene-control `Paste Media` button with image data in the clipboard.
    Expected: it creates or replaces media without depending on keyboard shortcuts.
@@ -180,7 +197,7 @@ These flows should stay true across the test matrix:
 6. Confirm that scene-control `Paste Media` and `Upload Media` do not create Journal notes from plain text.
    Expected: those tools stay media-only.
 
-### 9. Upload Destination
+### 10. Upload Destination
 
 1. Leave the upload destination at its default value and paste media.
    Expected: uploads land in `pasted_images`.
@@ -193,7 +210,7 @@ These flows should stay true across the test matrix:
 5. For S3-compatible storage, test a missing or invalid bucket selection.
    Expected: the module reports a clear upload error and does not create broken content.
 
-### 10A. Error Reporting
+### 11A. Error Reporting
 
 1. Force a real module failure, such as selecting S3-compatible storage without a bucket and then pasting media.
    Expected: the acting user gets a short popup notification.
@@ -202,7 +219,7 @@ These flows should stay true across the test matrix:
 3. Enable `Verbose logging` on a client, then trigger the same failure again.
    Expected: that client automatically downloads a verbose Foundry Paste Eater logfile in addition to the normal alert.
 
-### 10. Browser And Platform Validation
+### 11. Browser And Platform Validation
 
 1. In Chrome or Edge, test `Ctrl+V`, browser paste, direct media URLs, text-note creation, and upload fallback.
 2. On macOS, test `Cmd+V` for both media and contextual text paste.
@@ -214,7 +231,7 @@ These flows should stay true across the test matrix:
 5. On an untrusted origin or raw IP address, test explicit paste and upload actions.
    Expected: clipboard-read restrictions fail gracefully while browser paste gestures or uploads still work where supported.
 
-### 11. Settings And Permission Gates
+### 12. Settings And Permission Gates
 
 1. Raise `Minimum role for canvas media paste` above the current user's role and try canvas media paste.
    Expected: no token or tile is created or replaced.
@@ -247,7 +264,7 @@ These flows should stay true across the test matrix:
 15. Toggle `Scene Paste Media prompt mode` between `Auto`, `Always show prompt`, and `Never show prompt`.
    Expected: the explicit scene-control paste button follows the configured behavior.
 
-### 12. Regression Watchlist
+### 13. Regression Watchlist
 
 Review the browser console while testing and confirm:
 - With `Verbose logging` enabled, foundry-paste-eater logs clearly describe clipboard parsing, upload destination, media download, paste routing, and create vs replace outcomes
@@ -257,6 +274,7 @@ Review the browser console while testing and confirm:
 - Chat-targeted paste never duplicates onto the canvas
 - Selected-placeable replacement never resizes or repositions existing tokens or tiles
 - Contextual text paste never creates duplicate note pins for the same linked placeable unless intended
+- Focused supported art fields take precedence over canvas and chat routing
 - Upload destination changes apply to new uploads without breaking prior assets
 - Feature toggles disable the intended workflow without redirecting paste into some other create path
 - If `vtta-tokenizer` is open, media paste is still suppressed as intended

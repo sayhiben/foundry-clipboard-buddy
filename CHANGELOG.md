@@ -1,3 +1,12 @@
+### 1.1.0
+* Add selected scene notes as first-class paste targets: media now replaces note icons in place and plain text appends to linked Journal content
+* Route media paste into focused Actor, Item, and token-style art fields before canvas or chat handling, including direct media URL support and preview refresh
+* Prefer direct animated or video URLs over rasterized clipboard blobs only when the blob is an obvious static fallback, preserving real animated clipboard media
+* Apply scene-control and chat visibility setting changes live in the current session, including removal of stale chat upload buttons
+* Rework the Playwright harness to reuse authenticated sessions for single-user specs, keep multi-user permission flows isolated, and improve local Foundry recovery
+* Expand browser and unit coverage for note workflows, focused art fields, settings and permission behavior, diagnostics, scene-control prompt fallbacks, and direct media URL cases
+* Improve S3 smoke preflight diagnostics so expired local AWS sessions fail with an actionable reauthentication message
+
 ### 1.0.0
 * Route module errors through a shared reporting pipeline that alerts the acting user, relays richer details plus a logfile link to connected GMs, and auto-downloads verbose logfiles for debugging clients
 * Add client-side verbose browser-console logging for clipboard parsing, upload, paste routing, and create vs replace diagnostics

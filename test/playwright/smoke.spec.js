@@ -1,14 +1,16 @@
 const http = require("http");
 const {execFileSync} = require("child_process");
-const {test, expect} = require("@playwright/test");
+const {test: base, expect} = require("@playwright/test");
 const {
   beginClipboardRun,
+  buildSharedFoundryTest,
   clearActiveLayerClipboardObjects,
   clearCanvasMousePosition,
   cleanupClipboardRun,
   closeUploadDestinationConfig,
   controlPlaceable,
   controlPlaceables,
+  createActorBackedToken,
   createTile,
   createToken,
   dispatchClipboardModeKeydown,
@@ -30,9 +32,9 @@ const {
   getTileDocument,
   getTokenDocument,
   invokeSceneTool,
-  loginToFoundry,
   openUploadDestinationConfig,
   releaseAllControlledPlaceables,
+  resetFoundryUiState,
   restoreClipboardRead,
   restoreModuleSettings,
   setModuleSettings,
@@ -40,6 +42,13 @@ const {
   setCanvasMousePosition,
   stubClipboardRead,
 } = require("./helpers/foundry");
+
+const GM_CREDENTIALS = {
+  user: process.env.FOUNDRY_GM_USER || "Clipboard QA 1",
+  password: process.env.FOUNDRY_GM_PASSWORD ?? "",
+};
+
+const test = buildSharedFoundryTest(base, GM_CREDENTIALS, {acceptDownloads: true});
 
 async function startBlockedMediaServer() {
   const body = `<?xml version="1.0" encoding="UTF-8"?>
@@ -121,15 +130,15 @@ async function getTokenActorInfo(page, tokenId) {
 
 test.describe.configure({mode: "serial"});
 
-test.beforeEach(async ({page}) => {
-  await loginToFoundry(page);
+test.beforeEach(async ({foundryPage: page}) => {
+  await resetFoundryUiState(page);
 });
 
-test.afterEach(async ({page}) => {
+test.afterEach(async ({foundryPage: page}) => {
   await restoreClipboardRead(page).catch(() => {});
 });
 
-test("pastes an image as a tile on the Tiles layer", async ({page}, testInfo) => {
+test("pastes an image as a tile on the Tiles layer", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 0);
@@ -161,7 +170,7 @@ test("pastes an image as a tile on the Tiles layer", async ({page}, testInfo) =>
   }
 });
 
-test("uses the intrinsic square SVG size for tile pastes", async ({page}, testInfo) => {
+test("uses the intrinsic square SVG size for tile pastes", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 20);
@@ -212,7 +221,7 @@ test("uses the intrinsic square SVG size for tile pastes", async ({page}, testIn
   }
 });
 
-test("creates correctly sized tiles when different raster images reuse the same filename", async ({page}, testInfo) => {
+test("creates correctly sized tiles when different raster images reuse the same filename", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 0);
@@ -267,7 +276,7 @@ test("creates correctly sized tiles when different raster images reuse the same 
   }
 });
 
-test("pastes a Finder-copied file through the native macOS paste event", async ({page}, testInfo) => {
+test("pastes a Finder-copied file through the native macOS paste event", async ({foundryPage: page}, testInfo) => {
   test.skip(process.platform !== "darwin", "Finder clipboard integration is only available on macOS.");
   test.skip(process.env.PW_HEADLESS === "true", "Finder clipboard integration requires a headed macOS browser session.");
 
@@ -298,7 +307,7 @@ test("pastes a Finder-copied file through the native macOS paste event", async (
   }
 });
 
-test("pastes an image as a token on the Tokens layer", async ({page}, testInfo) => {
+test("pastes an image as a token on the Tokens layer", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 1);
@@ -362,7 +371,7 @@ test("pastes an image as a token on the Tokens layer", async ({page}, testInfo) 
   }
 });
 
-test("normalizes new token sizing for a portrait asset", async ({page}, testInfo) => {
+test("normalizes new token sizing for a portrait asset", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 1);
@@ -389,7 +398,7 @@ test("normalizes new token sizing for a portrait asset", async ({page}, testInfo
   }
 });
 
-test("scales oversized tile media down to one-third of the scene width", async ({page}, testInfo) => {
+test("scales oversized tile media down to one-third of the scene width", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 2);
@@ -417,7 +426,7 @@ test("scales oversized tile media down to one-third of the scene width", async (
   }
 });
 
-test("replaces a selected token image in place", async ({page}, testInfo) => {
+test("replaces a selected token image in place", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 2);
@@ -455,7 +464,7 @@ test("replaces a selected token image in place", async ({page}, testInfo) => {
   }
 });
 
-test("replaces a selected tile image in place", async ({page}, testInfo) => {
+test("replaces a selected tile image in place", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 3);
@@ -492,7 +501,7 @@ test("replaces a selected tile image in place", async ({page}, testInfo) => {
   }
 });
 
-test("replaces multiple selected token images in place", async ({page}, testInfo) => {
+test("replaces multiple selected token images in place", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const firstMouse = await getSafeCanvasPoint(page, 12);
@@ -560,7 +569,7 @@ test("replaces multiple selected token images in place", async ({page}, testInfo
   }
 });
 
-test("replaces multiple selected tile images in place", async ({page}, testInfo) => {
+test("replaces multiple selected tile images in place", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const firstMouse = await getSafeCanvasPoint(page, 14);
@@ -626,7 +635,7 @@ test("replaces multiple selected tile images in place", async ({page}, testInfo)
   }
 });
 
-test("creates a video tile with autoplay, loop, and muted volume", async ({page}, testInfo) => {
+test("creates a video tile with autoplay, loop, and muted volume", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 16);
@@ -657,7 +666,7 @@ test("creates a video tile with autoplay, loop, and muted volume", async ({page}
   }
 });
 
-test("creates a video token on the Tokens layer", async ({page}, testInfo) => {
+test("creates a video token on the Tokens layer", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 17);
@@ -691,7 +700,7 @@ test("creates a video token on the Tokens layer", async ({page}, testInfo) => {
   }
 });
 
-test("replaces a selected tile with video media in place", async ({page}, testInfo) => {
+test("replaces a selected tile with video media in place", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 18);
@@ -733,7 +742,7 @@ test("replaces a selected tile with video media in place", async ({page}, testIn
   }
 });
 
-test("prefers media files over accompanying text in a mixed paste payload", async ({page}, testInfo) => {
+test("prefers media files over accompanying text in a mixed paste payload", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 3);
@@ -761,7 +770,7 @@ test("prefers media files over accompanying text in a mixed paste payload", asyn
   }
 });
 
-test("creates a standalone note when plain text is pasted on open canvas", async ({page}, testInfo) => {
+test("creates a standalone note when plain text is pasted on open canvas", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const text = `${run.prefix} standalone note`;
@@ -803,7 +812,7 @@ test("creates a standalone note when plain text is pasted on open canvas", async
   }
 });
 
-test("creates a standalone note when a non-media URL is pasted on canvas", async ({page}, testInfo) => {
+test("creates a standalone note when a non-media URL is pasted on canvas", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const url = `https://example.com/${run.runId}`;
@@ -835,7 +844,7 @@ test("creates a standalone note when a non-media URL is pasted on canvas", async
   }
 });
 
-test("extracts a media URL from pasted HTML and creates a tile", async ({page}, testInfo) => {
+test("extracts a media URL from pasted HTML and creates a tile", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 6);
@@ -862,7 +871,7 @@ test("extracts a media URL from pasted HTML and creates a tile", async ({page}, 
   }
 });
 
-test("appends plain text to the same linked note for a selected token", async ({page}, testInfo) => {
+test("appends plain text to the same linked note for a selected token", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 5);
@@ -916,7 +925,7 @@ test("appends plain text to the same linked note for a selected token", async ({
   }
 });
 
-test("creates a linked note for a selected tile", async ({page}, testInfo) => {
+test("creates a linked note for a selected tile", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 19);
@@ -956,7 +965,135 @@ test("creates a linked note for a selected tile", async ({page}, testInfo) => {
   }
 });
 
-test("applies pasted text to multiple selected tokens on the active layer", async ({page}, testInfo) => {
+test("replaces a selected note icon in place", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 22);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+
+    const seededNote = await page.evaluate(async ({x, y, textureSrc, name}) => {
+      const entry = await foundry.documents.JournalEntry.create({
+        name,
+        pages: [{
+          name: "Notes",
+          type: "text",
+          text: {
+            content: "<p>Seed</p>",
+            format: CONST.JOURNAL_ENTRY_PAGE_FORMATS.HTML,
+          },
+        }],
+      });
+      const page = entry.pages.contents[0];
+      const [note] = await canvas.scene.createEmbeddedDocuments("Note", [{
+        entryId: entry.id,
+        pageId: page.id,
+        text: name,
+        x,
+        y,
+        texture: {src: textureSrc},
+      }]);
+      return {
+        id: note.id,
+        entryId: entry.id,
+        pageId: page.id,
+      };
+    }, {
+      x: mouse.x,
+      y: mouse.y,
+      textureSrc: getFixtureUrl("test-token.png"),
+      name: `${run.prefix} Scene Note`,
+    });
+
+    await page.evaluate(() => canvas.notes.activate());
+    await controlPlaceable(page, "Note", seededNote.id);
+    const before = await getStateSnapshot(page);
+
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-token.svg",
+      mimeType: "image/svg+xml",
+    });
+
+    await expect.poll(async () => (await getNoteDocument(page, seededNote.id))?.textureSrc || "").toContain(run.uploadFolder);
+    const after = await getStateSnapshot(page);
+    const updatedNote = await getNoteDocument(page, seededNote.id);
+
+    expect(updatedNote.textureSrc).toContain(run.uploadFolder);
+    expect(after.notes.length).toBe(before.notes.length);
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.tokens.length).toBe(before.tokens.length);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("appends pasted text to a selected scene note", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 23);
+    const appendedText = `${run.prefix} note append text`;
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+
+    const seededNote = await page.evaluate(async ({x, y, name}) => {
+      const entry = await foundry.documents.JournalEntry.create({
+        name,
+        pages: [{
+          name: "Notes",
+          type: "text",
+          text: {
+            content: "<p>Seed</p>",
+            format: CONST.JOURNAL_ENTRY_PAGE_FORMATS.HTML,
+          },
+        }],
+      });
+      const page = entry.pages.contents[0];
+      const [note] = await canvas.scene.createEmbeddedDocuments("Note", [{
+        entryId: entry.id,
+        pageId: page.id,
+        text: name,
+        x,
+        y,
+        texture: {src: CONFIG.JournalEntry.noteIcons.Book},
+      }]);
+      return {
+        id: note.id,
+        entryId: entry.id,
+        pageId: page.id,
+      };
+    }, {
+      x: mouse.x,
+      y: mouse.y,
+      name: `${run.prefix} Text Note`,
+    });
+
+    await page.evaluate(() => canvas.notes.activate());
+    await controlPlaceable(page, "Note", seededNote.id);
+
+    await dispatchTextPaste(page, {
+      targetSelector: ".game",
+      text: appendedText,
+      mimeType: "text/plain",
+    });
+
+    await expect.poll(async () => {
+      const journal = await getJournalEntry(page, seededNote.entryId);
+      return journal?.pages?.[0]?.content || "";
+    }).toContain(appendedText);
+
+    const note = await getNoteDocument(page, seededNote.id);
+    const journal = await getJournalEntry(page, seededNote.entryId);
+    expect(note.entryId).toBe(seededNote.entryId);
+    expect(note.pageId).toBe(seededNote.pageId);
+    expect(journal.pages[0].content).toContain("Seed");
+    expect(journal.pages[0].content).toContain(appendedText);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("applies pasted text to multiple selected tokens on the active layer", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const firstMouse = await getSafeCanvasPoint(page, 20);
@@ -1022,7 +1159,478 @@ test("applies pasted text to multiple selected tokens on the active layer", asyn
   }
 });
 
-test("preserves paragraph and line breaks when HTML is pasted into a note", async ({page}, testInfo) => {
+test("fills a focused actor portrait field instead of creating canvas media", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const actorSheet = await page.evaluate(() => {
+      const appId = `clipboard-art-${Date.now()}`;
+      const root = document.createElement("div");
+      root.dataset.appid = appId;
+      root.innerHTML = `
+        <form>
+          <input type="text" name="img" value="icons/svg/mystery-man.svg">
+          <img data-edit="img" src="icons/svg/mystery-man.svg" alt="Portrait preview">
+        </form>
+      `;
+      document.body.append(root);
+
+      ui.windows[appId] = {
+        appId,
+        document: {
+          id: appId,
+          documentName: "Actor",
+        },
+        close: () => {
+          root.remove();
+          delete ui.windows[appId];
+        },
+      };
+
+      return {
+        appId,
+        fieldSelector: `[data-appid="${appId}"] input[name="img"]`,
+      };
+    });
+
+    const selector = actorSheet.fieldSelector;
+    await page.locator(selector).focus();
+    const before = await getStateSnapshot(page);
+
+    await dispatchFilePaste(page, {
+      targetSelector: selector,
+      filename: "test-token.png",
+      mimeType: "image/png",
+    });
+
+    await expect.poll(async () => page.locator(selector).inputValue()).toContain(run.uploadFolder);
+    await expect.poll(async () => {
+      return page.evaluate(appId => {
+        const preview = document.querySelector(`[data-appid="${appId}"] [data-edit="img"]`);
+        return preview?.getAttribute?.("src") || preview?.src || "";
+      }, actorSheet.appId);
+    }).toContain(run.uploadFolder);
+
+    const after = await getStateSnapshot(page);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.notes.length).toBe(before.notes.length);
+  } finally {
+    await page.evaluate(() => {
+      for (const app of Object.values(ui.windows)) {
+        if (app?.document?.documentName !== "Actor") continue;
+        if (!String(app.appId || "").startsWith("clipboard-art-")) continue;
+        app.close?.();
+      }
+    }).catch(() => {});
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("fills a focused item portrait field instead of creating canvas media", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const itemSheet = await page.evaluate(() => {
+      const appId = `clipboard-art-${Date.now()}`;
+      const root = document.createElement("div");
+      root.dataset.appid = appId;
+      root.innerHTML = `
+        <form>
+          <input type="text" name="img" value="icons/svg/item-bag.svg">
+          <img data-edit="img" src="icons/svg/item-bag.svg" alt="Item preview">
+        </form>
+      `;
+      document.body.append(root);
+
+      ui.windows[appId] = {
+        appId,
+        document: {
+          id: appId,
+          documentName: "Item",
+        },
+        close: () => {
+          root.remove();
+          delete ui.windows[appId];
+        },
+      };
+
+      return {
+        appId,
+        fieldSelector: `[data-appid="${appId}"] input[name="img"]`,
+      };
+    });
+
+    const selector = itemSheet.fieldSelector;
+    await page.locator(selector).focus();
+    const before = await getStateSnapshot(page);
+
+    await dispatchFilePaste(page, {
+      targetSelector: selector,
+      filename: "test-token.png",
+      mimeType: "image/png",
+    });
+
+    await expect.poll(async () => page.locator(selector).inputValue()).toContain(run.uploadFolder);
+    await expect.poll(async () => {
+      return page.evaluate(appId => {
+        const preview = document.querySelector(`[data-appid="${appId}"] [data-edit="img"]`);
+        return preview?.getAttribute?.("src") || preview?.src || "";
+      }, itemSheet.appId);
+    }).toContain(run.uploadFolder);
+
+    const after = await getStateSnapshot(page);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.notes.length).toBe(before.notes.length);
+  } finally {
+    await page.evaluate(() => {
+      for (const app of Object.values(ui.windows)) {
+        if (app?.document?.documentName !== "Item") continue;
+        if (!String(app.appId || "").startsWith("clipboard-art-")) continue;
+        app.close?.();
+      }
+    }).catch(() => {});
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("downloads a direct media url into a focused actor portrait field instead of creating canvas media", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const actorSheet = await page.evaluate(() => {
+      const appId = `clipboard-art-${Date.now()}`;
+      const root = document.createElement("div");
+      root.dataset.appid = appId;
+      root.innerHTML = `
+        <form>
+          <input type="text" name="img" value="icons/svg/mystery-man.svg">
+          <img data-edit="img" src="icons/svg/mystery-man.svg" alt="Portrait preview">
+        </form>
+      `;
+      document.body.append(root);
+
+      ui.windows[appId] = {
+        appId,
+        document: {
+          id: appId,
+          documentName: "Actor",
+        },
+        close: () => {
+          root.remove();
+          delete ui.windows[appId];
+        },
+      };
+
+      return {
+        appId,
+        fieldSelector: `[data-appid="${appId}"] input[name="img"]`,
+      };
+    });
+
+    const selector = actorSheet.fieldSelector;
+    await page.locator(selector).focus();
+    const before = await getStateSnapshot(page);
+
+    await dispatchTextPaste(page, {
+      targetSelector: selector,
+      text: getFixtureUrl("test-token.png"),
+      mimeType: "text/plain",
+    });
+
+    await expect.poll(async () => page.locator(selector).inputValue()).toContain(run.uploadFolder);
+    await expect.poll(async () => {
+      return page.evaluate(appId => {
+        const preview = document.querySelector(`[data-appid="${appId}"] [data-edit="img"]`);
+        return preview?.getAttribute?.("src") || preview?.src || "";
+      }, actorSheet.appId);
+    }).toContain(run.uploadFolder);
+
+    const after = await getStateSnapshot(page);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.notes.length).toBe(before.notes.length);
+    expect(after.messages.length).toBe(before.messages.length);
+  } finally {
+    await page.evaluate(() => {
+      for (const app of Object.values(ui.windows)) {
+        if (app?.document?.documentName !== "Actor") continue;
+        if (!String(app.appId || "").startsWith("clipboard-art-")) continue;
+        app.close?.();
+      }
+    }).catch(() => {});
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("falls back to the original direct media url in a focused actor portrait field when download is blocked", async ({foundryPage: page}, testInfo) => {
+  const blockedServer = await startBlockedMediaServer();
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const actorSheet = await page.evaluate(() => {
+      const appId = `clipboard-art-${Date.now()}`;
+      const root = document.createElement("div");
+      root.dataset.appid = appId;
+      root.innerHTML = `
+        <form>
+          <input type="text" name="img" value="icons/svg/mystery-man.svg">
+          <img data-edit="img" src="icons/svg/mystery-man.svg" alt="Portrait preview">
+        </form>
+      `;
+      document.body.append(root);
+
+      ui.windows[appId] = {
+        appId,
+        document: {
+          id: appId,
+          documentName: "Actor",
+        },
+        close: () => {
+          root.remove();
+          delete ui.windows[appId];
+        },
+      };
+
+      return {
+        appId,
+        fieldSelector: `[data-appid="${appId}"] input[name="img"]`,
+      };
+    });
+
+    const selector = actorSheet.fieldSelector;
+    await page.locator(selector).focus();
+    const before = await getStateSnapshot(page);
+
+    await dispatchTextPaste(page, {
+      targetSelector: selector,
+      text: blockedServer.url,
+      mimeType: "text/plain",
+    });
+
+    await expect.poll(async () => page.locator(selector).inputValue()).toBe(blockedServer.url);
+    await expect.poll(async () => {
+      return page.evaluate(appId => {
+        const preview = document.querySelector(`[data-appid="${appId}"] [data-edit="img"]`);
+        return preview?.getAttribute?.("src") || preview?.src || "";
+      }, actorSheet.appId);
+    }).toContain(blockedServer.url);
+
+    const after = await getStateSnapshot(page);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.notes.length).toBe(before.notes.length);
+    expect(after.messages.length).toBe(before.messages.length);
+  } finally {
+    await blockedServer.close();
+    await page.evaluate(() => {
+      for (const app of Object.values(ui.windows)) {
+        if (app?.document?.documentName !== "Actor") continue;
+        if (!String(app.appId || "").startsWith("clipboard-art-")) continue;
+        app.close?.();
+      }
+    }).catch(() => {});
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("fills a real focused token config texture field instead of creating canvas media", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 24);
+    const token = await createActorBackedToken(page, {
+      actorName: `${run.prefix} Token Config Actor`,
+      tokenName: `${run.prefix} Token Config`,
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: mouse.x,
+      y: mouse.y,
+    });
+    const tokenConfig = await page.evaluate(async tokenId => {
+      const tokenDocument = canvas.scene.tokens.get(tokenId);
+      if (!tokenDocument?.sheet) throw new Error(`Could not find a token config sheet for ${tokenId}.`);
+      tokenDocument.sheet.render(true);
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      return {
+        appId: tokenDocument.sheet.id,
+        fieldSelector: `[id="${tokenDocument.sheet.id}"] file-picker[name="texture.src"] input`,
+        pickerSelector: `[id="${tokenDocument.sheet.id}"] file-picker[name="texture.src"]`,
+        appearanceTabSelector: `[id="${tokenDocument.sheet.id}"] [data-action="tab"][data-tab="appearance"]`,
+      };
+    }, token.tokenId);
+
+    const selector = tokenConfig.fieldSelector;
+    await page.locator(tokenConfig.appearanceTabSelector).click();
+    await page.waitForSelector(selector, {state: "visible"});
+    await page.locator(selector).focus();
+    const before = await getStateSnapshot(page);
+
+    await dispatchFilePaste(page, {
+      targetSelector: selector,
+      filename: "test-video.webm",
+      mimeType: "video/webm",
+    });
+
+    await expect.poll(async () => page.locator(selector).inputValue()).toContain(run.uploadFolder);
+    await expect.poll(async () => {
+      return page.evaluate(selector => {
+        const picker = document.querySelector(selector);
+        return picker?.value || "";
+      }, tokenConfig.pickerSelector);
+    }).toContain(run.uploadFolder);
+
+    const after = await getStateSnapshot(page);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.notes.length).toBe(before.notes.length);
+  } finally {
+    await page.evaluate(prefix => {
+      for (const app of foundry.applications.instances.values()) {
+        if (app?.constructor?.name !== "TokenConfig") continue;
+        if (!String(app.title || "").includes(prefix)) continue;
+        app.close?.();
+      }
+    }, run.prefix).catch(() => {});
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("fills a focused actor prototype token texture field instead of creating canvas media", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const actorSheet = await page.evaluate(() => {
+      const appId = `clipboard-art-${Date.now()}`;
+      const root = document.createElement("div");
+      root.dataset.appid = appId;
+      root.innerHTML = `
+        <form>
+          <file-picker name="prototypeToken.texture.src">
+            <input type="text" value="icons/svg/mystery-man.svg">
+          </file-picker>
+          <video data-edit="prototypeToken.texture.src" src=""></video>
+        </form>
+      `;
+      document.body.append(root);
+
+      ui.windows[appId] = {
+        appId,
+        document: {
+          id: appId,
+          documentName: "Actor",
+        },
+        close: () => {
+          root.remove();
+          delete ui.windows[appId];
+        },
+      };
+
+      return {
+        appId,
+        fieldSelector: `[data-appid="${appId}"] file-picker[name="prototypeToken.texture.src"] input`,
+        pickerSelector: `[data-appid="${appId}"] file-picker[name="prototypeToken.texture.src"]`,
+      };
+    });
+
+    const selector = actorSheet.fieldSelector;
+    await page.locator(selector).focus();
+    const before = await getStateSnapshot(page);
+
+    await dispatchFilePaste(page, {
+      targetSelector: selector,
+      filename: "test-video.webm",
+      mimeType: "video/webm",
+    });
+
+    await expect.poll(async () => page.locator(selector).inputValue()).toContain(run.uploadFolder);
+    await expect.poll(async () => {
+      return page.evaluate(selector => {
+        const picker = document.querySelector(selector);
+        return picker?.value || "";
+      }, actorSheet.pickerSelector);
+    }).toContain(run.uploadFolder);
+    await expect.poll(async () => {
+      return page.evaluate(appId => {
+        const preview = document.querySelector(`[data-appid="${appId}"] [data-edit="prototypeToken.texture.src"]`);
+        return preview?.getAttribute?.("src") || preview?.src || "";
+      }, actorSheet.appId);
+    }).toContain(run.uploadFolder);
+
+    const after = await getStateSnapshot(page);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.notes.length).toBe(before.notes.length);
+    expect(after.messages.length).toBe(before.messages.length);
+  } finally {
+    await page.evaluate(() => {
+      for (const app of Object.values(ui.windows)) {
+        if (app?.document?.documentName !== "Actor") continue;
+        if (!String(app.appId || "").startsWith("clipboard-art-")) continue;
+        app.close?.();
+      }
+    }).catch(() => {});
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("ignores unsupported editable texture fields instead of creating canvas media", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const tileConfig = await page.evaluate(() => {
+      const appId = `clipboard-art-${Date.now()}`;
+      const root = document.createElement("div");
+      root.dataset.appid = appId;
+      root.innerHTML = `
+        <form>
+          <input type="text" name="texture.src" value="tiles/original.png">
+        </form>
+      `;
+      document.body.append(root);
+
+      ui.windows[appId] = {
+        appId,
+        object: {
+          id: appId,
+          documentName: "Tile",
+        },
+        close: () => {
+          root.remove();
+          delete ui.windows[appId];
+        },
+      };
+
+      return {
+        appId,
+        fieldSelector: `[data-appid="${appId}"] input[name="texture.src"]`,
+      };
+    });
+
+    const selector = tileConfig.fieldSelector;
+    await page.locator(selector).focus();
+    const before = await getStateSnapshot(page);
+
+    await dispatchFilePaste(page, {
+      targetSelector: selector,
+      filename: "test-token.png",
+      mimeType: "image/png",
+    });
+
+    await page.waitForTimeout(300);
+    await expect(page.locator(selector)).toHaveValue("tiles/original.png");
+
+    const after = await getStateSnapshot(page);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.notes.length).toBe(before.notes.length);
+  } finally {
+    await page.evaluate(() => {
+      for (const app of Object.values(ui.windows)) {
+        if (app?.object?.documentName !== "Tile") continue;
+        if (!String(app.appId || "").startsWith("clipboard-art-")) continue;
+        app.close?.();
+      }
+    }).catch(() => {});
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("preserves paragraph and line breaks when HTML is pasted into a note", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 7);
@@ -1054,7 +1662,7 @@ test("preserves paragraph and line breaks when HTML is pasted into a note", asyn
   }
 });
 
-test("creates hidden tiles when Caps Lock paste mode is active", async ({page}, testInfo) => {
+test("creates hidden tiles when Caps Lock paste mode is active", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 7);
@@ -1093,7 +1701,7 @@ test("creates hidden tiles when Caps Lock paste mode is active", async ({page}, 
   }
 });
 
-test("posts chat media on image paste without creating canvas content", async ({page}, testInfo) => {
+test("posts chat media on image paste without creating canvas content", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const chatSelector = await focusChatInput(page);
@@ -1119,7 +1727,66 @@ test("posts chat media on image paste without creating canvas content", async ({
   }
 });
 
-test("posts chat media on video paste without creating canvas content", async ({page}, testInfo) => {
+test("prefers an animated media url over a rasterized pasted blob in chat", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const chatSelector = await focusChatInput(page);
+    const before = await getStateSnapshot(page);
+
+    await dispatchMixedPaste(page, {
+      targetSelector: chatSelector,
+      filename: "test-token.png",
+      mimeType: "image/png",
+      text: getFixtureUrl("test-animated.gif"),
+      html: `<img src="${getFixtureUrl("test-animated.gif")}" alt="${run.prefix} animated media">`,
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).messages.length).toBe(before.messages.length + 1);
+    const after = await getStateSnapshot(page);
+    const [message] = getNewDocuments(before, after, "messages");
+
+    expect(message.content).toContain(".gif?foundry-paste-eater=");
+    expect(message.content).not.toContain(".png?foundry-paste-eater=");
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.notes.length).toBe(before.notes.length);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("prefers an animated media url over a rasterized pasted blob on the canvas", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 25);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => canvas.tiles.activate());
+
+    const before = await getStateSnapshot(page);
+    await dispatchMixedPaste(page, {
+      targetSelector: ".game",
+      filename: "test-token.png",
+      mimeType: "image/png",
+      text: getFixtureUrl("test-animated.gif"),
+      html: `<img src="${getFixtureUrl("test-animated.gif")}" alt="${run.prefix} animated canvas media">`,
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+    const after = await getStateSnapshot(page);
+    const [tile] = getNewDocuments(before, after, "tiles");
+
+    expect(tile.textureSrc).toContain(".gif?foundry-paste-eater=");
+    expect(tile.textureSrc).not.toContain(".png?foundry-paste-eater=");
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.notes.length).toBe(before.notes.length);
+    expect(after.messages.length).toBe(before.messages.length);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("posts chat media on video paste without creating canvas content", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const chatSelector = await focusChatInput(page);
@@ -1146,7 +1813,7 @@ test("posts chat media on video paste without creating canvas content", async ({
   }
 });
 
-test("accepts dropped chat media without creating canvas content", async ({page}, testInfo) => {
+test("accepts dropped chat media without creating canvas content", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const chatSelector = await focusChatInput(page);
@@ -1171,7 +1838,7 @@ test("accepts dropped chat media without creating canvas content", async ({page}
   }
 });
 
-test("creates media from text/uri-list paste on the canvas", async ({page}, testInfo) => {
+test("creates media from text/uri-list paste on the canvas", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 8);
@@ -1196,7 +1863,7 @@ test("creates media from text/uri-list paste on the canvas", async ({page}, test
   }
 });
 
-test("leaves a non-media URL as plain chat text", async ({page}, testInfo) => {
+test("leaves a non-media URL as plain chat text", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const chatSelector = await focusChatInput(page);
@@ -1220,7 +1887,7 @@ test("leaves a non-media URL as plain chat text", async ({page}, testInfo) => {
   }
 });
 
-test("leaves plain text as normal chat input", async ({page}, testInfo) => {
+test("leaves plain text as normal chat input", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const chatSelector = await focusChatInput(page);
@@ -1257,7 +1924,7 @@ test("leaves plain text as normal chat input", async ({page}, testInfo) => {
   }
 });
 
-test("blocks normal canvas paste when Foundry copied objects are present", async ({page}, testInfo) => {
+test("blocks normal canvas paste when Foundry copied objects are present", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 9);
@@ -1283,7 +1950,7 @@ test("blocks normal canvas paste when Foundry copied objects are present", async
   }
 });
 
-test("downloads a direct media URL and creates a tile", async ({page}, testInfo) => {
+test("downloads a direct media URL and creates a tile", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 6);
@@ -1309,7 +1976,7 @@ test("downloads a direct media URL and creates a tile", async ({page}, testInfo)
   }
 });
 
-test("downloads a direct media URL and creates a token", async ({page}, testInfo) => {
+test("downloads a direct media URL and creates a token", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 22);
@@ -1338,7 +2005,39 @@ test("downloads a direct media URL and creates a token", async ({page}, testInfo
   }
 });
 
-test("downloads a direct media URL and replaces a selected token in place", async ({page}, testInfo) => {
+test("downloads a direct video url and creates a tile", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 26);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => canvas.tiles.activate());
+
+    const before = await getStateSnapshot(page);
+    await dispatchTextPaste(page, {
+      targetSelector: ".game",
+      text: getFixtureUrl("test-video.webm"),
+      mimeType: "text/plain",
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+    const after = await getStateSnapshot(page);
+    const [tile] = getNewDocuments(before, after, "tiles");
+
+    expect(tile.textureSrc).toContain(run.uploadFolder);
+    expect(tile.textureSrc).toContain(".webm");
+    expect(tile.textureSrc).not.toContain("/modules/foundry-paste-eater/test/assets/test-video.webm");
+    expect(tile.video).toMatchObject({
+      autoplay: true,
+      loop: true,
+      volume: 0,
+    });
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("downloads a direct media URL and replaces a selected token in place", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 23);
@@ -1377,7 +2076,7 @@ test("downloads a direct media URL and replaces a selected token in place", asyn
   }
 });
 
-test("downloads a direct media URL and replaces a selected tile in place", async ({page}, testInfo) => {
+test("downloads a direct media URL and replaces a selected tile in place", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     const mouse = await getSafeCanvasPoint(page, 24);
@@ -1415,7 +2114,7 @@ test("downloads a direct media URL and replaces a selected tile in place", async
   }
 });
 
-test("does not create broken canvas content when a direct media url download is blocked", async ({page}, testInfo) => {
+test("does not create broken canvas content when a direct media url download is blocked", async ({foundryPage: page}, testInfo) => {
   const blockedServer = await startBlockedMediaServer();
   const run = await beginClipboardRun(page, testInfo);
   try {
@@ -1447,7 +2146,7 @@ test("does not create broken canvas content when a direct media url download is 
   }
 });
 
-test("leaves the original url text in chat when a direct media url download is blocked", async ({page}, testInfo) => {
+test("leaves the original url text in chat when a direct media url download is blocked", async ({foundryPage: page}, testInfo) => {
   const blockedServer = await startBlockedMediaServer();
   const run = await beginClipboardRun(page, testInfo);
   try {
@@ -1473,7 +2172,7 @@ test("leaves the original url text in chat when a direct media url download is b
   }
 });
 
-test("scene prompt upload still works when copied objects are present and falls back to canvas center", async ({page}, testInfo) => {
+test("scene prompt upload still works when copied objects are present and falls back to canvas center", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
     "enable-scene-paste-tool": true,
@@ -1506,7 +2205,7 @@ test("scene prompt upload still works when copied objects are present and falls 
   }
 });
 
-test("scene paste reads later async clipboard items, ignores copied objects, and falls back to canvas center", async ({page}, testInfo) => {
+test("scene paste reads later async clipboard items, ignores copied objects, and falls back to canvas center", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
     "enable-scene-paste-tool": true,
@@ -1550,7 +2249,7 @@ test("scene paste reads later async clipboard items, ignores copied objects, and
   }
 });
 
-test("scene paste button falls back to a manual paste prompt when direct reads cannot access media", async ({page}, testInfo) => {
+test("scene paste button falls back to a manual paste prompt when direct reads cannot access media", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
     "enable-scene-paste-tool": true,
@@ -1584,7 +2283,7 @@ test("scene paste button falls back to a manual paste prompt when direct reads c
   }
 });
 
-test("scene paste button supports Finder-copied files on macOS via the prompt fallback", async ({page}, testInfo) => {
+test("scene paste button supports Finder-copied files on macOS via the prompt fallback", async ({foundryPage: page}, testInfo) => {
   test.skip(process.platform !== "darwin", "Finder clipboard integration is only available on macOS.");
   test.skip(process.env.PW_HEADLESS === "true", "Finder clipboard integration requires a headed macOS browser session.");
 
@@ -1619,7 +2318,7 @@ test("scene paste button supports Finder-copied files on macOS via the prompt fa
   }
 });
 
-test("uses the chat upload button to post media", async ({page}, testInfo) => {
+test("uses the chat upload button to post media", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
     await focusChatInput(page);
@@ -1641,7 +2340,7 @@ test("uses the chat upload button to post media", async ({page}, testInfo) => {
   }
 });
 
-test("shows the configured S3 endpoint in the upload destination config and hides it for non-s3 sources", async ({page}) => {
+test("shows the configured S3 endpoint in the upload destination config and hides it for non-s3 sources", async ({foundryPage: page}) => {
   const previousSettings = await setModuleSettings(page, {
     "image-location-source": "s3",
     "image-location": "worlds/foundry-paste-eater-v13-test/pasted_images",
@@ -1681,7 +2380,7 @@ test("shows the configured S3 endpoint in the upload destination config and hide
   }
 });
 
-test("fails cleanly when S3-compatible storage is selected without a bucket", async ({page}, testInfo) => {
+test("fails cleanly when S3-compatible storage is selected without a bucket", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo, {
     source: "s3",
     bucket: "",
@@ -1713,7 +2412,7 @@ test("fails cleanly when S3-compatible storage is selected without a bucket", as
   }
 });
 
-test("feature toggles disable canvas create and replace flows without rerouting", async ({page}, testInfo) => {
+test("feature toggles disable canvas create and replace flows without rerouting", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
     "enable-token-creation": false,
@@ -1789,7 +2488,7 @@ test("feature toggles disable canvas create and replace flows without rerouting"
   }
 });
 
-test("chat feature toggles disable media posting and the upload button", async ({page}, testInfo) => {
+test("chat feature toggles disable media posting and the upload button", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
     "enable-chat-media": false,

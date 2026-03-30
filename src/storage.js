@@ -137,15 +137,44 @@ function _clipboardDescribeDestination(destination) {
   return `${_clipboardGetSourceLabel(destination.source)} / ${destination.target}`;
 }
 
+function _clipboardIsStoragePermissionError(error) {
+  const message = String(error?.message || error || "");
+  return /(permission|forbidden|access denied|not authorized|not permitted|unauthorized|accessdenied|eacces)/i.test(message);
+}
+
+function _clipboardBuildStoragePermissionResolution(destination) {
+  const destinationLabel = destination.source === CLIPBOARD_IMAGE_SOURCE_S3
+    ? `the active ${_clipboardGetSourceLabel(destination.source)} destination${destination.bucket ? ` (${destination.bucket})` : ""}`
+    : `the active ${_clipboardGetSourceLabel(destination.source)} destination`;
+  return `A GM can fix this in Foundry's core settings, not this module's settings: check Configure Permissions for file upload access and confirm ${destinationLabel} is writable for this player.`;
+}
+
+function _clipboardWrapStoragePermissionError(error, destination, phase) {
+  if (!_clipboardIsStoragePermissionError(error)) return error;
+
+  const wrappedError = new Error(`Foundry denied permission to ${phase} in the active storage destination.`);
+  wrappedError.cause = error;
+  wrappedError.clipboardSummary = `Foundry denied permission to ${phase} in the active storage destination.`;
+  wrappedError.clipboardResolution = _clipboardBuildStoragePermissionResolution(destination);
+  wrappedError.clipboardStoragePermission = true;
+  wrappedError.clipboardStoragePermissionPhase = phase;
+  wrappedError.clipboardDestination = _clipboardDescribeDestinationForLog(destination);
+  return wrappedError;
+}
+
 function _clipboardAssertUploadDestination(destination) {
   if (destination.source === CLIPBOARD_IMAGE_SOURCE_S3 && !destination.bucket) {
-    throw new Error("S3-compatible destinations require a bucket selection");
+    const error = new Error("S3-compatible destinations require a bucket selection.");
+    error.clipboardSummary = "S3-compatible destinations require a bucket selection.";
+    error.clipboardResolution = "A GM can fix this in Foundry Paste Eater's world settings by choosing a bucket for the active S3-compatible destination.";
+    throw error;
   }
 }
 
 async function _clipboardCreateFolderIfMissing(destination) {
   const options = _clipboardGetFilePickerOptions(destination);
   _clipboardAssertUploadDestination(destination);
+
   _clipboardLog("debug", "Ensuring upload destination exists", {
     destination: _clipboardDescribeDestinationForLog(destination),
   });
@@ -160,26 +189,34 @@ async function _clipboardCreateFolderIfMissing(destination) {
   try {
     await CLIPBOARD_IMAGE_FILE_PICKER.browse(destination.source, destination.target, options);
   } catch (error) {
+    if (_clipboardIsStoragePermissionError(error)) {
+      throw _clipboardWrapStoragePermissionError(error, destination, "create or access the upload folder");
+    }
+
     const segments = destination.target.split("/").filter(Boolean);
     let currentPath = "";
 
-    for (const segment of segments) {
-      currentPath = currentPath ? `${currentPath}/${segment}` : segment;
+    try {
+      for (const segment of segments) {
+        currentPath = currentPath ? `${currentPath}/${segment}` : segment;
 
-      try {
-        await CLIPBOARD_IMAGE_FILE_PICKER.browse(destination.source, currentPath, options);
-      } catch (browseError) {
         try {
-          _clipboardLog("debug", "Creating missing upload directory segment", {
-            destination: _clipboardDescribeDestinationForLog(destination),
-            currentPath,
-          });
-          await CLIPBOARD_IMAGE_FILE_PICKER.createDirectory(destination.source, currentPath, options);
-        } catch (createError) {
-          const message = createError instanceof Error ? createError.message : `${createError}`;
-          if (!/already exists|EEXIST/i.test(message)) throw createError;
+          await CLIPBOARD_IMAGE_FILE_PICKER.browse(destination.source, currentPath, options);
+        } catch (browseError) {
+          try {
+            _clipboardLog("debug", "Creating missing upload directory segment", {
+              destination: _clipboardDescribeDestinationForLog(destination),
+              currentPath,
+            });
+            await CLIPBOARD_IMAGE_FILE_PICKER.createDirectory(destination.source, currentPath, options);
+          } catch (createError) {
+            const message = createError instanceof Error ? createError.message : `${createError}`;
+            if (!/already exists|EEXIST/i.test(message)) throw createError;
+          }
         }
       }
+    } catch (nestedError) {
+      throw _clipboardWrapStoragePermissionError(nestedError, destination, "create or access the upload folder");
     }
   }
 
@@ -232,7 +269,9 @@ async function _clipboardUploadBlob(blob, targetFolder) {
     targetFolder.target,
     file,
     _clipboardGetFilePickerOptions(targetFolder)
-  );
+  ).catch(error => {
+    throw _clipboardWrapStoragePermissionError(error, targetFolder, "upload pasted media");
+  });
   const uploadPath = uploadResponse?.path;
 
   if (!uploadPath) {
