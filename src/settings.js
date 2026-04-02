@@ -21,6 +21,8 @@ const {
   CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING,
   CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING,
   CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING,
+  CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SETTING,
+  CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING,
   CLIPBOARD_IMAGE_ROLE_PLAYER,
   CLIPBOARD_IMAGE_ROLE_TRUSTED,
   CLIPBOARD_IMAGE_ROLE_ASSISTANT,
@@ -36,6 +38,11 @@ const {
   CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO,
   CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS,
   CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER,
+  CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SCENE_ONLY,
+  CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_ACTOR_ART,
+  CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_PROMPT,
+  CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_FLAT,
+  CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_CONTEXT_USER_MONTH,
 } = require("./constants");
 const {_clipboardLog} = require("./diagnostics");
 const {FoundryPasteEaterDestinationConfig} = require("./config-app");
@@ -62,6 +69,8 @@ const CLIPBOARD_IMAGE_SETTINGS_MIGRATION_KEYS = [
   CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING,
   CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING,
   CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING,
+  CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SETTING,
+  CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING,
 ];
 
 function _clipboardGetRoleChoices() {
@@ -215,6 +224,27 @@ function _clipboardGetScenePastePromptMode() {
   }
 
   return CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO;
+}
+
+function _clipboardGetSelectedTokenPasteMode() {
+  const configuredMode = _clipboardGetSetting(CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SETTING);
+  if (
+    configuredMode === CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_ACTOR_ART ||
+    configuredMode === CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_PROMPT
+  ) {
+    return configuredMode;
+  }
+
+  return CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SCENE_ONLY;
+}
+
+function _clipboardGetUploadPathOrganizationMode() {
+  const configuredMode = _clipboardGetSetting(CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING);
+  if (configuredMode === CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_CONTEXT_USER_MONTH) {
+    return configuredMode;
+  }
+
+  return CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_FLAT;
 }
 
 function _clipboardCanCreateTokens() {
@@ -512,6 +542,33 @@ function _clipboardRegisterSettings() {
     },
     default: CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO,
   });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SETTING, {
+    name: "Selected token image paste mode",
+    hint: "Choose whether pasted images replace only the selected scene token, update the Actor portrait and linked token art, or ask each time for eligible linked tokens.",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: {
+      [CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SCENE_ONLY]: "Scene token only",
+      [CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_ACTOR_ART]: "Actor portrait + linked token art",
+      [CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_PROMPT]: "Ask each time",
+    },
+    default: CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SCENE_ONLY,
+  });
+
+  game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING, {
+    name: "Upload path organization",
+    hint: "Optionally append context, user, and month folders under the configured base destination to separate chat, canvas, and document-art uploads.",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: {
+      [CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_FLAT]: "Flat",
+      [CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_CONTEXT_USER_MONTH]: "Context / user / month",
+    },
+    default: CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_FLAT,
+  });
 }
 
 module.exports = {
@@ -540,6 +597,8 @@ module.exports = {
   _clipboardGetChatMediaDisplayMode,
   _clipboardGetCanvasTextPasteMode,
   _clipboardGetScenePastePromptMode,
+  _clipboardGetSelectedTokenPasteMode,
+  _clipboardGetUploadPathOrganizationMode,
   _clipboardCanCreateTokens,
   _clipboardCanCreateTiles,
   _clipboardCanReplaceTokens,

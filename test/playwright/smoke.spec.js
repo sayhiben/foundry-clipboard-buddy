@@ -108,6 +108,33 @@ async function rerenderChat(page) {
   await focusChatInput(page);
 }
 
+async function pasteNativeClipboardWithRetry(page, {prepare, verify, attempts = 3} = {}) {
+  const pasteShortcut = process.platform === "darwin" ? "Meta+V" : "Control+V";
+  let lastError = null;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (prepare) await prepare();
+    await page.bringToFront();
+    await expect.poll(() => page.evaluate(() => document.hasFocus()), {
+      timeout: 5_000,
+      message: "Expected the browser page to be focused before sending the native paste shortcut.",
+    }).toBe(true);
+    await page.waitForTimeout(150);
+    await page.keyboard.press(pasteShortcut);
+
+    try {
+      if (verify) await verify();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts - 1) throw error;
+      await page.waitForTimeout(250);
+    }
+  }
+
+  throw lastError ?? new Error("Native clipboard paste did not complete successfully.");
+}
+
 async function getPlaceableTextNoteFlag(page, documentName, id) {
   return page.evaluate(({documentName, id}) => {
     const collection = documentName === "Token" ? canvas.scene.tokens : canvas.scene.tiles;
@@ -293,10 +320,14 @@ test("pastes a Finder-copied file through the native macOS paste event", async (
     ]);
 
     const before = await getStateSnapshot(page);
-    await page.bringToFront();
-    await page.keyboard.press("Meta+V");
-
-    await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+    await pasteNativeClipboardWithRetry(page, {
+      prepare: async () => {
+        await focusCanvas(page);
+      },
+      verify: async () => {
+        await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+      },
+    });
     const after = await getStateSnapshot(page);
     const [tile] = getNewDocuments(before, after, "tiles");
 
@@ -2177,6 +2208,7 @@ test("scene prompt upload still works when copied objects are present and falls 
   const previousSettings = await setModuleSettings(page, {
     "enable-scene-paste-tool": true,
     "enable-scene-upload-tool": true,
+    "scene-paste-prompt-mode": "auto",
   });
   try {
     const dimensions = await getCanvasDimensions(page);
@@ -2210,6 +2242,7 @@ test("scene paste reads later async clipboard items, ignores copied objects, and
   const previousSettings = await setModuleSettings(page, {
     "enable-scene-paste-tool": true,
     "enable-scene-upload-tool": true,
+    "scene-paste-prompt-mode": "auto",
   });
   try {
     const dimensions = await getCanvasDimensions(page);
@@ -2222,15 +2255,7 @@ test("scene paste reads later async clipboard items, ignores copied objects, and
     ]);
 
     const before = await getStateSnapshot(page);
-    await page.evaluate(() => {
-      ui.controls.initialize({control: "tiles"});
-      ui.controls.render(true);
-    });
-    await page.evaluate(() => {
-      const button = document.querySelector('[data-tool="foundry-paste-eater-paste"]');
-      if (!button) throw new Error("Could not find the scene Paste Media button.");
-      button.click();
-    });
+    await invokeSceneTool(page, "tiles", "foundry-paste-eater-paste");
 
     await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
     const after = await getStateSnapshot(page);
@@ -2254,6 +2279,7 @@ test("scene paste button falls back to a manual paste prompt when direct reads c
   const previousSettings = await setModuleSettings(page, {
     "enable-scene-paste-tool": true,
     "enable-scene-upload-tool": true,
+    "scene-paste-prompt-mode": "auto",
   });
   try {
     await clearCanvasMousePosition(page);
@@ -2261,11 +2287,7 @@ test("scene paste button falls back to a manual paste prompt when direct reads c
     await stubClipboardRead(page, [{}]);
 
     const before = await getStateSnapshot(page);
-    await page.evaluate(() => {
-      const button = document.querySelector('[data-tool="foundry-paste-eater-paste"]');
-      if (!button) throw new Error("Could not find the scene Paste Media button.");
-      button.click();
-    });
+    await invokeSceneTool(page, "tiles", "foundry-paste-eater-paste");
 
     await expect(page.locator("#foundry-paste-eater-scene-paste-target")).toBeVisible();
     await dispatchFilePaste(page, {
@@ -2291,6 +2313,7 @@ test("scene paste button supports Finder-copied files on macOS via the prompt fa
   const previousSettings = await setModuleSettings(page, {
     "enable-scene-paste-tool": true,
     "enable-scene-upload-tool": true,
+    "scene-paste-prompt-mode": "auto",
   });
   try {
     await clearCanvasMousePosition(page);
@@ -2302,15 +2325,16 @@ test("scene paste button supports Finder-copied files on macOS via the prompt fa
     ]);
 
     const before = await getStateSnapshot(page);
-    await page.evaluate(() => {
-      const button = document.querySelector('[data-tool="foundry-paste-eater-paste"]');
-      if (!button) throw new Error("Could not find the scene Paste Media button.");
-      button.click();
-    });
+    await invokeSceneTool(page, "tiles", "foundry-paste-eater-paste");
     await expect(page.locator("#foundry-paste-eater-scene-paste-target")).toBeVisible();
-    await page.keyboard.press("Meta+V");
-
-    await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+    await pasteNativeClipboardWithRetry(page, {
+      prepare: async () => {
+        await page.locator("#foundry-paste-eater-scene-paste-target").focus();
+      },
+      verify: async () => {
+        await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+      },
+    });
     await expect(page.locator("#foundry-paste-eater-scene-paste-prompt")).toHaveCount(0);
   } finally {
     await restoreModuleSettings(page, previousSettings);

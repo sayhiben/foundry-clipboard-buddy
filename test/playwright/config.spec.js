@@ -4,13 +4,16 @@ const {
   buildSharedFoundryTest,
   cleanupClipboardRun,
   closeUploadDestinationConfig,
+  controlPlaceable,
   dispatchFilePaste,
   dispatchTextPaste,
   focusCanvas,
   focusChatInput,
+  getFixtureUrl,
   getNewDocuments,
   getSafeCanvasPoint,
   getStateSnapshot,
+  getTokenDocument,
   getUploadDestinationSummary,
   invokeSceneTool,
   openUploadDestinationConfig,
@@ -47,6 +50,186 @@ async function getTokenActorInfo(page, tokenId) {
       actorExists: Boolean(token?.actor),
     };
   }, tokenId);
+}
+
+async function createLinkedActorToken(page, {
+  actorName,
+  tokenName,
+  textureSrc,
+  x,
+  y,
+  width = 1,
+  height = 1,
+}) {
+  return page.evaluate(async data => {
+    const ActorDocument = globalThis.Actor || foundry.documents.Actor;
+    const actor = await ActorDocument.create({
+      name: data.actorName,
+      type: CONFIG.Actor.defaultType || game.system.documentTypes.Actor?.[0] || "character",
+      img: data.textureSrc,
+      prototypeToken: {
+        name: data.tokenName,
+        texture: {src: data.textureSrc},
+        width: data.width,
+        height: data.height,
+      },
+    });
+
+    const [token] = await canvas.scene.createEmbeddedDocuments("Token", [{
+      actorId: actor.id,
+      actorLink: true,
+      name: data.tokenName,
+      texture: {src: data.textureSrc},
+      width: data.width,
+      height: data.height,
+      x: data.x,
+      y: data.y,
+      hidden: false,
+      locked: false,
+    }]);
+
+    return {
+      actorId: actor.id,
+      tokenId: token.id,
+    };
+  }, {actorName, tokenName, textureSrc, x, y, width, height});
+}
+
+async function getActorArtInfo(page, actorId) {
+  return page.evaluate(id => {
+    const actor = game.actors.get(id);
+    return {
+      img: actor?.img || "",
+      prototypeTokenSrc: actor?.prototypeToken?.texture?.src || "",
+    };
+  }, actorId);
+}
+
+async function createLinkedTokenOnScene(page, {
+  sceneName,
+  actorId,
+  tokenName,
+  textureSrc,
+  x,
+  y,
+  width = 1,
+  height = 1,
+}) {
+  return page.evaluate(async data => {
+    const SceneDocument = globalThis.Scene || foundry.documents.Scene;
+    const scene = await SceneDocument.create({
+      name: data.sceneName,
+      navigation: false,
+      active: false,
+    });
+
+    const [token] = await scene.createEmbeddedDocuments("Token", [{
+      actorId: data.actorId,
+      actorLink: true,
+      name: data.tokenName,
+      texture: {src: data.textureSrc},
+      width: data.width,
+      height: data.height,
+      x: data.x,
+      y: data.y,
+      hidden: false,
+      locked: false,
+    }]);
+
+    return {
+      sceneId: scene.id,
+      tokenId: token.id,
+    };
+  }, {sceneName, actorId, tokenName, textureSrc, x, y, width, height});
+}
+
+async function getSceneTokenDocument(page, {sceneId, tokenId}) {
+  return page.evaluate(data => {
+    const scene = game.scenes.get(data.sceneId);
+    const token = scene?.tokens?.get?.(data.tokenId) ||
+      scene?.tokens?.contents?.find?.(candidate => candidate.id === data.tokenId) ||
+      null;
+    if (!token) return null;
+    return {
+      id: token.id,
+      actorId: token.actorId,
+      textureSrc: token.texture?.src || "",
+      x: token.x,
+      y: token.y,
+      width: token.width,
+      height: token.height,
+    };
+  }, {sceneId, tokenId});
+}
+
+async function captureClipboardErrors(page) {
+  await page.evaluate(() => {
+    window.__clipboardConfigErrors = [];
+    if (ui.notifications.__clipboardConfigErrorsWrapped) return;
+
+    const originalError = ui.notifications.error.bind(ui.notifications);
+    ui.notifications.error = message => {
+      window.__clipboardConfigErrors.push(String(message || ""));
+      return originalError(message);
+    };
+    ui.notifications.__clipboardConfigErrorsWrapped = true;
+  });
+}
+
+async function getClipboardErrors(page) {
+  return page.evaluate(() => [...(window.__clipboardConfigErrors || [])]);
+}
+
+async function createTemporaryActorPortraitField(page) {
+  return page.evaluate(() => {
+    const appId = `clipboard-art-${Date.now()}`;
+    const root = document.createElement("div");
+    root.dataset.appid = appId;
+    root.innerHTML = `
+      <form>
+        <input type="text" name="img" value="icons/svg/mystery-man.svg">
+        <img data-edit="img" src="icons/svg/mystery-man.svg" alt="Portrait preview">
+      </form>
+    `;
+    document.body.append(root);
+
+    ui.windows[appId] = {
+      appId,
+      document: {
+        id: appId,
+        documentName: "Actor",
+      },
+      close: () => {
+        root.remove();
+        delete ui.windows[appId];
+      },
+    };
+
+    return {
+      appId,
+      fieldSelector: `[data-appid="${appId}"] input[name="img"]`,
+      previewSelector: `[data-appid="${appId}"] [data-edit="img"]`,
+    };
+  });
+}
+
+async function closeTemporaryActorPortraitFields(page) {
+  await page.evaluate(() => {
+    for (const app of Object.values(ui.windows)) {
+      if (app?.document?.documentName !== "Actor") continue;
+      if (!String(app.appId || "").startsWith("clipboard-art-")) continue;
+      app.close?.();
+    }
+  }).catch(() => {});
+}
+
+async function getExpectedOrganizedUploadPrefix(page, baseTarget, uploadContext) {
+  return page.evaluate(({baseTarget, uploadContext}) => {
+    const userId = game.user?.id || "user";
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    return `${baseTarget}/${uploadContext}/${userId}/${month}/`;
+  }, {baseTarget, uploadContext});
 }
 
 test("default empty-canvas target steers new media creation across all configured modes", async ({foundryPage: page}, testInfo) => {
@@ -141,6 +324,334 @@ test("create-backing-actors controls whether new pasted tokens get backing actor
     await expect.poll(() => getTokenActorInfo(page, backedToken.id)).toMatchObject({
       actorExists: true,
     });
+  } finally {
+    await restoreModuleSettings(page, previousSettings);
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("selected token scene-only mode leaves actor art unchanged while replacing the scene token", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "selected-token-paste-mode": "scene-only",
+  });
+
+  try {
+    await focusCanvas(page);
+    const linked = await createLinkedActorToken(page, {
+      actorName: `${run.prefix} Scene Only Actor`,
+      tokenName: `${run.prefix} Scene Only Token`,
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: 400,
+      y: 400,
+    });
+    const beforeActor = await getActorArtInfo(page, linked.actorId);
+
+    await controlPlaceable(page, "Token", linked.tokenId);
+    await focusCanvas(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-portrait.svg",
+      mimeType: "image/svg+xml",
+    });
+
+    await expect.poll(() => getTokenDocument(page, linked.tokenId)).toMatchObject({
+      textureSrc: expect.stringContaining(run.uploadFolder),
+    });
+    expect(await getActorArtInfo(page, linked.actorId)).toEqual(beforeActor);
+  } finally {
+    await restoreModuleSettings(page, previousSettings);
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("selected token actor-art mode updates the actor portrait and linked token defaults", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "selected-token-paste-mode": "actor-art",
+  });
+
+  try {
+    await focusCanvas(page);
+    const linked = await createLinkedActorToken(page, {
+      actorName: `${run.prefix} Actor Art`,
+      tokenName: `${run.prefix} Actor Art Token`,
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: 500,
+      y: 500,
+    });
+
+    await controlPlaceable(page, "Token", linked.tokenId);
+    await focusCanvas(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-portrait.svg",
+      mimeType: "image/svg+xml",
+    });
+
+    await expect.poll(() => getActorArtInfo(page, linked.actorId)).toMatchObject({
+      img: expect.stringContaining(run.uploadFolder),
+      prototypeTokenSrc: expect.stringContaining(run.uploadFolder),
+    });
+  } finally {
+    await restoreModuleSettings(page, previousSettings);
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("selected token actor-art mode updates linked tokens on other scenes for the same actor", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "selected-token-paste-mode": "actor-art",
+  });
+  let secondarySceneId = null;
+
+  try {
+    await focusCanvas(page);
+    const linked = await createLinkedActorToken(page, {
+      actorName: `${run.prefix} Cross Scene Actor`,
+      tokenName: `${run.prefix} Cross Scene Active Token`,
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: 540,
+      y: 540,
+    });
+    const secondary = await createLinkedTokenOnScene(page, {
+      sceneName: `${run.prefix} Actor Art Secondary Scene`,
+      actorId: linked.actorId,
+      tokenName: `${run.prefix} Cross Scene Linked Token`,
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: 240,
+      y: 240,
+    });
+    secondarySceneId = secondary.sceneId;
+
+    await controlPlaceable(page, "Token", linked.tokenId);
+    await focusCanvas(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-portrait.svg",
+      mimeType: "image/svg+xml",
+    });
+
+    await expect.poll(() => getActorArtInfo(page, linked.actorId)).toMatchObject({
+      img: expect.stringContaining(run.uploadFolder),
+      prototypeTokenSrc: expect.stringContaining(run.uploadFolder),
+    });
+    await expect.poll(() => getTokenDocument(page, linked.tokenId)).toMatchObject({
+      textureSrc: expect.stringContaining(run.uploadFolder),
+    });
+    await expect.poll(() => getSceneTokenDocument(page, secondary)).toMatchObject({
+      textureSrc: expect.stringContaining(run.uploadFolder),
+    });
+  } finally {
+    if (secondarySceneId) {
+      await page.evaluate(async sceneId => {
+        const scene = game.scenes.get(sceneId);
+        if (scene) await scene.delete();
+      }, secondarySceneId).catch(() => {});
+    }
+    await restoreModuleSettings(page, previousSettings);
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("ineligible actor-art replacement fails closed without changing the token or actor", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "selected-token-paste-mode": "actor-art",
+  });
+
+  try {
+    await captureClipboardErrors(page);
+    await focusCanvas(page);
+    const unlinked = await page.evaluate(async data => {
+      const ActorDocument = globalThis.Actor || foundry.documents.Actor;
+      const actor = await ActorDocument.create({
+        name: data.actorName,
+        type: CONFIG.Actor.defaultType || game.system.documentTypes.Actor?.[0] || "character",
+        img: data.textureSrc,
+        prototypeToken: {
+          name: data.tokenName,
+          texture: {src: data.textureSrc},
+          width: 1,
+          height: 1,
+        },
+      });
+
+      const [token] = await canvas.scene.createEmbeddedDocuments("Token", [{
+        actorId: actor.id,
+        actorLink: false,
+        name: data.tokenName,
+        texture: {src: data.textureSrc},
+        width: 1,
+        height: 1,
+        x: 600,
+        y: 600,
+        hidden: false,
+        locked: false,
+      }]);
+
+      return {
+        actorId: actor.id,
+        tokenId: token.id,
+      };
+    }, {
+      actorName: `${run.prefix} Unlinked Actor`,
+      tokenName: `${run.prefix} Unlinked Token`,
+      textureSrc: getFixtureUrl("test-token.png"),
+    });
+    const beforeActor = await getActorArtInfo(page, unlinked.actorId);
+    const beforeToken = await getTokenDocument(page, unlinked.tokenId);
+
+    await controlPlaceable(page, "Token", unlinked.tokenId);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-portrait.svg",
+      mimeType: "image/svg+xml",
+    });
+
+    await expect.poll(() => getClipboardErrors(page).then(messages => messages.length)).toBeGreaterThan(0);
+    expect((await getClipboardErrors(page)).at(-1)).toContain("linked to a base Actor");
+    expect(await getActorArtInfo(page, unlinked.actorId)).toEqual(beforeActor);
+    expect(await getTokenDocument(page, unlinked.tokenId)).toEqual(beforeToken);
+  } finally {
+    await restoreModuleSettings(page, previousSettings);
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("ask-each-time mode prompts before applying actor-wide token art changes", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "selected-token-paste-mode": "prompt",
+  });
+
+  try {
+    await focusCanvas(page);
+    const linked = await createLinkedActorToken(page, {
+      actorName: `${run.prefix} Prompt Actor`,
+      tokenName: `${run.prefix} Prompt Token`,
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: 700,
+      y: 700,
+    });
+
+    await controlPlaceable(page, "Token", linked.tokenId);
+    await focusCanvas(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-portrait.svg",
+      mimeType: "image/svg+xml",
+    });
+
+    await expect(page.locator("button:has-text('Actor portrait + linked token art')")).toBeVisible();
+    await page.locator("button:has-text('Actor portrait + linked token art')").click();
+
+    await expect.poll(() => getActorArtInfo(page, linked.actorId)).toMatchObject({
+      img: expect.stringContaining(run.uploadFolder),
+      prototypeTokenSrc: expect.stringContaining(run.uploadFolder),
+    });
+  } finally {
+    await restoreModuleSettings(page, previousSettings);
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("ask-each-time mode skips the prompt and uses scene-only replacement for ineligible token images", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "selected-token-paste-mode": "prompt",
+  });
+
+  try {
+    await focusCanvas(page);
+    const unlinked = await page.evaluate(async data => {
+      const ActorDocument = globalThis.Actor || foundry.documents.Actor;
+      const actor = await ActorDocument.create({
+        name: data.actorName,
+        type: CONFIG.Actor.defaultType || game.system.documentTypes.Actor?.[0] || "character",
+        img: data.textureSrc,
+        prototypeToken: {
+          name: data.tokenName,
+          texture: {src: data.textureSrc},
+          width: 1,
+          height: 1,
+        },
+      });
+
+      const [token] = await canvas.scene.createEmbeddedDocuments("Token", [{
+        actorId: actor.id,
+        actorLink: false,
+        name: data.tokenName,
+        texture: {src: data.textureSrc},
+        width: 1,
+        height: 1,
+        x: 620,
+        y: 620,
+        hidden: false,
+        locked: false,
+      }]);
+
+      return {
+        actorId: actor.id,
+        tokenId: token.id,
+      };
+    }, {
+      actorName: `${run.prefix} Prompt Fallback Actor`,
+      tokenName: `${run.prefix} Prompt Fallback Token`,
+      textureSrc: getFixtureUrl("test-token.png"),
+    });
+    const beforeActor = await getActorArtInfo(page, unlinked.actorId);
+
+    await controlPlaceable(page, "Token", unlinked.tokenId);
+    await focusCanvas(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-portrait.svg",
+      mimeType: "image/svg+xml",
+    });
+
+    await expect.poll(() => getTokenDocument(page, unlinked.tokenId)).toMatchObject({
+      textureSrc: expect.stringContaining(run.uploadFolder),
+    });
+    await expect(page.locator("button:has-text('Actor portrait + linked token art')")).toHaveCount(0);
+    expect(await getActorArtInfo(page, unlinked.actorId)).toEqual(beforeActor);
+  } finally {
+    await restoreModuleSettings(page, previousSettings);
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("ask-each-time mode skips the prompt and keeps video token replacement scene-local", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "selected-token-paste-mode": "prompt",
+  });
+
+  try {
+    await focusCanvas(page);
+    const linked = await createLinkedActorToken(page, {
+      actorName: `${run.prefix} Prompt Video Actor`,
+      tokenName: `${run.prefix} Prompt Video Token`,
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: 760,
+      y: 760,
+    });
+    const beforeActor = await getActorArtInfo(page, linked.actorId);
+
+    await controlPlaceable(page, "Token", linked.tokenId);
+    await focusCanvas(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-video.webm",
+      mimeType: "video/webm",
+    });
+
+    await expect.poll(() => getTokenDocument(page, linked.tokenId)).toMatchObject({
+      textureSrc: expect.stringContaining(run.uploadFolder),
+    });
+    await expect(page.locator("button:has-text('Actor portrait + linked token art')")).toHaveCount(0);
+    expect(await getActorArtInfo(page, linked.actorId)).toEqual(beforeActor);
   } finally {
     await restoreModuleSettings(page, previousSettings);
     await cleanupClipboardRun(page, run);
@@ -372,6 +883,60 @@ test("upload destination config saves custom folders and uses them for later upl
     expect(tile.textureSrc).toContain(customFolder);
   } finally {
     await closeUploadDestinationConfig(page);
+    await restoreModuleSettings(page, previousSettings);
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("upload path organization routes canvas, chat, and document-art uploads into context-specific subfolders", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "upload-path-organization": "context-user-month",
+  });
+
+  try {
+    const canvasPrefix = await getExpectedOrganizedUploadPrefix(page, run.uploadFolder, "canvas");
+    const chatPrefix = await getExpectedOrganizedUploadPrefix(page, run.uploadFolder, "chat");
+    const documentArtPrefix = await getExpectedOrganizedUploadPrefix(page, run.uploadFolder, "document-art");
+
+    await focusCanvas(page);
+    await page.evaluate(() => canvas.tiles.activate());
+    await setCanvasMousePosition(page, await getSafeCanvasPoint(page, 49));
+    const beforeCanvas = await getStateSnapshot(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-token.png",
+      mimeType: "image/png",
+    });
+    await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(beforeCanvas.tiles.length + 1);
+    const afterCanvas = await getStateSnapshot(page);
+    const [canvasTile] = getNewDocuments(beforeCanvas, afterCanvas, "tiles");
+    expect(canvasTile.textureSrc).toContain(canvasPrefix);
+
+    const beforeChat = await getStateSnapshot(page);
+    await dispatchFilePaste(page, {
+      targetSelector: await focusChatInput(page),
+      filename: "test-token.png",
+      mimeType: "image/png",
+    });
+    await expect.poll(async () => (await getStateSnapshot(page)).messages.length).toBe(beforeChat.messages.length + 1);
+    const afterChat = await getStateSnapshot(page);
+    const [chatMessage] = getNewDocuments(beforeChat, afterChat, "messages");
+    expect(chatMessage.content).toContain(chatPrefix);
+
+    const actorSheet = await createTemporaryActorPortraitField(page);
+    await page.locator(actorSheet.fieldSelector).focus();
+    await dispatchFilePaste(page, {
+      targetSelector: actorSheet.fieldSelector,
+      filename: "test-token.png",
+      mimeType: "image/png",
+    });
+    await expect.poll(async () => page.locator(actorSheet.fieldSelector).inputValue()).toContain(documentArtPrefix);
+    await expect.poll(async () => {
+      return page.locator(actorSheet.previewSelector).getAttribute("src");
+    }).toContain(documentArtPrefix);
+  } finally {
+    await closeTemporaryActorPortraitFields(page);
     await restoreModuleSettings(page, previousSettings);
     await cleanupClipboardRun(page, run);
   }

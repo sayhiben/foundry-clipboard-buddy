@@ -141,6 +141,21 @@ describe("settings and permission helpers", () => {
       await expect(api._clipboardMigrateLegacySettings()).resolves.toEqual([]);
       expect(globalThis.game.settings.set).not.toHaveBeenCalledWith("foundry-paste-eater", "enable-token-creation", false);
     });
+
+    it("does not overwrite already-stored settings during migration", async () => {
+      api._clipboardRegisterSettings();
+      env.worldStorage.set("clipboard-image.enable-token-creation", {
+        key: "clipboard-image.enable-token-creation",
+        value: false,
+      });
+      env.worldStorage.set("foundry-paste-eater.enable-token-creation", {
+        key: "foundry-paste-eater.enable-token-creation",
+        value: true,
+      });
+
+      await expect(api._clipboardMigrateLegacySettings()).resolves.toEqual([]);
+      expect(globalThis.game.settings.set).not.toHaveBeenCalledWith("foundry-paste-eater", "enable-token-creation", false);
+    });
   });
 
   describe("behavior settings", () => {
@@ -149,18 +164,24 @@ describe("settings and permission helpers", () => {
       expect(api._clipboardGetChatMediaDisplayMode()).toBe("thumbnail");
       expect(api._clipboardGetCanvasTextPasteMode()).toBe("scene-notes");
       expect(api._clipboardGetScenePastePromptMode()).toBe("auto");
+      expect(api._clipboardGetSelectedTokenPasteMode()).toBe("scene-only");
+      expect(api._clipboardGetUploadPathOrganizationMode()).toBe("flat");
       expect(api._clipboardShouldCreateBackingActors()).toBe(true);
 
       env.settingsValues.set("foundry-paste-eater.default-empty-canvas-target", "token");
       env.settingsValues.set("foundry-paste-eater.chat-media-display", "link-only");
       env.settingsValues.set("foundry-paste-eater.canvas-text-paste-mode", "disabled");
       env.settingsValues.set("foundry-paste-eater.scene-paste-prompt-mode", "always");
+      env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "actor-art");
+      env.settingsValues.set("foundry-paste-eater.upload-path-organization", "context-user-month");
       env.settingsValues.set("foundry-paste-eater.create-backing-actors", false);
 
       expect(api._clipboardGetDefaultEmptyCanvasTarget()).toBe("token");
       expect(api._clipboardGetChatMediaDisplayMode()).toBe("link-only");
       expect(api._clipboardGetCanvasTextPasteMode()).toBe("disabled");
       expect(api._clipboardGetScenePastePromptMode()).toBe("always");
+      expect(api._clipboardGetSelectedTokenPasteMode()).toBe("actor-art");
+      expect(api._clipboardGetUploadPathOrganizationMode()).toBe("context-user-month");
       expect(api._clipboardShouldCreateBackingActors()).toBe(false);
     });
 
@@ -168,10 +189,12 @@ describe("settings and permission helpers", () => {
       env.settingsValues.set("foundry-paste-eater.default-empty-canvas-target", "tile");
       env.settingsValues.set("foundry-paste-eater.chat-media-display", "full-preview");
       env.settingsValues.set("foundry-paste-eater.scene-paste-prompt-mode", "never");
+      env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "prompt");
 
       expect(api._clipboardGetDefaultEmptyCanvasTarget()).toBe("tile");
       expect(api._clipboardGetChatMediaDisplayMode()).toBe("full-preview");
       expect(api._clipboardGetScenePastePromptMode()).toBe("never");
+      expect(api._clipboardGetSelectedTokenPasteMode()).toBe("prompt");
     });
 
     it("falls back to safe defaults for unsupported behavior values", () => {
@@ -179,11 +202,25 @@ describe("settings and permission helpers", () => {
       env.settingsValues.set("foundry-paste-eater.chat-media-display", "weird");
       env.settingsValues.set("foundry-paste-eater.canvas-text-paste-mode", "weird");
       env.settingsValues.set("foundry-paste-eater.scene-paste-prompt-mode", "weird");
+      env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "weird");
+      env.settingsValues.set("foundry-paste-eater.upload-path-organization", "weird");
 
       expect(api._clipboardGetDefaultEmptyCanvasTarget()).toBe("active-layer");
       expect(api._clipboardGetChatMediaDisplayMode()).toBe("thumbnail");
       expect(api._clipboardGetCanvasTextPasteMode()).toBe("scene-notes");
       expect(api._clipboardGetScenePastePromptMode()).toBe("auto");
+      expect(api._clipboardGetSelectedTokenPasteMode()).toBe("scene-only");
+      expect(api._clipboardGetUploadPathOrganizationMode()).toBe("flat");
+    });
+
+    it("refreshes scene controls using the active layer name when no current control is cached", () => {
+      globalThis.ui.controls.control = null;
+      globalThis.canvas.activeLayer = globalThis.canvas.tokens;
+
+      api._clipboardRefreshSceneControlsUi();
+
+      expect(globalThis.ui.controls.initialize).toHaveBeenCalledWith({control: "tokens"});
+      expect(globalThis.ui.controls.render).toHaveBeenCalledWith(true);
     });
   });
 });

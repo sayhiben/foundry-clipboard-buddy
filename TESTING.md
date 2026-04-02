@@ -89,6 +89,12 @@ These flows should stay true across the test matrix:
 
 1. Select one token and paste a static image.
    Expected: only that token's texture updates; size and position stay unchanged.
+1. Set `Selected token image paste mode` to `Actor portrait + linked token art`, select one linked token, and paste a static image.
+   Expected: the selected token updates, the Actor portrait updates, and the Actor's linked-token default art updates.
+1. Set `Selected token image paste mode` to `Ask each time`, select one linked token, and paste a static image.
+   Expected: the prompt appears with `Scene token only` and `Actor portrait + linked token art`.
+1. Set `Selected token image paste mode` to `Actor portrait + linked token art`, select an unlinked token, and paste a static image.
+   Expected: the paste fails clearly, the token is unchanged, and the Actor is unchanged.
 2. Select one tile and paste a static image.
    Expected: only that tile's texture updates; size and position stay unchanged.
 3. Select multiple tokens and paste media.
@@ -203,12 +209,16 @@ These flows should stay true across the test matrix:
    Expected: uploads land in `pasted_images`.
 2. Change the upload destination to a world-scoped folder such as `worlds/<world-name>/pasted_images`.
    Expected: new uploads are created in that folder.
+3. Enable `Upload path organization` and paste one canvas image, one chat image, and one focused art-field image.
+   Expected: uploads land under context-specific subfolders such as `canvas/<user-id>/<YYYY-MM>/`, `chat/<user-id>/<YYYY-MM>/`, and `document-art/<user-id>/<YYYY-MM>/` beneath the configured base folder.
 3. If your deployment uses The Forge or S3, switch to that source and paste media.
    Expected: directory creation and upload respect the configured FilePicker source.
 4. For S3-compatible storage, confirm the upload-destination config shows the expected endpoint or base URL from Foundry's server configuration.
    Expected: the displayed endpoint matches the current provider configuration.
 5. For S3-compatible storage, test a missing or invalid bucket selection.
    Expected: the module reports a clear upload error and does not create broken content.
+6. Review your storage retention plan after enabling organized upload paths.
+   Expected: lifecycle or cleanup policy is handled by the backend or GM workflow, not by the module deleting files automatically.
 
 ### 11A. Error Reporting
 
@@ -216,7 +226,9 @@ These flows should stay true across the test matrix:
    Expected: the acting user gets a short popup notification.
 2. Repeat that failure while a GM is connected from another client.
    Expected: the GM receives a richer Foundry Paste Eater error dialog with a downloadable module logfile link.
-3. Enable `Verbose logging` on a client, then trigger the same failure again.
+3. Force a player-side upload permission denial by removing the player's core file permissions.
+   Expected: the acting user and connected GM guidance explicitly says `Game Settings -> Configure Permissions`, `Use File Browser`, and `Upload Files`.
+4. Enable `Verbose logging` on a client, then trigger the same failure again.
    Expected: that client automatically downloads a verbose Foundry Paste Eater logfile in addition to the normal alert.
 
 ### 11. Browser And Platform Validation
@@ -257,6 +269,8 @@ These flows should stay true across the test matrix:
    Expected: new pasted media follows the configured target consistently.
 12. Toggle `Create backing Actors for pasted tokens`.
    Expected: when enabled, newly pasted tokens open normally for editing; when disabled, pasted tokens are actorless.
+13. Toggle `Selected token image paste mode` between `Scene token only`, `Actor portrait + linked token art`, and `Ask each time`.
+   Expected: selected-token image pastes follow the configured behavior without affecting tile replacement or non-token canvas creation.
 13. Toggle `Chat media display`.
    Expected: chat posts switch between full preview, thumbnail preview, and link-only output.
 14. Toggle `Canvas text paste mode` to `Disabled`.

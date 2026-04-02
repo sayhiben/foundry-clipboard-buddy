@@ -116,6 +116,15 @@ async function triggerMissingBucketCanvasError(page) {
   });
 }
 
+async function stubUploadFailure(page, message) {
+  await page.evaluate(text => {
+    const implementation = foundry.applications.apps.FilePicker.implementation;
+    implementation.upload = async () => {
+      throw new Error(text);
+    };
+  }, message);
+}
+
 test("gm-local errors show a popup, a richer dialog, and a verbose logfile download", async ({browser}, testInfo) => {
   await ensureClipboardQaUsers();
 
@@ -340,9 +349,90 @@ test("storage permission errors tell the gm to check Foundry core settings inste
     const playerUi = await getClipboardUi(playerPage);
     const gmUi = await getClipboardUi(gmPage);
     expect(playerUi.notifications.error.at(-1)).toContain("Clipboard QA 2 attempted to paste an image");
-    expect(playerUi.notifications.error.at(-1)).toContain("Foundry's core settings");
-    expect(gmUi.dialogs.at(-1).content).toMatch(/Foundry(?:&#x27;|')s core settings/);
-    expect(gmUi.dialogs.at(-1).content).toMatch(/not this module(?:&#x27;|')s settings/);
+    expect(playerUi.notifications.error.at(-1)).toContain("Game Settings -> Configure Permissions");
+    expect(playerUi.notifications.error.at(-1)).toContain("Use File Browser");
+    expect(playerUi.notifications.error.at(-1)).toContain("Upload Files");
+    expect(gmUi.dialogs.at(-1).content).toContain("Game Settings -&gt; Configure Permissions");
+    expect(gmUi.dialogs.at(-1).content).toContain("Use File Browser");
+    expect(gmUi.dialogs.at(-1).content).toContain("Upload Files");
+
+    const after = await getStateSnapshot(playerPage);
+    expect(after.tokens).toEqual(before.tokens);
+    expect(after.tiles).toEqual(before.tiles);
+    expect(after.notes).toEqual(before.notes);
+    expect(after.messages).toEqual(before.messages);
+  } finally {
+    if (gmPage && previousPermissions) {
+      await restoreCorePermissions(gmPage, previousPermissions);
+    }
+    if (gmPage && previousSettings) {
+      await setModuleSettings(gmPage, previousSettings);
+    }
+    await cleanupClipboardRun(gmPage, run);
+    await closeOwnedContext(playerPage);
+    await closeOwnedContext(gmPage);
+  }
+});
+
+test("backend write-access errors tell the gm to verify storage access instead of re-enabling core permissions", async ({browser}, testInfo) => {
+  await ensureClipboardQaUsers();
+
+  let gmPage = null;
+  let playerPage = null;
+  let run = null;
+  let previousPermissions = null;
+  let previousSettings = null;
+
+  try {
+    const gmSession = await createAuthenticatedPage(browser, {
+      user: process.env.FOUNDRY_GM_USER || "Clipboard QA 1",
+      password: process.env.FOUNDRY_GM_PASSWORD ?? "",
+    }, {acceptDownloads: true, reuseAuth: false});
+    gmPage = gmSession.page;
+    await captureClipboardUi(gmPage);
+    run = await beginClipboardRun(gmPage, testInfo, {verboseLogging: false});
+    await ensureUploadDirectory(gmPage, run.uploadFolder, {
+      source: run.source,
+      bucket: run.bucket,
+    });
+    previousSettings = await setModuleSettings(gmPage, {
+      "minimum-role-canvas-media": "PLAYER",
+    });
+    previousPermissions = await setCorePermissions(gmPage, {
+      FILES_BROWSE: [1, 2, 3, 4],
+      FILES_UPLOAD: [1, 2, 3, 4],
+    });
+
+    const playerSession = await createAuthenticatedPage(browser, {
+      user: "Clipboard QA 2",
+      password: "",
+    }, {acceptDownloads: true, reuseAuth: false});
+    playerPage = playerSession.page;
+    await captureClipboardUi(playerPage);
+    await stubUploadFailure(playerPage, "Access denied by backend bucket policy");
+
+    const before = await getStateSnapshot(playerPage);
+    await resetClipboardUi(gmPage);
+    await resetClipboardUi(playerPage);
+    await focusCanvas(playerPage);
+    await playerPage.evaluate(() => canvas.tiles.activate());
+    await setCanvasMousePosition(playerPage, await getSafeCanvasPoint(playerPage, 15));
+    await dispatchFilePaste(playerPage, {
+      targetSelector: ".game",
+      filename: "test-token.png",
+      mimeType: "image/png",
+    });
+
+    await expect.poll(async () => (await getClipboardUi(playerPage)).notifications.error.length > 0).toBe(true);
+    await expect.poll(async () => (await getClipboardUi(gmPage)).dialogs.length > 0).toBe(true);
+
+    const playerUi = await getClipboardUi(playerPage);
+    const gmUi = await getClipboardUi(gmPage);
+    expect(playerUi.notifications.error.at(-1)).toContain("Clipboard QA 2 attempted to paste an image");
+    expect(playerUi.notifications.error.at(-1)).toContain("Verify backend write access");
+    expect(playerUi.notifications.error.at(-1)).not.toContain("enable Use File Browser plus Upload Files");
+    expect(gmUi.dialogs.at(-1).content).toContain("Verify backend write access");
+    expect(gmUi.dialogs.at(-1).content).not.toContain("enable Use File Browser plus Upload Files");
 
     const after = await getStateSnapshot(playerPage);
     expect(after.tokens).toEqual(before.tokens);

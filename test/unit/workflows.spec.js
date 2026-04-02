@@ -64,6 +64,87 @@ describe("paste and handler workflows", () => {
     });
   });
 
+  describe("token replacement mode helpers", () => {
+    it("falls back to scene-only replacement when no selected token replacement applies", async () => {
+      await expect(api._clipboardResolveTokenReplacementBehavior({
+        replacementTarget: null,
+      }, "image")).resolves.toEqual({
+        mode: "scene-only",
+        uploadContext: "canvas",
+        eligibility: null,
+      });
+
+      env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "actor-art");
+      await expect(api._clipboardResolveTokenReplacementBehavior({
+        replacementTarget: {
+          documentName: "Token",
+          documents: [env.createPlaceableDocument("Token", {id: "token-video"})],
+        },
+      }, "video")).resolves.toEqual({
+        mode: "scene-only",
+        uploadContext: "canvas",
+        eligibility: null,
+      });
+
+      env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "scene-only");
+      await expect(api._clipboardResolveTokenReplacementBehavior({
+        replacementTarget: {
+          documentName: "Token",
+          documents: [env.createPlaceableDocument("Token", {id: "token-scene-only"})],
+        },
+      }, "image")).resolves.toEqual({
+        mode: "scene-only",
+        uploadContext: "canvas",
+        eligibility: null,
+      });
+    });
+
+    it("keeps prompt-mode token replacement scene-local when the selection is ineligible", async () => {
+      env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "prompt");
+      const actor = env.createActor({id: "actor-ineligible"});
+      actor.canUserModify = () => true;
+
+      await expect(api._clipboardResolveTokenReplacementBehavior({
+        replacementTarget: {
+          documentName: "Token",
+          documents: [env.createPlaceableDocument("Token", {
+            id: "token-ineligible",
+            actor,
+            actorId: actor.id,
+            actorLink: false,
+          })],
+          requestedCount: 1,
+        },
+      }, "image")).resolves.toMatchObject({
+        mode: "scene-only",
+        uploadContext: "canvas",
+        eligibility: {
+          eligible: false,
+        },
+      });
+    });
+
+    it("defaults the prompt helper to scene-only when the dialog closes", async () => {
+      const prompt = api._clipboardPromptSelectedTokenPasteMode();
+      expect(env.dialogInstances).toHaveLength(1);
+      env.dialogInstances.at(-1).data.close();
+
+      await expect(prompt).resolves.toBe("scene-only");
+    });
+
+    it("restores .game focus after the selected-token mode prompt resolves", async () => {
+      document.body.innerHTML = '<div class="game" tabindex="0"></div><button id="other">Other</button>';
+      document.getElementById("other").focus();
+
+      const prompt = api._clipboardPromptSelectedTokenPasteMode();
+      expect(env.dialogInstances).toHaveLength(1);
+      env.dialogInstances.at(-1).data.buttons.actorArt.callback();
+
+      await expect(prompt).resolves.toBe("actor-art");
+      expect(document.activeElement).toBe(document.querySelector(".game"));
+    });
+  });
+
   describe("_clipboardPostChatImage and _clipboardPasteBlob", () => {
     it("uploads chat media and creates a chat message", async () => {
       await expect(api._clipboardPostChatImage(new File(["x"], "chat.png", {type: "image/png"}))).resolves.toBe(true);
@@ -204,6 +285,169 @@ describe("paste and handler workflows", () => {
         contextOptions: {fallbackToCenter: true},
       })).resolves.toBe(true);
       restoreImage();
+    });
+
+    it("updates actor portrait and linked token art when the selected-token mode is actor-art", async () => {
+      env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "actor-art");
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      const actor = env.createActor({
+        id: "actor-art",
+        img: "old-portrait.png",
+        prototypeToken: {
+          texture: {src: "old-token.png"},
+        },
+      });
+      actor.canUserModify = () => true;
+      const token = env.createControlledPlaceable("Token", {
+        id: "token-art",
+        actor,
+        actorId: actor.id,
+        actorLink: true,
+        canUserModify: () => true,
+      });
+      globalThis.canvas.tokens.controlled = [token];
+      globalThis.canvas.activeLayer = globalThis.canvas.tokens;
+
+      const restoreImage = withMockImage();
+      await expect(api._clipboardHandleImageBlob(new File(["x"], "portrait.png", {type: "image/png"}), {
+        contextOptions: {requireCanvasFocus: false},
+      })).resolves.toBe(true);
+      restoreImage();
+
+      expect(actor.img).toMatch(/^pasted_images\/portrait-\d+\.png\?foundry-paste-eater=\d+$/);
+      expect(actor.prototypeToken.texture.src).toBe(actor.img);
+      expect(globalThis.canvas.scene.updateEmbeddedDocuments).toHaveBeenCalledWith("Token", [
+        expect.objectContaining({
+          _id: "token-art",
+          "texture.src": actor.img,
+        }),
+      ]);
+    });
+
+    it("fails closed when actor-art mode is selected for an ineligible token selection", async () => {
+      env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "actor-art");
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      const actor = env.createActor({
+        id: "actor-unlinked",
+        img: "old-portrait.png",
+      });
+      actor.canUserModify = () => true;
+      const token = env.createControlledPlaceable("Token", {
+        id: "token-unlinked",
+        actor,
+        actorId: actor.id,
+        actorLink: false,
+        canUserModify: () => true,
+      });
+      globalThis.canvas.tokens.controlled = [token];
+      globalThis.canvas.activeLayer = globalThis.canvas.tokens;
+
+      const restoreImage = withMockImage();
+      await expect(api._clipboardHandleImageBlob(new File(["x"], "portrait.png", {type: "image/png"}), {
+        contextOptions: {requireCanvasFocus: false},
+      })).rejects.toThrow("linked to a base Actor");
+      restoreImage();
+
+      expect(actor.update).not.toHaveBeenCalled();
+      expect(globalThis.canvas.scene.updateEmbeddedDocuments).not.toHaveBeenCalled();
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
+    it("can prompt for actor-art replacement and honor the actor-wide choice", async () => {
+      env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "prompt");
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      const actor = env.createActor({
+        id: "actor-prompt",
+        img: "old-portrait.png",
+      });
+      actor.canUserModify = () => true;
+      const token = env.createControlledPlaceable("Token", {
+        id: "token-prompt",
+        actor,
+        actorId: actor.id,
+        actorLink: true,
+        canUserModify: () => true,
+      });
+      globalThis.canvas.tokens.controlled = [token];
+      globalThis.canvas.activeLayer = globalThis.canvas.tokens;
+
+      const OriginalDialog = globalThis.Dialog;
+      globalThis.Dialog = class PromptDialog {
+        constructor(data) {
+          this.data = data;
+        }
+
+        render() {
+          this.data.buttons.actorArt.callback();
+          return this;
+        }
+      };
+
+      const restoreImage = withMockImage();
+      try {
+        await expect(api._clipboardHandleImageBlob(new File(["x"], "portrait.png", {type: "image/png"}), {
+          contextOptions: {requireCanvasFocus: false},
+        })).resolves.toBe(true);
+      } finally {
+        restoreImage();
+        globalThis.Dialog = OriginalDialog;
+      }
+
+      expect(actor.img).toMatch(/^pasted_images\/portrait-\d+\.png\?foundry-paste-eater=\d+$/);
+      expect(actor.prototypeToken.texture.src).toBe(actor.img);
+    });
+
+    it("can prompt for token replacement and keep the scene-only choice", async () => {
+      env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "prompt");
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      const actor = env.createActor({
+        id: "actor-scene-prompt",
+        img: "old-portrait.png",
+      });
+      actor.canUserModify = () => true;
+      const token = env.createControlledPlaceable("Token", {
+        id: "token-scene-prompt",
+        actor,
+        actorId: actor.id,
+        actorLink: true,
+        canUserModify: () => true,
+      });
+      globalThis.canvas.tokens.controlled = [token];
+      globalThis.canvas.activeLayer = globalThis.canvas.tokens;
+
+      const OriginalDialog = globalThis.Dialog;
+      globalThis.Dialog = class PromptDialog {
+        constructor(data) {
+          this.data = data;
+        }
+
+        render() {
+          this.data.buttons.sceneOnly.callback();
+          return this;
+        }
+      };
+
+      const restoreImage = withMockImage();
+      try {
+        await expect(api._clipboardHandleImageBlob(new File(["x"], "portrait.png", {type: "image/png"}), {
+          contextOptions: {requireCanvasFocus: false},
+        })).resolves.toBe(true);
+      } finally {
+        restoreImage();
+        globalThis.Dialog = OriginalDialog;
+      }
+
+      expect(actor.update).not.toHaveBeenCalled();
+      expect(globalThis.canvas.scene.updateEmbeddedDocuments).toHaveBeenCalledWith("Token", [
+        expect.objectContaining({
+          _id: "token-scene-prompt",
+          "texture.src": expect.stringMatching(/^pasted_images\/portrait-\d+\.png\?foundry-paste-eater=\d+$/),
+        }),
+      ]);
     });
 
     it("uses a pre-resolved replacement context even if selection state changes before upload completes", async () => {
@@ -533,6 +777,52 @@ describe("paste and handler workflows", () => {
       await expect(api._clipboardHandleChatImageBlob(new File(["x"], "chat.png", {type: "image/png"}))).resolves.toBe(true);
     });
 
+    it("routes organized uploads into chat, canvas, and document-art prefixes", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-04-01T10:00:00Z"));
+      env.settingsValues.set("foundry-paste-eater.upload-path-organization", "context-user-month");
+
+      try {
+        await expect(api._clipboardHandleChatImageBlob(new File(["x"], "chat.png", {type: "image/png"}))).resolves.toBe(true);
+        expect(globalThis.foundry.documents.ChatMessage.create).toHaveBeenCalledWith(expect.objectContaining({
+          content: expect.stringContaining("pasted_images/chat/user-1/2026-04/"),
+        }));
+
+        const restoreImage = withMockImage();
+        await expect(api._clipboardHandleImageBlob(new File(["x"], "scene.png", {type: "image/png"}), {
+          contextOptions: {fallbackToCenter: true},
+        })).resolves.toBe(true);
+        restoreImage();
+        expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("Tile", [
+          expect.objectContaining({
+            texture: {
+              src: expect.stringMatching(/^pasted_images\/canvas\/user-1\/2026-04\/scene-\d+\.png\?foundry-paste-eater=\d+$/),
+            },
+          }),
+        ]);
+
+        const appRoot = document.createElement("section");
+        appRoot.dataset.appid = "actor-app";
+        appRoot.innerHTML = '<input type="text" name="img" value=""><img data-edit="img" src="">';
+        document.body.append(appRoot);
+        globalThis.ui.windows["actor-app"] = {
+          object: {documentName: "Actor"},
+        };
+        const field = appRoot.querySelector('input[name="img"]');
+
+        const restoreArtImage = withMockImage();
+        await expect(api._clipboardHandleArtFieldImageInput(
+          {blob: new File(["x"], "portrait.png", {type: "image/png"})},
+          field
+        )).resolves.toBe(true);
+        restoreArtImage();
+
+        expect(field.value).toMatch(/^pasted_images\/document-art\/user-1\/2026-04\/portrait-\d+\.png\?foundry-paste-eater=\d+$/);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("skips chat media posting when chat media handling is disabled", async () => {
       env.settingsValues.set("foundry-paste-eater.enable-chat-media", false);
       await expect(api._clipboardHandleChatImageBlob(new File(["x"], "chat.png", {type: "image/png"}))).resolves.toBe(false);
@@ -545,6 +835,10 @@ describe("paste and handler workflows", () => {
         blob: async () => new Blob(["x"], {type: "image/png"}),
       });
       await expect(api._clipboardHandleChatImageInput({url: "https://example.com/file.png"})).resolves.toBe(true);
+    });
+
+    it("returns false for empty chat media input", async () => {
+      await expect(api._clipboardHandleChatImageInput(null)).resolves.toBe(false);
     });
 
     it("rejects blocked direct media urls in chat so the caller can fall back cleanly", async () => {
@@ -665,6 +959,15 @@ describe("paste and handler workflows", () => {
       document.body.innerHTML = '<div class="game" tabindex="0"></div><input id="field">';
       document.getElementById("field").focus();
       await expect(api._clipboardHandleTextInput({text: "No focus"})).resolves.toBe(false);
+    });
+
+    it("annotates standalone text-note creation failures with the attempted content summary", async () => {
+      globalThis.canvas.scene.createEmbeddedDocuments.mockRejectedValueOnce(new Error("scene note write failed"));
+
+      await expect(api._clipboardHandleTextInput({text: "Broken note"})).rejects.toMatchObject({
+        message: "scene note write failed",
+        clipboardContentSummary: "text",
+      });
     });
   });
 

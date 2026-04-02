@@ -43,21 +43,190 @@
 - `Paste Media` is a hybrid flow: it should try direct clipboard reads first, then fall back to the manual paste prompt when browsers do not expose usable media there.
 - Focused supported art fields take precedence over canvas and chat routing for media paste. Actor and Item `img` fields accept images, while token-style `texture.src` fields accept image and video media.
 - Replacing selected tokens or tiles must preserve size and position.
+- Selected-token image paste now has explicit modes: default `scene-only`, strict `actor-art`, and `prompt`.
+- `scene-only` selected-token replacement updates only `Token.texture.src` in place and never mutates actor data.
+- `actor-art` selected-token replacement is image-only, updates both `Actor.img` and `Actor.prototypeToken.texture.src`, and must fail closed unless every selected token is linked to a base Actor the current user can update.
+- Selected-token video paste always stays scene-local, even when `actor-art` or `prompt` is enabled.
 - Empty-canvas media targeting is now configurable. Default behavior follows the active layer, but tests and docs must respect the `default-empty-canvas-target` setting.
 - New pasted tokens create backing Actors by default, but that is also configurable. When the setting is disabled, tests should expect actorless tokens instead of treating that as a regression.
-- Token replacement is gated both by the module setting and by real ownership or update rights for non-GM users.
+- Scene-local token replacement is gated both by the module setting and by real ownership or update rights for non-GM users. Actor-wide replacement additionally requires actor update rights for every targeted Actor.
 - Non-media URLs pasted on canvas should fall back to contextual text-note behavior.
 - Non-media URLs pasted into chat should remain plain text.
 - Direct media URLs that cannot be downloaded and re-uploaded must fail clearly instead of creating broken tiles, broken tokens, or empty chat messages.
 - `Caps Lock` hidden mode affects newly created canvas media, not replacement updates.
 - If `vtta-tokenizer` is open, media paste is intentionally suppressed.
+- Organized uploads may live under context-specific subfolders like `canvas/<user>/<YYYY-MM>/`, `chat/<user>/<YYYY-MM>/`, and `document-art/<user>/<YYYY-MM>/` beneath the configured base destination.
+- Storage governance in this module means upload-path organization and diagnostics only. The module does not delete uploads or manage retention or lifecycle.
+
+## Behavior Lookup
+### Routing dimensions
+| Dimension | Values | Intended effect |
+| --- | --- | --- |
+| Entry point | Native browser `paste`, scene `Paste Media`, scene `Upload Media`, chat drag/drop, chat `Upload Chat Media` | Determines whether the workflow can read text, requires `navigator.clipboard.read()`, uses a file picker, or bypasses normal canvas-focus and copied-object rules. |
+| Content kind | Image blob, video blob, direct media URL, non-media URL, plain text | Determines whether the content is handled as media, falls back to text, or is left to native browser behavior. |
+| Focus target | Supported art field, chat root, unsupported editable target, `.game` canvas root, scene paste prompt textarea | Determines routing precedence before any layer or selection logic runs. |
+| Canvas focus | `.game` focused or not | Normal keyboard canvas paste requires `.game` focus. Scene-tool workflows set `requireCanvasFocus: false` and can still create or replace scene content. |
+| Modal open | Scene paste prompt open, selected-token mode prompt open, other app window open | The scene paste prompt captures its own paste events. The selected-token mode prompt may temporarily steal focus, but the workflow restores `.game` focus before resolving. |
+| Active layer | `tokens`, `tiles`, `notes` | Determines replacement priority and, when no replacement happens, the default create target unless `default-empty-canvas-target` overrides it. |
+| Selection state | Controlled tokens, tiles, notes, none | Controlled placeables are replacement targets before create behavior. With no eligible replacement target, the workflow may create new content if creation is allowed and the mouse position is valid. |
+| User type | GM, Assistant GM, Trusted Player, Player | Role gates determine access to canvas media, canvas text, chat media, and scene-control visibility. |
+| Ownership or update rights | Updatable token, actor, tile, or note vs not | Non-GM replacement is further limited by actual document update rights. Actor-wide token art also requires update rights on every targeted Actor. |
+| Foundry copied-object buffer | Present or empty | Normal keyboard canvas paste defers to Foundry copied objects. Chat, focused-field, and explicit tool workflows ignore this buffer. |
+| Feature toggles | Token create or replace, tile create or replace, canvas text mode, chat media, scene tools, chat upload button | Disabled workflows must stop cleanly and must not silently reroute into another creation path. |
+| Storage mode | `auto`, `data`, `s3`, `forgevtt`; `flat` vs `context-user-month` organization | Controls upload destination, bucket requirements, folder creation behavior, and path layout. |
+| Hidden mode | `Ctrl` or `Cmd` plus `Caps Lock` | Applies only to newly created canvas tokens or tiles, never to replacement updates. |
+
+### Dispatch precedence
+1. The scene paste prompt textarea handles its own `paste` event first when that prompt is open.
+2. For native media paste, focused supported art fields win before chat or canvas handling.
+3. For native media paste, chat roots win before canvas handling.
+4. Native media paste in unsupported editable fields is ignored by the module so the browser or Foundry form keeps normal behavior.
+5. Native media or text paste reaches canvas handling only when the current context is eligible.
+6. Normal keyboard canvas paste respects Foundry's copied-object buffer before module handling. Explicit scene-control actions, chat workflows, and focused-art-field workflows do not.
+7. Canvas replacement wins before canvas creation. A blocked replacement target must not silently fall through into creating new placeables.
+
+### Native media paste matrix
+| Focus or target | Content kind | Extra conditions | Intended behavior | Implementation seam |
+| --- | --- | --- | --- | --- |
+| Supported focused art field (`img`, `texture.src`, `prototypeToken.texture.src`) | Image blob or direct image URL | User passes canvas-media role gate | Upload to `document-art` and populate the focused field plus visible preview. | `src/ui.js` `_clipboardOnPaste`; `src/workflows.js` `_clipboardHandleArtFieldImageInput`; `src/field-targets.js` |
+| Supported focused art field (`texture.src`, `prototypeToken.texture.src`) | Video blob or direct video URL | Field supports video | Upload to `document-art` and populate the focused field plus visible preview. | `src/workflows.js` `_clipboardHandleArtFieldImageInput`; `src/field-targets.js` |
+| Supported focused art field (`img`) | Video blob or direct video URL | Always unsupported | Fail clearly; do not create canvas or chat content. | `src/workflows.js` `_clipboardHandleArtFieldImageInput`; `src/field-targets.js` |
+| Supported focused art field with direct media URL that cannot be browser-downloaded | Direct image or video URL | Original URL is still a supported media kind for that field | Fall back to writing the original URL into the field instead of creating broken scene content. | `src/workflows.js` `_clipboardHandleArtFieldImageInput` |
+| Chat input or chat form | Image or video blob | Chat media enabled and user passes chat-media role gate | Upload to `chat` and create a chat message with the configured preview mode. No scene content is created. | `src/ui.js` `_clipboardOnPaste`; `src/workflows.js` `_clipboardHandleChatImageInput`; `src/chat.js` |
+| Chat input or chat form | Direct media URL | Browser can download the remote media | Download in-browser, upload to `chat`, and create a chat media message. | `src/workflows.js` `_clipboardHandleChatImageInput`; `src/chat.js` |
+| Chat input or chat form | Direct media URL | Remote host blocks browser-side download | Leave the original URL text in chat instead of creating a broken or empty media message. | `src/ui.js` `_clipboardHandleChatImageInputWithTextFallback` |
+| Unsupported editable input or textarea | Any media | Not a supported art field and not a chat root | Ignore the media paste so the browser or Foundry form keeps native behavior. | `src/ui.js` `_clipboardOnPaste` |
+| Canvas | Image or video blob | Eligible replacement target exists | Replace controlled placeables in place according to the active-layer replacement order and document eligibility rules. | `src/context.js` `_clipboardGetReplacementTarget`, `_clipboardReplaceControlledMedia`; `src/workflows.js` |
+| Canvas | Image or video blob | No eligible replacement target and create target is allowed | Create a new token or tile according to `default-empty-canvas-target` and active layer. | `src/context.js` `_clipboardGetCreateDocumentName`, `CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES`; `src/workflows.js` |
+| Canvas | Direct media URL | Browser can download the remote media | Download in-browser, upload, then follow the same replacement-or-create rules as pasted blobs. | `src/workflows.js` `_clipboardHandleImageInput`, `_clipboardHandleImageBlob` |
+| Canvas | Direct media URL | Remote host blocks browser-side download | Fail clearly and do not create broken tokens, tiles, or notes. | `src/workflows.js` `_clipboardGetBlockedDirectMediaUrlError` |
+| Canvas | Non-media URL that initially looked like media but resolved as text | Text fallback is allowed | Fall back to canvas text-note behavior instead of silently failing. | `src/workflows.js` `_clipboardHandleImageInputWithTextFallback` |
+
+### Native text paste matrix
+| Focus or target | Content kind | Extra conditions | Intended behavior | Implementation seam |
+| --- | --- | --- | --- | --- |
+| Chat input or chat form | Plain text or non-media URL | Any | Leave text alone as normal chat input. | `src/ui.js` `_clipboardOnPaste` |
+| Unsupported editable input or textarea | Plain text or non-media URL | Any | Leave text alone for native browser or Foundry form handling. | `src/ui.js` `_clipboardOnPaste` |
+| Canvas with selected token or tile | Plain text or non-media URL | Canvas text mode enabled and user passes canvas-text role gate | Create or reuse a Journal-backed scene note associated with each selected placeable and append the pasted text. | `src/workflows.js` `_clipboardHandleTextInput`; `src/notes.js` `_clipboardEnsurePlaceableTextNote` |
+| Canvas with selected scene note | Plain text or non-media URL | Canvas text mode enabled and user passes canvas-text role gate | Append text to the linked Journal page, or create a text page if the note lacks one. | `src/workflows.js` `_clipboardHandleTextInput`; `src/notes.js` `_clipboardAppendTextToSceneNote` |
+| Canvas with no supported selection | Plain text or non-media URL | Canvas text mode enabled, mouse position valid, `.game` focused | Create a standalone Journal-backed scene note at the current mouse position. | `src/workflows.js` `_clipboardHandleTextInput`; `src/notes.js` `_clipboardCreateStandaloneTextNote` |
+| Canvas | Plain text or non-media URL | Canvas text mode disabled or user below canvas-text minimum role | Do nothing. The module must not create notes. | `src/settings.js` `_clipboardCanUseCanvasText`; `src/workflows.js` `_clipboardHandleTextInput` |
+
+### Explicit tool and upload matrix
+| Entry point | Content support | Context rules | Intended behavior | Implementation seam |
+| --- | --- | --- | --- | --- |
+| Scene `Paste Media` tool, prompt mode `auto` | Media only | Ignores copied-object buffer, does not require canvas focus, falls back to canvas center when there is no mouse position | Open the scene paste prompt immediately, then try direct clipboard read while the prompt is open. If media is found and applied, close the prompt. Otherwise keep the prompt open for native `Cmd+V` or `Ctrl+V` paste. | `src/ui.js` `_clipboardHandleScenePasteToolClick`, `_clipboardTryScenePastePromptDirectRead` |
+| Scene `Paste Media` tool, prompt mode `always` | Media only | Same context rules as above | Open the prompt and wait for native paste into the prompt textarea. No direct-read auto attempt runs. | `src/ui.js` `_clipboardHandleScenePasteToolClick`, `_clipboardOnScenePastePromptPaste` |
+| Scene `Paste Media` tool, prompt mode `never` | Media only | Same context rules as above | Attempt direct clipboard read immediately and never open the prompt. If direct reads are unavailable or return no media, warn and stop. | `src/workflows.js` `_clipboardHandleScenePasteAction` |
+| Scene paste prompt textarea | Media only | Prompt is already open | Capture native browser paste, apply the same scene create-or-replace rules, and close the prompt on success. Unsupported media keeps the prompt open with a new message. | `src/ui.js` `_clipboardOnScenePastePromptPaste` |
+| Scene `Upload Media` tool | Media only | Ignores copied-object buffer, does not require canvas focus, falls back to canvas center when needed | Open a file picker and route the selected media through the same scene create-or-replace rules as clipboard media. | `src/workflows.js` `_clipboardOpenUploadPicker`, `_clipboardHandleSceneUploadAction` |
+| Chat `Upload Chat Media` button | Media only | Chat media must be enabled and the current user must meet the chat-media minimum role | Open a file picker and post the selected media to chat only. | `src/ui.js` `_clipboardSyncChatUploadButton`; `src/workflows.js` `_clipboardOpenChatUploadPicker` |
+| Chat drag/drop | Media only | Chat media must be enabled and the dropped payload must include supported media | Upload dropped media and create a chat media message only. | `src/ui.js` `_clipboardOnChatDrop`; `src/chat.js` |
+
+### Canvas media replacement and creation lookup
+| Active layer | Selection state | Replacement priority | Intended behavior |
+| --- | --- | --- | --- |
+| `tokens` | One or more eligible controlled tokens | `Token -> Tile -> Note` | Replace selected tokens first. |
+| `tokens` | No eligible tokens, but eligible controlled tiles | `Token -> Tile -> Note` | Replace selected tiles instead of creating new tokens. |
+| `tokens` | No eligible tokens or tiles, but eligible controlled notes | `Token -> Tile -> Note` | Replace selected notes in place for images only. |
+| `tiles` | One or more eligible controlled tiles | `Tile -> Token -> Note` | Replace selected tiles first. |
+| `tiles` | No eligible tiles, but eligible controlled tokens | `Tile -> Token -> Note` | Replace selected tokens instead of creating new tiles. |
+| `notes` | One or more eligible controlled notes | `Note -> Token -> Tile` | Replace selected notes first for images only. |
+| Any layer | Controlled documents exist for the first matching replacement type, but none are eligible | Replacement target is marked blocked | Stop without creating fallback content. Feature gates and ownership must disable cleanly, not reroute. |
+| Any layer | No replacement target | Create target allowed | Create new content according to `default-empty-canvas-target`. With `active-layer`, the Notes layer still creates tiles, not notes. |
+
+### Token image mode lookup
+| `selected-token-paste-mode` | Content kind | Eligibility | Intended behavior | Implementation seam |
+| --- | --- | --- | --- | --- |
+| `scene-only` | Image | Any selected-token replacement case | Replace only `Token.texture.src` for the selected scene token documents. Do not touch actor data. | `src/workflows.js` `_clipboardResolveTokenReplacementBehavior`; `src/context.js` `_clipboardReplaceControlledMedia` |
+| `scene-only` | Video | Any selected-token replacement case | Replace only `Token.texture.src` for the selected scene token documents. Video remains scene-local. | `src/workflows.js` `_clipboardResolveTokenReplacementBehavior`; `src/context.js` `_clipboardReplaceControlledMedia` |
+| `actor-art` | Image | Every selected token is linked to a base Actor the user can update, and every selected token is editable | Upload under `document-art`, update `Actor.img`, update `Actor.prototypeToken.texture.src`, and update every linked token across scenes for those Actors. | `src/context.js` `_clipboardGetTokenActorArtEligibility`, `_clipboardReplaceControlledTokenActorArt`; `src/workflows.js` |
+| `actor-art` | Image | Any selected token is unlinked, actorless, not actor-updatable, or otherwise ineligible | Fail closed with a clear error. Make no partial changes. | `src/context.js` `_clipboardGetTokenActorArtEligibility`; `src/workflows.js` `_clipboardResolveTokenReplacementBehavior` |
+| `actor-art` | Video | Any | Fall back to `scene-only`. Actor-wide portrait or prototype-token updates are image-only. | `src/workflows.js` `_clipboardResolveTokenReplacementBehavior` |
+| `prompt` | Image | Selection is eligible for actor-art | Show a prompt with `Scene token only` and `Actor portrait + linked token art`. Dialog close defaults to `scene-only`. | `src/workflows.js` `_clipboardPromptSelectedTokenPasteMode` |
+| `prompt` | Image | Selection is ineligible | Skip the prompt and use `scene-only`. | `src/workflows.js` `_clipboardResolveTokenReplacementBehavior` |
+| `prompt` | Video | Any | Skip the prompt and use `scene-only`. | `src/workflows.js` `_clipboardResolveTokenReplacementBehavior` |
+
+### Token and tile creation lookup
+| Create target | Content kind | Intended behavior | Implementation seam |
+| --- | --- | --- | --- |
+| New token | Image | Snap to grid, scale dimensions with token rules, apply hidden mode if active, and create a backing Actor when `create-backing-actors` is enabled. Created scene token remains `actorLink: false`. | `src/context.js` `CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES.Token`, `_clipboardCreatePastedTokenActor` |
+| New token | Video | Create a video-backed token. If a backing Actor is enabled, its portrait uses a safe default icon while the prototype token texture uses the uploaded video path. | `src/context.js` `_clipboardGetPastedTokenActorImage`, `_clipboardCreatePastedTokenActor` |
+| New tile | Image | Create a tile at the mouse position, scale large media down to the tile size policy, and apply hidden mode if active. | `src/context.js` `CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES.Tile` |
+| New tile | Video | Create a tile with `autoplay: true`, `loop: true`, and `volume: 0`. Hidden mode still applies on create. | `src/context.js` `CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES.Tile`; `src/media.js` `_clipboardGetTileVideoData` |
+
+### Settings and policy lookup
+| Setting or policy seam | Values | Intended behavior |
+| --- | --- | --- |
+| `minimum-role-canvas-media` | Player through Gamemaster | Gates all canvas media create or replace workflows and focused art-field media handling. |
+| `minimum-role-canvas-text` | Player through Gamemaster | Gates canvas text-note workflows. |
+| `minimum-role-chat-media` | Player through Gamemaster | Gates chat media paste, drag/drop, upload button visibility, and upload workflow. |
+| `allow-non-gm-scene-controls` | `true` or `false` | Allows non-GMs who already meet the canvas-media role requirement to see scene tools. |
+| `enable-chat-media` | `true` or `false` | Master toggle for chat media paste, drag/drop, upload, and chat-upload-button relevance. |
+| `enable-chat-upload-button` | `true` or `false` | Controls whether the `Upload Chat Media` button is rendered when chat media itself is enabled. |
+| `enable-token-creation`, `enable-tile-creation` | `true` or `false` | Disable only that create path. Do not reroute into the other placeable type. |
+| `enable-token-replacement`, `enable-tile-replacement` | `true` or `false` | Disable only that replacement path. If controlled documents exist but are blocked, do not create fallback content. |
+| `enable-scene-paste-tool`, `enable-scene-upload-tool` | `true` or `false` | Control whether the matching scene-control buttons are shown to users who otherwise qualify to see scene controls. |
+| `default-empty-canvas-target` | `active-layer`, `tile`, `token` | Controls which placeable type is created when there is no replacement target. With `active-layer`, the Notes layer still resolves to tile creation. |
+| `create-backing-actors` | `true` or `false` | Controls whether newly created pasted tokens receive world Actor documents or remain actorless scene tokens. |
+| `selected-token-paste-mode` | `scene-only`, `actor-art`, `prompt` | Controls how eligible selected-token image replacement behaves. See the token image mode lookup. |
+| `canvas-text-paste-mode` | `scene-notes`, `disabled` | Enables Journal-backed canvas text behavior or disables module handling for canvas text entirely. |
+| `chat-media-display` | `full-preview`, `thumbnail`, `link-only` | Controls chat media rendering only; upload and message creation stay the same. |
+| `scene-paste-prompt-mode` | `auto`, `always`, `never` | Controls how the explicit scene `Paste Media` button uses direct clipboard reads versus the manual prompt. |
+| `upload-path-organization` | `flat`, `context-user-month` | Keeps the configured base destination flat, or appends `canvas`, `chat`, or `document-art` plus user and month segments. |
+| Token, tile, note, actor ownership | Real Foundry document permissions | Non-GM users may only replace what they can actually update. Actor-art mode also requires actor update rights for every selected Actor. |
+
+### Storage, permissions, and lifecycle lookup
+| Concern | Intended behavior | Implementation seam |
+| --- | --- | --- |
+| Source resolution | `auto` resolves to Foundry User Data unless The Forge is active, in which case it resolves to Forge storage. `s3` uses Foundry's configured S3-compatible storage. | `src/storage.js` `_clipboardResolveSource` |
+| S3 bucket requirement | S3-compatible storage must have a bucket selected. Missing bucket is a configuration error, not a permission error. | `src/storage.js` `_clipboardAssertUploadDestination` |
+| Directory creation | User Data and Forge targets are created segment-by-segment through `FilePicker`. S3 skips directory creation and relies on object upload. | `src/storage.js` `_clipboardCreateFolderIfMissing` |
+| Organized upload paths | When enabled, uploads land under `canvas`, `chat`, or `document-art` subfolders plus user id and `YYYY-MM`. | `src/storage.js` `_clipboardBuildOrganizedUploadTarget`, `_clipboardGetUploadDestination` |
+| Permission-remediation copy | If the acting user lacks Foundry core file permissions, diagnostics tell the GM to open `Game Settings -> Configure Permissions` and enable `Use File Browser` plus `Upload Files`. If core permissions are already present, diagnostics instead point to backend write access, bucket policy, credentials, or filesystem permissions. | `src/storage.js` `_clipboardBuildStoragePermissionResolution`; `src/diagnostics.js` |
+| Storage lifecycle ownership | This module organizes upload paths and improves diagnostics, but it does not delete uploads, expire uploads, or claim ownership of retention policy. Backend lifecycle policy belongs to the storage provider or GM. | `src/storage.js`; docs only |
+
+### Diagnostics and reporting lookup
+| Situation | Intended behavior | Implementation seam |
+| --- | --- | --- |
+| A user-facing workflow error occurs | The acting user gets a short error notification. | `src/diagnostics.js` `_clipboardReportError` |
+| A connected GM is online when another user hits a workflow error | The GM gets a richer relay report with more context and a logfile link. | `src/diagnostics.js` socket relay and report helpers |
+| `verbose-logging` is enabled on a client | That client gets detailed browser-console diagnostics and automatic logfile download on error reports unless explicitly disabled. | `src/diagnostics.js`; `src/index.js` |
+| Direct clipboard reads are unavailable on ready | GMs get an informational note that browser paste events and upload fallbacks still exist where enabled. | `src/index.js` |
+
+### Failure and fallback lookup
+| Situation | Intended behavior | Implementation seam |
+| --- | --- | --- |
+| Foundry copied objects are present during normal canvas paste | Defer to Foundry's copied-object buffer and do not run module canvas paste behavior. | `src/workflows.js` `_clipboardHasPasteConflict` |
+| Another paste workflow is already running | Skip the new workflow to avoid overlapping state changes. | `src/workflows.js` `_clipboardHasPasteConflict`; `src/state.js` |
+| `vtta-tokenizer` is open | Suppress paste handling entirely. | `src/workflows.js` `_clipboardHasPasteConflict` |
+| Selected notes receive video media | Fail clearly because note icon replacement is image-only. | `src/workflows.js` `_clipboardReplacementTargetSupportsMediaKind` |
+| Direct clipboard reads are unavailable | Normal browser `paste` event workflows still work. Scene `Paste Media` warns or the prompt tells the user to use native `Cmd+V` or `Ctrl+V` or `Upload Media`. | `src/index.js`; `src/ui.js`; `src/workflows.js` |
+| Direct media URL download is blocked on canvas | Fail clearly without creating broken scene content. | `src/workflows.js` `_clipboardGetBlockedDirectMediaUrlError` |
+| Direct media URL download is blocked in chat | Keep the original URL text in the chat input. | `src/ui.js` `_clipboardHandleChatImageInputWithTextFallback` |
+| Direct media URL download is blocked for a supported focused art field | Fall back to the original URL in the field if that media kind is supported there. | `src/workflows.js` `_clipboardHandleArtFieldImageInput` |
+| Scene paste prompt receives unsupported pasted content | Keep the prompt open and update its message instead of closing or creating broken content. | `src/ui.js` `_clipboardOnScenePastePromptPaste` |
+
+### Implementation map
+| File | Responsibility |
+| --- | --- |
+| `src/ui.js` | Browser event routing, precedence rules, scene-control buttons, chat drag/drop and upload UI, scene paste prompt behavior. |
+| `src/workflows.js` | Clipboard and file-picker workflows, media or text fallback rules, token-mode resolution, scene-tool actions, and high-level error handling. |
+| `src/context.js` | Canvas context resolution, active-layer and selection routing, create strategies, replacement eligibility, actor-art propagation across scenes. |
+| `src/field-targets.js` | Supported art-field detection, document-specific media-kind validation, form value updates, preview refresh. |
+| `src/notes.js` | Journal-backed note creation, append behavior, placeable-to-note association, selected-note updates. |
+| `src/chat.js` | Chat upload destination usage, chat media message HTML, and display-mode handling. |
+| `src/storage.js` | Upload destination resolution, source and bucket policy, organized path building, folder creation, upload naming, storage permission wrapping. |
+| `src/settings.js` | Setting registration, defaults, feature gates, role checks, scene-control visibility, and policy helpers. |
 
 ## Foundry-Specific Lessons
 - This fork is V13-only. Do not reintroduce V12-era assumptions into docs or tests.
 - Do not assume Foundry supports simultaneous token and tile control across active-layer changes. Tests should follow real UI semantics, not invented mixed-selection states.
-- Nested upload destinations must be created segment-by-segment through `FilePicker`; a single deep `createDirectory` call is not reliable.
+- Nested upload destinations, including organized context or user or month subfolders, must be created segment-by-segment through `FilePicker`; a single deep `createDirectory` call is not reliable.
 - Remote media URLs are downloaded in the browser before upload. Failures must surface clearly and should not leave partial scene state behind.
 - Browser clipboard permission behavior is separate from browser `paste` events. Keep those paths conceptually distinct.
+- Actor-wide art replacement and scene-token texture replacement are different product behaviors. Do not collapse them into one implicit "replace token art everywhere" assumption in code, docs, or tests.
+- If a modal prompt interrupts a focus-gated canvas paste workflow, restore `.game` focus before resuming the paste flow.
 - Foundry's server-side S3 config owns the real endpoint or base URL for S3-compatible providers. The module may surface that endpoint in the UI and tests, but it should not pretend to apply a per-world endpoint override unless it can actually affect Foundry's upload client.
 - Finder or OS-file clipboard copies are exposed most reliably through the native browser `paste` event, not `navigator.clipboard.read()`. Do not reintroduce keyboard interception that bypasses native `Cmd+V` / `Ctrl+V`.
 - Uploaded media paths should use unique real filenames, not only cache-busting query strings. Firefox/PIXI can reuse stale textures when the underlying file path is reused.
@@ -74,6 +243,7 @@
 - Player media-upload tests need a destination folder that already exists. Pre-create the upload directory as GM before exercising player chat-media or token-replacement uploads, or the failure will come from Foundry's directory-creation rules rather than the module policy layer.
 - The Playwright harness now recovers if the test world has no active scene. It waits for `game.ready`, activates an existing scene or creates a throwaway one, and only then waits for `canvas.ready`. Do not assume the local world will always boot with an active scene already selected.
 - The main single-user browser specs now reuse a logged-in Foundry page per spec worker instead of creating a brand-new session for every test. Keep that shared-page model, but reload the page in `beforeEach` so DOM state does not leak between tests.
+- In that shared-page Playwright model, scene-paste smoke tests must set `scene-paste-prompt-mode` explicitly when they depend on `auto`, `always`, or `never`. Do not rely on ambient world-setting state from earlier specs.
 - Playwright global setup now writes a reusable default GM storage-state file under `test/playwright/.auth/` when `FOUNDRY_STORAGE_STATE` is not provided. Prefer reusing that auth state over reimplementing slower login flows.
 - In this local setup, an expired AWS session often surfaces as a blank or `null` S3 endpoint in the destination UI and `Failed to determine S3 endpoint` server logs. Reauthenticate with `aws login`, refresh Foundry's AWS JSON config from the current CLI session, and restart Foundry before treating it as a module regression.
 - In this local setup, Foundry loads the live module from `/Users/sayhiben/dev/foundry-latest/userdata/Data/modules/foundry-paste-eater`, not directly from the repo root. After changing runtime or browser-facing assets, sync the repo into that module directory before trusting smoke or manual validation results.
@@ -105,10 +275,15 @@
 - If Foundry logs `Software license verification failed`, open `http://127.0.0.1:30000/license` once in a browser. In this local setup, Foundry can regenerate the signature into `/Users/sayhiben/dev/foundry-latest/userdata/Config/license.json`; a container restart afterward clears the warning.
 - If Foundry logs `Failed to determine S3 endpoint: UnknownError`, refresh `/Users/sayhiben/dev/foundry-latest/userdata/Config/aws-foundry-store.json` from `aws configure export-credentials --format process`, preserve the bucket list, and restart the container.
 - When changing settings behavior, exercise both layers: unit coverage for registration/defaults/policy and Playwright coverage for the live Configure Settings and world-behavior path.
+- Selected-token mode coverage belongs in `test/playwright/config.spec.js`, with unit workflow and policy coverage in `test/unit/workflows.spec.js` and `test/unit/settings-policy.spec.js`.
+- Permission-remediation copy belongs in `test/playwright/error-reporting.spec.js` and `test/unit/diagnostics.spec.js`. Assert the exact Foundry guidance: `Game Settings -> Configure Permissions`, `Use File Browser`, and `Upload Files`.
+- When organized upload paths are enabled, assert context-specific subpaths under the configured base folder instead of assuming a flat upload root.
+- Prefer the shared `invokeSceneTool(...)` helper for Playwright scene-control tests instead of ad hoc `ui.controls.initialize(...)`, `render(true)`, or raw DOM button queries. It stays aligned with the harness' control-debug behavior.
 - When debugging browser tests, headed Chromium is often more reliable than headless Foundry in this environment.
 - Do not swing to the extremes of either one totally fresh browser session per smoke test or one never-reloaded page for the entire suite. The current compromise is intentional: shared authenticated session, explicit page reload between tests.
 - Headless Chromium in this local Foundry setup needs two workarounds: use Playwright's full `chromium` channel instead of `chrome-headless-shell`, and keep the software-WebGL launch flags (`--use-angle=swiftshader`, `--enable-webgl`, `--ignore-gpu-blocklist`). Without them, Foundry either crashes in PIXI with a `getExtension` error before the join form appears or stalls at 90% loading after login.
 - On macOS, headed Playwright browsers steal typing focus. Prefer headless for unattended runs, and only switch to headed when you need visual canvas or browser-permission debugging.
+- On macOS, Finder/native clipboard smoke coverage is focus-sensitive. Before sending `Meta+V`, bring the page to the front, assert `document.hasFocus()`, and allow a small bounded retry before treating the failure as a module regression.
 - When debugging Firefox-specific rendering or SVG behavior, run a targeted headed Firefox smoke. Chrome passing does not prove Firefox correctness here.
 - The opt-in S3 smoke refreshes Foundry-side AWS session credentials from the current AWS CLI session before it runs. Keep that preflight working, and prefer explicit env overrides over hardcoding local paths.
 - When extending the S3 smoke, prefer environment-driven updates to Foundry's AWS JSON config such as endpoint or path-style overrides. That keeps S3-compatible provider testing realistic without adding fake module-level storage settings.

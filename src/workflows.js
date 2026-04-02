@@ -1,4 +1,11 @@
-const {CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS, CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT} = require("./constants");
+const {
+  CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS,
+  CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT,
+  CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SCENE_ONLY,
+  CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_ACTOR_ART,
+  CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS,
+  CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
+} = require("./constants");
 const {
   _clipboardDescribeImageInput,
   _clipboardDescribePasteContext,
@@ -32,6 +39,7 @@ const {
   _clipboardPrepareCreateLayer,
   _clipboardReplaceControlledMedia,
   _clipboardHasCopiedObjects,
+  _clipboardGetTokenActorArtEligibility,
 } = require("./context");
 const {
   _clipboardReadClipboardItems,
@@ -44,6 +52,7 @@ const {
   _clipboardCanUseChatMedia,
   _clipboardCanUseScenePasteTool,
   _clipboardCanUseSceneUploadTool,
+  _clipboardGetSelectedTokenPasteMode,
 } = require("./settings");
 const {
   _clipboardEnsurePlaceableTextNote,
@@ -65,18 +74,109 @@ function _clipboardReplacementTargetSupportsMediaKind(replacementTarget, mediaKi
   return true;
 }
 
-async function _clipboardApplyPasteResult(path, context, preferredDimensions = null) {
+function _clipboardGetDefaultTokenReplacementBehavior() {
+  return {
+    mode: CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SCENE_ONLY,
+    uploadContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS,
+    eligibility: null,
+  };
+}
+
+function _clipboardPromptSelectedTokenPasteMode() {
+  return new Promise(resolve => {
+    let settled = false;
+    const settle = mode => {
+      document.querySelector(".game")?.focus?.({preventScroll: true});
+      if (settled) return;
+      settled = true;
+      resolve(mode);
+    };
+
+    const dialog = new globalThis.Dialog({
+      title: "Replace Selected Token Art",
+      content: `
+        <p>The selected tokens can either update only this scene token, or update the Actor portrait and linked token art.</p>
+        <p>Choose how this pasted image should be applied.</p>
+      `,
+      buttons: {
+        sceneOnly: {
+          label: "Scene token only",
+          callback: () => settle(CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SCENE_ONLY),
+        },
+        actorArt: {
+          label: "Actor portrait + linked token art",
+          callback: () => settle(CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_ACTOR_ART),
+        },
+      },
+      default: "sceneOnly",
+      close: () => settle(CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SCENE_ONLY),
+    });
+    dialog.render(true);
+  });
+}
+
+async function _clipboardResolveTokenReplacementBehavior(context, mediaKind) {
+  if (context?.replacementTarget?.documentName !== "Token" || !context?.replacementTarget?.documents?.length) {
+    return _clipboardGetDefaultTokenReplacementBehavior();
+  }
+
+  if (mediaKind !== "image") {
+    return _clipboardGetDefaultTokenReplacementBehavior();
+  }
+
+  const configuredMode = _clipboardGetSelectedTokenPasteMode();
+  if (configuredMode === CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SCENE_ONLY) {
+    return _clipboardGetDefaultTokenReplacementBehavior();
+  }
+
+  const eligibility = _clipboardGetTokenActorArtEligibility(context.replacementTarget, {mediaKind});
+  if (configuredMode === CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_ACTOR_ART) {
+    if (!eligibility.eligible) {
+      throw new Error(eligibility.reason || "Actor portrait + linked token art is unavailable for the current token selection.");
+    }
+
+    return {
+      mode: CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_ACTOR_ART,
+      uploadContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
+      eligibility,
+    };
+  }
+
+  if (!eligibility.eligible) {
+    return {
+      ..._clipboardGetDefaultTokenReplacementBehavior(),
+      eligibility,
+    };
+  }
+
+  const selectedMode = await _clipboardPromptSelectedTokenPasteMode();
+  if (selectedMode === CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_ACTOR_ART) {
+    return {
+      mode: CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_ACTOR_ART,
+      uploadContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
+      eligibility,
+    };
+  }
+
+  return {
+    ..._clipboardGetDefaultTokenReplacementBehavior(),
+    eligibility,
+  };
+}
+
+async function _clipboardApplyPasteResult(path, context, preferredDimensions = null, options = {}) {
   const mediaKind = _clipboardGetMediaKind({src: path}) || "image";
   if (context.replacementTarget?.documents?.length &&
       !_clipboardReplacementTargetSupportsMediaKind(context.replacementTarget, mediaKind)) {
     throw new Error(`Selected ${context.replacementTarget.documentName.toLowerCase()} targets do not support pasted ${mediaKind} media.`);
   }
 
-  if (await _clipboardReplaceControlledMedia(path, context.replacementTarget, mediaKind)) {
+  if (await _clipboardReplaceControlledMedia(path, context.replacementTarget, mediaKind, options.replacementBehavior)) {
     _clipboardLog("info", "Applied pasted media by replacing controlled documents", {
       path,
       mediaKind,
       replacementTarget: _clipboardDescribeReplacementTarget(context.replacementTarget),
+      replacementMode: options.replacementBehavior?.mode || CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SCENE_ONLY,
     });
     return true;
   }
@@ -100,15 +200,19 @@ async function _clipboardApplyPasteResult(path, context, preferredDimensions = n
   return true;
 }
 
-async function _clipboardPasteBlob(blob, targetFolder, {contextOptions = {}, context = null} = {}) {
+async function _clipboardPasteBlob(blob, targetFolder, {contextOptions = {}, context = null, replacementBehavior = null} = {}) {
   if (!canvas?.ready || !canvas.scene) return false;
   if (!_clipboardCanUseCanvasMedia()) return false;
 
   const resolvedContext = context || _clipboardResolvePasteContext(contextOptions);
+  const mediaKind = _clipboardGetMediaKind({blob, filename: blob?.name}) || "image";
+  const resolvedReplacementBehavior = replacementBehavior ||
+    await _clipboardResolveTokenReplacementBehavior(resolvedContext, mediaKind);
   _clipboardLog("debug", "Resolved canvas paste context", {
     context: _clipboardDescribePasteContext(resolvedContext),
     destination: require("./diagnostics")._clipboardDescribeDestinationForLog(targetFolder),
     blob: _clipboardDescribeImageInput({blob}),
+    replacementMode: resolvedReplacementBehavior.mode,
   });
   if (!_clipboardCanPasteToContext(resolvedContext)) {
     _clipboardLog("info", "Skipping canvas paste because the current context is not eligible", {
@@ -120,7 +224,9 @@ async function _clipboardPasteBlob(blob, targetFolder, {contextOptions = {}, con
   _clipboardPrepareCreateLayer(resolvedContext);
   const preferredDimensions = await _clipboardGetPreferredMediaDimensions(blob);
   const uploadPath = await _clipboardUploadBlob(blob, targetFolder);
-  return _clipboardApplyPasteResult(_clipboardCreateFreshMediaPath(uploadPath), resolvedContext, preferredDimensions);
+  return _clipboardApplyPasteResult(_clipboardCreateFreshMediaPath(uploadPath), resolvedContext, preferredDimensions, {
+    replacementBehavior: resolvedReplacementBehavior,
+  });
 }
 
 async function _clipboardPasteMediaPath(path, contextOptions = {}) {
@@ -257,13 +363,19 @@ async function _clipboardExecutePasteWorkflow(workflow, options = {}) {
 async function _clipboardHandleImageBlob(blob, options = {}) {
   if (!blob) return false;
 
-  const destination = _clipboardGetUploadDestination();
   const context = options.context || _clipboardResolvePasteContext(options.contextOptions);
+  const mediaKind = _clipboardGetMediaKind({blob, filename: blob?.name}) || "image";
+  const replacementBehavior = options.replacementBehavior ||
+    await _clipboardResolveTokenReplacementBehavior(context, mediaKind);
+  const destination = _clipboardGetUploadDestination({
+    uploadContext: replacementBehavior.uploadContext,
+  });
   try {
     await _clipboardCreateFolderIfMissing(destination);
     return await _clipboardPasteBlob(blob, destination, {
       contextOptions: options.contextOptions,
       context,
+      replacementBehavior,
     });
   } catch (error) {
     throw _clipboardAnnotateWorkflowError(error, {
@@ -525,7 +637,9 @@ async function _clipboardHandleArtFieldImageInput(imageInput, target) {
   const artFieldTarget = target?.field ? target : _clipboardGetFocusedArtFieldTarget(target);
   if (!artFieldTarget) return false;
 
-  const destination = _clipboardGetUploadDestination();
+  const destination = _clipboardGetUploadDestination({
+    uploadContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
+  });
   let fieldValue = null;
   let mediaKind = _clipboardGetMediaKind({src: imageInput?.url, filename: imageInput?.blob?.name, mimeType: imageInput?.blob?.type});
 
@@ -645,6 +759,9 @@ module.exports = {
   _clipboardHandleChatImageBlob,
   _clipboardHandleChatImageInput,
   _clipboardHandleTextInput,
+  _clipboardGetDefaultTokenReplacementBehavior,
+  _clipboardPromptSelectedTokenPasteMode,
+  _clipboardResolveTokenReplacementBehavior,
   _clipboardReadAndPasteImage,
   _clipboardReadAndPasteClipboardContent,
   _clipboardChooseImageFile,

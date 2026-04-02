@@ -6,6 +6,12 @@ const {
   CLIPBOARD_IMAGE_SOURCE_S3,
   CLIPBOARD_IMAGE_SOURCE_FORGE,
   CLIPBOARD_IMAGE_FILE_PICKER,
+  CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING,
+  CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_FLAT,
+  CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_CONTEXT_USER_MONTH,
+  CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS,
+  CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT,
+  CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
 } = require("./constants");
 const {
   _clipboardDescribeDestinationForLog,
@@ -97,12 +103,66 @@ function _clipboardGetTargetFolder() {
   return game.settings.get(CLIPBOARD_IMAGE_MODULE_ID, "image-location")?.trim() || CLIPBOARD_IMAGE_DEFAULT_FOLDER;
 }
 
+function _clipboardGetUploadPathOrganizationSetting() {
+  return game.settings.get(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING)?.trim() ||
+    CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_FLAT;
+}
+
+function _clipboardGetUploadContextSegment(uploadContext) {
+  switch (uploadContext) {
+    case CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT:
+      return CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT;
+    case CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART:
+      return CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART;
+    case CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS:
+    default:
+      return CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS;
+  }
+}
+
+function _clipboardNormalizeUploadPathSegment(value, fallback = "") {
+  const normalized = String(value || "")
+    .trim()
+    .replaceAll("\\", "/")
+    .replace(/^\/+|\/+$/g, "")
+    .replace(/\/+/g, "/");
+  return normalized || fallback;
+}
+
+function _clipboardBuildOrganizedUploadTarget(baseTarget, {
+  organizationMode = _clipboardGetUploadPathOrganizationSetting(),
+  uploadContext = CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS,
+  userId = game?.user?.id || "user",
+  date = new Date(),
+} = {}) {
+  const normalizedBaseTarget = _clipboardNormalizeUploadPathSegment(baseTarget, CLIPBOARD_IMAGE_DEFAULT_FOLDER);
+  if (organizationMode !== CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_CONTEXT_USER_MONTH) {
+    return normalizedBaseTarget;
+  }
+
+  const resolvedDate = date instanceof Date && !Number.isNaN(date.valueOf()) ? date : new Date();
+  const monthSegment = `${resolvedDate.getFullYear()}-${String(resolvedDate.getMonth() + 1).padStart(2, "0")}`;
+
+  return [
+    normalizedBaseTarget,
+    _clipboardGetUploadContextSegment(uploadContext),
+    _clipboardNormalizeUploadPathSegment(userId, "user"),
+    monthSegment,
+  ].join("/");
+}
+
 function _clipboardGetUploadDestination(overrides = {}) {
   const storedSource = overrides.storedSource ?? overrides.source ?? _clipboardGetStoredSource();
   const resolvedSource = _clipboardResolveSource(storedSource);
-  const target = Object.hasOwn(overrides, "target")
+  const baseTarget = Object.hasOwn(overrides, "target")
     ? overrides.target?.trim() || CLIPBOARD_IMAGE_DEFAULT_FOLDER
     : _clipboardGetTargetFolder();
+  const target = _clipboardBuildOrganizedUploadTarget(baseTarget, {
+    organizationMode: overrides.organizationMode ?? _clipboardGetUploadPathOrganizationSetting(),
+    uploadContext: overrides.uploadContext ?? CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS,
+    userId: overrides.userId ?? game?.user?.id ?? "user",
+    date: overrides.date,
+  });
   const bucket = resolvedSource === CLIPBOARD_IMAGE_SOURCE_S3
     ? (Object.hasOwn(overrides, "bucket") ? overrides.bucket?.trim() || "" : _clipboardGetStoredBucket())
     : "";
@@ -142,11 +202,41 @@ function _clipboardIsStoragePermissionError(error) {
   return /(permission|forbidden|access denied|not authorized|not permitted|unauthorized|accessdenied|eacces)/i.test(message);
 }
 
-function _clipboardBuildStoragePermissionResolution(destination) {
-  const destinationLabel = destination.source === CLIPBOARD_IMAGE_SOURCE_S3
+function _clipboardGetCurrentUserRole() {
+  if (typeof game?.user?.role === "number") return game.user.role;
+  if (game?.user?.isGM) return CONST?.USER_ROLES?.GAMEMASTER ?? 4;
+  return CONST?.USER_ROLES?.PLAYER ?? 1;
+}
+
+function _clipboardGetCorePermissionRoles(permission) {
+  const permissions = game?.settings?.get?.("core", "permissions") || {};
+  const roles = permissions?.[permission];
+  return Array.isArray(roles) ? roles : [];
+}
+
+function _clipboardUserHasCorePermission(permission) {
+  if (game?.user?.isGM) return true;
+  return _clipboardGetCorePermissionRoles(permission).includes(_clipboardGetCurrentUserRole());
+}
+
+function _clipboardHasCoreFileUploadPermissions() {
+  return _clipboardUserHasCorePermission("FILES_BROWSE") &&
+    _clipboardUserHasCorePermission("FILES_UPLOAD");
+}
+
+function _clipboardBuildStoragePermissionDestinationLabel(destination) {
+  return destination.source === CLIPBOARD_IMAGE_SOURCE_S3
     ? `the active ${_clipboardGetSourceLabel(destination.source)} destination${destination.bucket ? ` (${destination.bucket})` : ""}`
     : `the active ${_clipboardGetSourceLabel(destination.source)} destination`;
-  return `A GM can fix this in Foundry's core settings, not this module's settings: check Configure Permissions for file upload access and confirm ${destinationLabel} is writable for this player.`;
+}
+
+function _clipboardBuildStoragePermissionResolution(destination) {
+  const destinationLabel = _clipboardBuildStoragePermissionDestinationLabel(destination);
+  if (!_clipboardHasCoreFileUploadPermissions()) {
+    return `Have a GM open Game Settings -> Configure Permissions and enable Use File Browser plus Upload Files for this player's role. After that, verify ${destinationLabel} is writable for this player.`;
+  }
+
+  return `This user's role already has Use File Browser and Upload Files in Game Settings -> Configure Permissions. Verify backend write access for ${destinationLabel}, including any storage credentials, bucket policy, or filesystem permissions.`;
 }
 
 function _clipboardWrapStoragePermissionError(error, destination, phase) {
@@ -348,10 +438,22 @@ module.exports = {
   _clipboardGetStoredBucket,
   _clipboardGetConfiguredS3Endpoint,
   _clipboardGetTargetFolder,
+  _clipboardGetUploadPathOrganizationSetting,
+  _clipboardGetUploadContextSegment,
+  _clipboardNormalizeUploadPathSegment,
+  _clipboardBuildOrganizedUploadTarget,
   _clipboardGetUploadDestination,
   _clipboardGetFilePickerOptions,
   _clipboardDescribeDestination,
+  _clipboardIsStoragePermissionError,
+  _clipboardGetCurrentUserRole,
+  _clipboardGetCorePermissionRoles,
+  _clipboardUserHasCorePermission,
+  _clipboardHasCoreFileUploadPermissions,
+  _clipboardBuildStoragePermissionDestinationLabel,
+  _clipboardBuildStoragePermissionResolution,
   _clipboardAssertUploadDestination,
+  _clipboardWrapStoragePermissionError,
   _clipboardCreateFolderIfMissing,
   _clipboardCreateVersionedFilename,
   _clipboardCreateUploadFile,

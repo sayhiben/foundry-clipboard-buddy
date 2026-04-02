@@ -1,4 +1,4 @@
-import {beforeEach, describe, expect, it} from "vitest";
+import {beforeEach, describe, expect, it, vi} from "vitest";
 
 import {loadRuntime} from "./runtime-env.js";
 
@@ -197,9 +197,214 @@ describe("canvas context helpers", () => {
       }]);
       expect(globalThis.foundry.documents.Actor.create).not.toHaveBeenCalled();
     });
+
+    it("checks whether token and tile creation are currently allowed", () => {
+      expect(api._clipboardCanCreateDocument("Token")).toBe(true);
+      expect(api._clipboardCanCreateDocument("Tile")).toBe(true);
+
+      env.settingsValues.set("foundry-paste-eater.enable-token-creation", false);
+      env.settingsValues.set("foundry-paste-eater.enable-tile-creation", false);
+
+      expect(api._clipboardCanCreateDocument("Token")).toBe(false);
+      expect(api._clipboardCanCreateDocument("Tile")).toBe(false);
+      expect(api._clipboardCanCreateDocument("Unknown")).toBe(false);
+    });
   });
 
   describe("replacement target and paste context", () => {
+    it.each([
+      {activeDocumentName: "Token", expected: ["Token", "Tile", "Note"]},
+      {activeDocumentName: "Tile", expected: ["Tile", "Token", "Note"]},
+      {activeDocumentName: "Note", expected: ["Note", "Token", "Tile"]},
+      {activeDocumentName: "Weird", expected: ["Tile", "Token", "Note"]},
+    ])("returns the expected replacement order for $activeDocumentName", ({activeDocumentName, expected}) => {
+      expect(api._clipboardGetReplacementOrder(activeDocumentName)).toEqual(expected);
+    });
+
+    it.each([
+      {
+        name: "prefers token replacement on the tokens layer",
+        activeDocumentName: "Token",
+        replacementCandidates: () => ({
+          Token: {documents: [env.createPlaceableDocument("Token", {id: "token-priority"})], requestedCount: 1},
+          Tile: {documents: [env.createPlaceableDocument("Tile", {id: "tile-fallback"})], requestedCount: 1},
+        }),
+        expected: {
+          documentName: "Token",
+          documents: [expect.objectContaining({id: "token-priority"})],
+          requestedCount: 1,
+          blocked: false,
+        },
+      },
+      {
+        name: "falls back to the next candidate type when the preferred type is not selected",
+        activeDocumentName: "Token",
+        replacementCandidates: () => ({
+          Token: {documents: [], requestedCount: 0},
+          Tile: {documents: [env.createPlaceableDocument("Tile", {id: "tile-selected"})], requestedCount: 1},
+        }),
+        expected: {
+          documentName: "Tile",
+          documents: [expect.objectContaining({id: "tile-selected"})],
+          requestedCount: 1,
+          blocked: false,
+        },
+      },
+      {
+        name: "returns a blocked replacement target when the first matching selection exists but is not eligible",
+        activeDocumentName: "Token",
+        replacementCandidates: () => ({
+          Token: {documents: [], requestedCount: 2},
+          Tile: {documents: [env.createPlaceableDocument("Tile", {id: "tile-should-not-win"})], requestedCount: 1},
+        }),
+        expected: {
+          documentName: "Token",
+          documents: [],
+          requestedCount: 2,
+          blocked: true,
+        },
+      },
+      {
+        name: "returns null when nothing is selected anywhere",
+        activeDocumentName: "Tile",
+        replacementCandidates: () => ({
+          Tile: {documents: [], requestedCount: 0},
+          Token: {documents: [], requestedCount: 0},
+          Note: {documents: [], requestedCount: 0},
+        }),
+        expected: null,
+      },
+    ])("$name", ({activeDocumentName, replacementCandidates, expected}) => {
+      expect(api._clipboardResolveReplacementTargetFromCandidates(activeDocumentName, replacementCandidates())).toEqual(expected);
+    });
+
+    it.each([
+      {
+        name: "uses token creation on the tokens layer by default",
+        input: {
+          activeDocumentName: "Token",
+          emptyCanvasTarget: "active-layer",
+          replacementCandidates: () => ({}),
+          canCreateTokens: true,
+          canCreateTiles: true,
+        },
+        expected: {
+          createDocumentName: "Token",
+          replacementTarget: null,
+          replacementBlocked: false,
+          canCreateDocument: true,
+          shouldCreate: true,
+        },
+      },
+      {
+        name: "uses tile creation on the notes layer when following the active layer",
+        input: {
+          activeDocumentName: "Note",
+          emptyCanvasTarget: "active-layer",
+          replacementCandidates: () => ({}),
+          canCreateTokens: true,
+          canCreateTiles: true,
+        },
+        expected: {
+          createDocumentName: "Tile",
+          replacementTarget: null,
+          replacementBlocked: false,
+          canCreateDocument: true,
+          shouldCreate: true,
+        },
+      },
+      {
+        name: "honors the explicit token empty-canvas target",
+        input: {
+          activeDocumentName: "Tile",
+          emptyCanvasTarget: "token",
+          replacementCandidates: () => ({}),
+          canCreateTokens: true,
+          canCreateTiles: true,
+        },
+        expected: {
+          createDocumentName: "Token",
+          replacementTarget: null,
+          replacementBlocked: false,
+          canCreateDocument: true,
+          shouldCreate: true,
+        },
+      },
+      {
+        name: "disables creation when the chosen create type is not allowed",
+        input: {
+          activeDocumentName: "Token",
+          emptyCanvasTarget: "active-layer",
+          replacementCandidates: () => ({}),
+          canCreateTokens: false,
+          canCreateTiles: true,
+        },
+        expected: {
+          createDocumentName: "Token",
+          replacementTarget: null,
+          replacementBlocked: false,
+          canCreateDocument: false,
+          shouldCreate: false,
+        },
+      },
+      {
+        name: "does not allow create fallback when a blocked replacement target exists",
+        input: {
+          activeDocumentName: "Token",
+          emptyCanvasTarget: "active-layer",
+          replacementCandidates: () => ({
+            Token: {documents: [], requestedCount: 1},
+          }),
+          canCreateTokens: true,
+          canCreateTiles: true,
+        },
+        expected: {
+          createDocumentName: "Token",
+          replacementTarget: {
+            documentName: "Token",
+            documents: [],
+            requestedCount: 1,
+            blocked: true,
+          },
+          replacementBlocked: true,
+          canCreateDocument: true,
+          shouldCreate: false,
+        },
+      },
+      {
+        name: "does not create when a successful replacement target exists",
+        input: {
+          activeDocumentName: "Tile",
+          emptyCanvasTarget: "active-layer",
+          replacementCandidates: () => ({
+            Tile: {documents: [env.createPlaceableDocument("Tile", {id: "tile-replace"})], requestedCount: 1},
+          }),
+          canCreateTokens: true,
+          canCreateTiles: true,
+        },
+        expected: {
+          createDocumentName: "Tile",
+          replacementTarget: {
+            documentName: "Tile",
+            documents: [expect.objectContaining({id: "tile-replace"})],
+            requestedCount: 1,
+            blocked: false,
+          },
+          replacementBlocked: false,
+          canCreateDocument: true,
+          shouldCreate: false,
+        },
+      },
+    ])("resolves the canvas media plan: $name", ({input, expected}) => {
+      expect(api._clipboardResolveCanvasMediaPlan({
+        ...input,
+        replacementCandidates: input.replacementCandidates(),
+      })).toEqual({
+        activeDocumentName: input.activeDocumentName,
+        ...expected,
+      });
+    });
+
     it("reads controlled placeables from controlledObjects maps", () => {
       const note = env.createControlledPlaceable("Note", {id: "note-a"});
       globalThis.canvas.notes.controlled = [];
@@ -238,6 +443,33 @@ describe("canvas context helpers", () => {
       expect(api._clipboardGetControlledPlaceables(globalThis.canvas.tokens)).toEqual([token]);
       expect(api._clipboardGetControlledPlaceables(globalThis.canvas.tiles)).toEqual([tile]);
       expect(api._clipboardGetControlledPlaceables(globalThis.canvas.notes)).toEqual([note]);
+    });
+
+    it("returns an empty controlled placeable list for unsupported layer shapes", () => {
+      expect(api._clipboardGetControlledPlaceables({controlled: {foo: "bar"}})).toEqual([]);
+      expect(api._clipboardGetControlledPlaceables({controlled: null})).toEqual([]);
+    });
+
+    it("falls back to testUserPermission and isOwner when canUserModify is unavailable", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      const viaPermission = {
+        testUserPermission: vi.fn(() => true),
+      };
+      const viaOwner = {
+        isOwner: true,
+      };
+
+      expect(api._clipboardCanUserModifyDocument(viaPermission, "update")).toBe(true);
+      expect(viaPermission.testUserPermission).toHaveBeenCalledWith(globalThis.game.user, "OWNER");
+      expect(api._clipboardCanUserModifyDocument(viaOwner, "update")).toBe(true);
+    });
+
+    it("returns false when no document ownership helpers are available", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      expect(api._clipboardCanUserModifyDocument({}, "update")).toBe(false);
+      expect(api._clipboardCanUserModifyDocument(null, "update")).toBe(false);
     });
 
     it("prefers controlled tokens when the tokens layer is active", () => {
@@ -335,6 +567,97 @@ describe("canvas context helpers", () => {
       });
     });
 
+    it("treats linked token actor-art replacement as eligible only for updatable base actors", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      const actor = env.createActor({
+        id: "actor-linked",
+        img: "portrait.png",
+      });
+      actor.canUserModify = () => true;
+      const token = env.createControlledPlaceable("Token", {
+        id: "token-linked",
+        actor,
+        actorId: actor.id,
+        actorLink: true,
+        canUserModify: () => true,
+      });
+
+      expect(api._clipboardGetTokenActorArtEligibility({
+        documentName: "Token",
+        documents: [token.document],
+        requestedCount: 1,
+      })).toMatchObject({
+        eligible: true,
+        actors: [actor],
+      });
+    });
+
+    it("rejects actor-art replacement for mixed or unlinked token selections", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      const actor = env.createActor({
+        id: "actor-unlinked",
+        img: "portrait.png",
+      });
+      actor.canUserModify = () => true;
+      const token = env.createControlledPlaceable("Token", {
+        id: "token-unlinked",
+        actor,
+        actorId: actor.id,
+        actorLink: false,
+        canUserModify: () => true,
+      });
+
+      expect(api._clipboardGetTokenActorArtEligibility({
+        documentName: "Token",
+        documents: [token.document],
+        requestedCount: 1,
+      })).toMatchObject({
+        eligible: false,
+        reason: expect.stringContaining("linked to a base Actor"),
+      });
+
+      expect(api._clipboardGetTokenActorArtEligibility({
+        documentName: "Token",
+        documents: [token.document],
+        requestedCount: 2,
+      })).toMatchObject({
+        eligible: false,
+        reason: expect.stringContaining("every selected token to be editable"),
+      });
+    });
+
+    it("treats video media as scene-only for actor-art eligibility", () => {
+      const actor = env.createActor({id: "actor-video"});
+      const token = env.createControlledPlaceable("Token", {
+        id: "token-video",
+        actor,
+        actorId: actor.id,
+        actorLink: true,
+      });
+
+      expect(api._clipboardGetTokenActorArtEligibility({
+        documentName: "Token",
+        documents: [token.document],
+        requestedCount: 1,
+      }, {
+        mediaKind: "video",
+      })).toMatchObject({
+        eligible: false,
+        documents: [token.document],
+        reason: expect.stringContaining("only supports pasted images"),
+      });
+    });
+
+    it("rejects actor-art eligibility when token replacement is not the active target", () => {
+      expect(api._clipboardGetTokenActorArtEligibility(null)).toMatchObject({
+        eligible: false,
+        documents: [],
+        reason: expect.stringContaining("only applies when selected tokens"),
+      });
+    });
+
     it("allows replacing selected notes when the user can update them", () => {
       const note = env.createControlledPlaceable("Note", {
         id: "note-editable",
@@ -369,6 +692,15 @@ describe("canvas context helpers", () => {
       });
     });
 
+    it("checks direct note replacement eligibility and rejects unknown document types", () => {
+      const note = {
+        isOwner: true,
+      };
+
+      expect(api._clipboardCanReplaceDocument("Note", note)).toBe(true);
+      expect(api._clipboardCanReplaceDocument("Unknown", note)).toBe(false);
+    });
+
     it("filters base actor document types from the available actor type list", () => {
       globalThis.game.system.documentTypes.Actor = ["base", "character", "npc"];
       globalThis.CONST.BASE_DOCUMENT_TYPE = "base";
@@ -392,6 +724,16 @@ describe("canvas context helpers", () => {
       globalThis.foundry.documents.Actor.TYPES = ["group", "npc", CONST.BASE_DOCUMENT_TYPE];
 
       expect(api._clipboardGetAvailableActorTypes()).toEqual(["group", "npc"]);
+    });
+
+    it("returns an empty actor type list when every fallback source is unavailable", () => {
+      globalThis.game.system.documentTypes.Actor = null;
+      globalThis.game.documentTypes = {
+        Actor: null,
+      };
+      globalThis.foundry.documents.Actor.TYPES = null;
+
+      expect(api._clipboardGetAvailableActorTypes()).toEqual([]);
     });
 
     it("falls back to the Foundry default token icon when actor default icons are unavailable", () => {
@@ -522,6 +864,71 @@ describe("canvas context helpers", () => {
         createStrategy: api._clipboardGetPlaceableStrategy("Token"),
       });
       expect(globalThis.canvas.tokens.activate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("actor-art replacement", () => {
+    it("falls back to the active canvas scene when the world scene list is unavailable", () => {
+      globalThis.game.scenes.contents = null;
+
+      expect(api._clipboardGetAllScenesForLinkedTokenUpdates()).toEqual([globalThis.canvas.scene]);
+    });
+
+    it("returns an empty scene list when no world scenes or active scene are available", () => {
+      globalThis.game.scenes.contents = [];
+      globalThis.canvas.scene = null;
+
+      expect(api._clipboardGetAllScenesForLinkedTokenUpdates()).toEqual([]);
+    });
+
+    it("updates linked token documents across scenes for the same actor", async () => {
+      const actor = env.createActor({
+        id: "actor-shared",
+        img: "before.png",
+      });
+      actor.canUserModify = () => true;
+      const selectedToken = env.createPlaceableDocument("Token", {
+        id: "token-selected",
+        actor,
+        actorId: actor.id,
+        actorLink: true,
+      });
+      const linkedToken = env.createPlaceableDocument("Token", {
+        id: "token-linked",
+        actor,
+        actorId: actor.id,
+        actorLink: true,
+      });
+      const otherToken = env.createPlaceableDocument("Token", {
+        id: "token-other",
+        actor,
+        actorId: "other-actor",
+        actorLink: true,
+      });
+      const secondaryScene = {
+        tokens: {
+          contents: [linkedToken, otherToken],
+        },
+        updateEmbeddedDocuments: vi.fn(async (_type, updates) => updates),
+      };
+      globalThis.game.scenes.contents = [globalThis.canvas.scene, secondaryScene];
+
+      await expect(api._clipboardReplaceControlledTokenActorArt("updated.png", {
+        documentName: "Token",
+        documents: [selectedToken],
+        requestedCount: 1,
+      })).resolves.toBe(true);
+
+      expect(actor.update).toHaveBeenCalledWith({
+        img: "updated.png",
+        "prototypeToken.texture.src": "updated.png",
+      });
+      expect(globalThis.canvas.scene.updateEmbeddedDocuments).toHaveBeenCalledWith("Token", [
+        expect.objectContaining({_id: "token-selected", "texture.src": "updated.png"}),
+      ]);
+      expect(secondaryScene.updateEmbeddedDocuments).toHaveBeenCalledWith("Token", [
+        expect.objectContaining({_id: "token-linked", "texture.src": "updated.png"}),
+      ]);
     });
   });
 });

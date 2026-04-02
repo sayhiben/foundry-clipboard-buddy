@@ -59,6 +59,45 @@ async function ensureClipboardQaUsers() {
   ]);
 }
 
+async function getHookedSceneToolState(page, controlName, toolName) {
+  return page.evaluate(({controlName, toolName}) => {
+    const controls = {
+      tiles: {name: "tiles", tools: {}},
+      tokens: {name: "tokens", tools: {}},
+    };
+    Hooks.callAll("getSceneControlButtons", controls);
+    const control = controls[controlName] || null;
+    const tools = Array.isArray(control?.tools)
+      ? control.tools
+      : Object.values(control?.tools || {});
+    const tool = tools.find(entry => entry?.name === toolName) || null;
+    return {
+      exists: Boolean(tool),
+      visible: Boolean(tool?.visible),
+      title: tool?.title || null,
+    };
+  }, {controlName, toolName});
+}
+
+async function invokeHookedSceneTool(page, controlName, toolName) {
+  await page.evaluate(({controlName, toolName}) => {
+    const controls = {
+      tiles: {name: "tiles", tools: {}},
+      tokens: {name: "tokens", tools: {}},
+    };
+    Hooks.callAll("getSceneControlButtons", controls);
+    const control = controls[controlName] || null;
+    const tools = Array.isArray(control?.tools)
+      ? control.tools
+      : Object.values(control?.tools || {});
+    const tool = tools.find(entry => entry?.name === toolName) || null;
+    if (!tool?.visible || typeof tool.onClick !== "function") {
+      throw new Error(`Could not find visible tool ${toolName} on control ${controlName}.`);
+    }
+    tool.onClick();
+  }, {controlName, toolName});
+}
+
 test("player role gates block canvas text, chat media, and owned-token replacement until settings permit them", async ({browser}, testInfo) => {
   testInfo.setTimeout(240_000);
   await ensureClipboardQaUsers();
@@ -296,6 +335,110 @@ test("players can replace tokens they own but not tokens owned by another user",
     } finally {
       await closeOwnedContext(noteContext);
     }
+  } finally {
+    await restoreCorePermissions(gmPage, previousPermissions);
+    await restoreModuleSettings(gmPage, previousSettings || {});
+    await cleanupClipboardRun(gmPage, run);
+    await closeOwnedContext(gmPage);
+  }
+});
+
+test("non-gm scene controls require both the world toggle and canvas-media role eligibility", async ({browser}, testInfo) => {
+  testInfo.setTimeout(240_000);
+  await ensureClipboardQaUsers();
+
+  let gmPage = null;
+  let previousSettings = null;
+  let previousPermissions = null;
+  let run = null;
+
+  try {
+    const gmSession = await createAuthenticatedPage(browser, {
+      user: process.env.FOUNDRY_GM_USER || "Clipboard QA 1",
+      password: process.env.FOUNDRY_GM_PASSWORD ?? "",
+    });
+    gmPage = gmSession.page;
+    run = await beginClipboardRun(gmPage, testInfo);
+    await ensureUploadDirectory(gmPage, run.uploadFolder, {
+      source: run.source,
+      bucket: run.bucket,
+    });
+    previousSettings = await setModuleSettings(gmPage, {
+      "allow-non-gm-scene-controls": false,
+      "enable-scene-paste-tool": true,
+      "enable-scene-upload-tool": true,
+      "minimum-role-canvas-media": "PLAYER",
+      "scene-paste-prompt-mode": "always",
+    });
+    previousPermissions = await setCorePermissions(gmPage, {
+      FILES_BROWSE: [1, 2, 3, 4],
+      FILES_UPLOAD: [1, 2, 3, 4],
+    });
+    const ownedTokenPosition = await getSafeCanvasPoint(gmPage, 14);
+    const ownedToken = await createActorBackedToken(gmPage, {
+      actorName: `${run.prefix} Scene Tool Actor`,
+      tokenName: `${run.prefix} Scene Tool Token`,
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: ownedTokenPosition.x,
+      y: ownedTokenPosition.y,
+      ownerUserName: "Clipboard QA 2",
+    });
+
+    async function withPlayerSession(callback) {
+      const playerSession = await createAuthenticatedPage(browser, {
+        user: "Clipboard QA 2",
+        password: "",
+      });
+      const context = playerSession.context;
+      const page = playerSession.page;
+      try {
+        return await callback(page);
+      } finally {
+        await closeOwnedContext(context);
+      }
+    }
+
+    await withPlayerSession(async playerPage => {
+      const pasteTool = await getHookedSceneToolState(playerPage, "tiles", "foundry-paste-eater-paste");
+      const uploadTool = await getHookedSceneToolState(playerPage, "tiles", "foundry-paste-eater-upload");
+      expect(pasteTool.visible).toBe(false);
+      expect(uploadTool.visible).toBe(false);
+    });
+
+    await setModuleSettings(gmPage, {
+      "allow-non-gm-scene-controls": true,
+      "minimum-role-canvas-media": "ASSISTANT",
+    });
+    await withPlayerSession(async playerPage => {
+      const pasteTool = await getHookedSceneToolState(playerPage, "tiles", "foundry-paste-eater-paste");
+      const uploadTool = await getHookedSceneToolState(playerPage, "tiles", "foundry-paste-eater-upload");
+      expect(pasteTool.visible).toBe(false);
+      expect(uploadTool.visible).toBe(false);
+    });
+
+    await setModuleSettings(gmPage, {
+      "minimum-role-canvas-media": "PLAYER",
+    });
+    await withPlayerSession(async playerPage => {
+      const pasteTool = await getHookedSceneToolState(playerPage, "tiles", "foundry-paste-eater-paste");
+      const uploadTool = await getHookedSceneToolState(playerPage, "tiles", "foundry-paste-eater-upload");
+      expect(pasteTool.visible).toBe(true);
+      expect(uploadTool.visible).toBe(true);
+
+      await focusCanvas(playerPage);
+      await playerPage.evaluate(() => canvas.tokens.activate());
+      await controlPlaceable(playerPage, "Token", ownedToken.tokenId);
+      const before = await getTokenDocument(playerPage, ownedToken.tokenId);
+      await invokeHookedSceneTool(playerPage, "tokens", "foundry-paste-eater-paste");
+      await expect(playerPage.locator("#foundry-paste-eater-scene-paste-target")).toBeVisible();
+      await dispatchFilePaste(playerPage, {
+        targetSelector: "#foundry-paste-eater-scene-paste-target",
+        filename: "test-token.png",
+        mimeType: "image/png",
+      });
+      await expect.poll(async () => (await getTokenDocument(playerPage, ownedToken.tokenId)).textureSrc).not.toBe(before.textureSrc);
+      await expect.poll(async () => (await getTokenDocument(playerPage, ownedToken.tokenId)).textureSrc).toContain(run.uploadFolder);
+    });
   } finally {
     await restoreCorePermissions(gmPage, previousPermissions);
     await restoreModuleSettings(gmPage, previousSettings || {});

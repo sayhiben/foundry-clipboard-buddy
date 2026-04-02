@@ -371,6 +371,23 @@ describe("ui and hook integration helpers", () => {
       api._clipboardCloseScenePastePrompt(prompt);
     });
 
+    it("does not create media when the scene paste prompt is closed before direct-read resolves", async () => {
+      let resolveClipboardRead;
+      window.navigator.clipboard.read.mockImplementationOnce(() => new Promise(resolve => {
+        resolveClipboardRead = resolve;
+      }));
+
+      const prompt = api._clipboardOpenScenePastePrompt();
+      const pending = api._clipboardTryScenePastePromptDirectRead(prompt);
+      api._clipboardCloseScenePastePrompt(prompt);
+      resolveClipboardRead([{types: ["image/png"]}]);
+
+      await expect(pending).resolves.toBe(false);
+      expect(api._clipboardGetScenePastePrompt()).toBeNull();
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+      expect(globalThis.canvas.scene.updateEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
     it("closes the scene paste prompt when direct read media succeeds", async () => {
       const restoreImage = withMockImage();
       window.navigator.clipboard.read.mockResolvedValueOnce([
@@ -562,6 +579,57 @@ describe("ui and hook integration helpers", () => {
         "foundry-paste-eater-paste",
         "foundry-paste-eater-upload",
       ]);
+    });
+
+    it("updates existing array-backed scene control tools instead of appending duplicates", () => {
+      const control = {
+        tools: [
+          {name: "select", title: "Select"},
+          {name: "foundry-paste-eater-paste", title: "Old Paste", visible: false},
+        ],
+      };
+
+      api._clipboardUpsertSceneControlTool(control, "foundry-paste-eater-paste", {
+        name: "foundry-paste-eater-paste",
+        title: "Paste Media",
+        button: true,
+        visible: true,
+      });
+
+      expect(control.tools).toHaveLength(2);
+      expect(control.tools[1]).toMatchObject({
+        name: "foundry-paste-eater-paste",
+        title: "Paste Media",
+        button: true,
+        visible: true,
+      });
+    });
+
+    it("can upsert scene control tools into object-backed tool collections", () => {
+      const control = {
+        tools: {},
+      };
+
+      api._clipboardUpsertSceneControlTool(control, "foundry-paste-eater-upload", {
+        name: "foundry-paste-eater-upload",
+        title: "Upload Media",
+        button: true,
+      });
+
+      expect(control.tools["foundry-paste-eater-upload"]).toMatchObject({
+        name: "foundry-paste-eater-upload",
+        title: "Upload Media",
+        button: true,
+      });
+    });
+
+    it("ignores scene control upserts cleanly when no tools container exists", () => {
+      expect(() => api._clipboardUpsertSceneControlTool(null, "foundry-paste-eater-paste", {
+        name: "foundry-paste-eater-paste",
+      })).not.toThrow();
+      expect(() => api._clipboardUpsertSceneControlTool({}, "foundry-paste-eater-paste", {
+        name: "foundry-paste-eater-paste",
+      })).not.toThrow();
     });
 
     it("respects scene control visibility settings for non-gm users", () => {
@@ -1302,6 +1370,8 @@ describe("ui and hook integration helpers", () => {
         "chat-media-display": {scope: "world", config: true, default: "thumbnail", type: String},
         "canvas-text-paste-mode": {scope: "world", config: true, default: "scene-notes", type: String},
         "scene-paste-prompt-mode": {scope: "world", config: true, default: "auto", type: String},
+        "selected-token-paste-mode": {scope: "world", config: true, default: "scene-only", type: String},
+        "upload-path-organization": {scope: "world", config: true, default: "flat", type: String},
       };
 
       expect(registeredByKey.size).toBe(Object.keys(expectedSettings).length);

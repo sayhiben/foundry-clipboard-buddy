@@ -2,7 +2,7 @@
 
 # Foundry Paste Eater
 
-Foundry Paste Eater lets you paste or upload media and contextual text into:
+Foundry Paste Eater lets GMs and players paste or upload media and contextual text into:
 - Tiles
 - Tokens
 - Scene notes
@@ -31,42 +31,386 @@ https://github.com/sayhiben/foundry-paste-eater/releases/latest/download/module.
 Repository:
 - [GitHub](https://github.com/sayhiben/foundry-paste-eater)
 
-## What It Does
+## Table Of Contents
 
-### Media on the canvas
+- [Quick Start](#quick-start)
+- [How Paste Routing Works](#how-paste-routing-works)
+- [Default Behavior Cheat Sheet](#default-behavior-cheat-sheet)
+- [Media Behavior By Context](#media-behavior-by-context)
+- [Text Behavior By Context](#text-behavior-by-context)
+- [Chat Behavior](#chat-behavior)
+- [Scene Tools And Upload Fallbacks](#scene-tools-and-upload-fallbacks)
+- [Access, Ownership, And Permission Rules](#access-ownership-and-permission-rules)
+- [Settings That Change Default Behavior](#settings-that-change-default-behavior)
+- [Settings Reference](#settings-reference)
+- [Permissions And Storage](#permissions-and-storage)
+- [Troubleshooting By Symptom](#troubleshooting-by-symptom)
+- [Browser Notes](#browser-notes)
+- [Supported Input Types](#supported-input-types)
+- [Suggested README GIFs](#suggested-readme-gifs)
+- [Testing And Debugging](#testing-and-debugging)
 
-- If one or more tokens are selected, pasted media replaces their texture in place.
-- If one or more tiles are selected, pasted media replaces their texture in place.
-- If one or more scene notes are selected, pasted media replaces their note icon or texture in place.
-- If nothing is selected, new media uses the configured empty-canvas target. By default that is the active layer, which means the Tokens layer creates a token and other layers create a tile.
-- New pasted tokens create a backing world Actor by default so they can be opened and edited normally afterward.
-- On a fresh scene, Foundry usually opens on the Tokens layer, so default settings will create a token until you switch to Tile Controls or change the module target setting.
-- Normal keyboard or browser canvas paste respects Foundry's copied-object buffer before creating module content.
-- Large pasted images are scaled down for tile creation.
-- Video tiles are created muted, looping, and autoplaying.
+## Quick Start
 
-### Text on the canvas
+1. Copy an image, video, direct media URL, or plain text.
+2. Choose where the paste should go:
+   - Focus a supported art field to update that field.
+   - Focus the chat input to post media to chat or keep text as chat text.
+   - Focus the canvas to replace selected content or create new scene content.
+   - Use `Paste Media` or `Upload Media` from scene controls if you want an explicit scene action.
+3. Paste with your normal browser gesture:
+   `Ctrl+V` on Windows/Linux, `Cmd+V` on macOS, or your browser's Paste action.
+4. If you want new media on an empty scene to become a tile instead of a token, switch to Tile Controls first or change the `Default empty-canvas paste target` setting.
 
-- If a token or tile is selected, pasted text appends to a Journal-backed note associated with that placeable.
-- If a scene note is selected, pasted text appends to the Journal page linked to that note and creates a text page when needed.
-- If no supported placeable is selected, pasted text creates a standalone scene note at the mouse position.
-- If pasted content looks like a media URL but does not resolve to supported media, canvas paste falls back to note creation instead of failing silently.
+On a fresh scene, Foundry usually opens on the Tokens layer, so default settings usually create a token until you switch layers or change the empty-canvas target setting.
+
+## How Paste Routing Works
+
+Foundry Paste Eater follows a simple routing model:
+
+1. Focus wins first.
+   If a supported art field is focused, pasted media goes there before chat or canvas handling.
+2. Chat wins next.
+   If chat is focused, media goes to chat and plain text stays plain chat text.
+3. Canvas uses selection before creation.
+   On the canvas, selected placeables are replaced before new scene content is created.
+4. Plain text on the canvas becomes notes.
+   Text creates or updates Journal-backed scene notes instead of chat content.
+5. Settings and permissions can change the defaults.
+   Role minimums, feature toggles, selected-token image mode, and empty-canvas targeting all change what players experience.
+
+Normal keyboard canvas paste respects Foundry's copied-object buffer before this module creates anything. The explicit scene-control tools do not.
+
+## Default Behavior Cheat Sheet
+
+| If you do this | Default result | Notes |
+| --- | --- | --- |
+| Focus an Actor or Item portrait field and paste an image | Update that field | No canvas or chat content is created |
+| Focus a token-style art field and paste an image or video | Update that field | Works for `texture.src` and `prototypeToken.texture.src` |
+| Focus chat and paste an image or video | Upload and post media to chat | Chat display mode controls preview style |
+| Focus chat and paste plain text or a non-media URL | Keep normal chat text | The module does not swallow normal chat text |
+| Select a token and paste an image | Replace selected scene token art | Default is scene-only token replacement |
+| Select a token and paste a video | Replace selected scene token art | Video always stays scene-local |
+| Select a tile and paste an image or video | Replace selected tile art | Size and position stay unchanged |
+| Select a scene note and paste an image | Replace the note icon | No new tile is created |
+| Select a token, tile, or note and paste plain text | Create or update linked note content | Notes append instead of replacing prior text |
+| Paste image or video on an empty canvas | Create a token or tile | Default follows active layer |
+| Paste plain text on an empty canvas | Create a standalone scene note | Created at the current mouse position |
+| Use scene `Paste Media` | Run an explicit scene media workflow | Media only, never text-note creation |
+| Use scene `Upload Media` | Pick a local file and apply normal scene media rules | Media only, never text-note creation |
+
+## Media Behavior By Context
 
 ### Focused document art fields
 
-- If a supported art field is focused, pasted media goes there before canvas or chat handling.
-- Actor and Item portrait fields (`img`) accept pasted image media.
-- Token-style art fields such as `texture.src` and `prototypeToken.texture.src` accept pasted image and video media.
-- The module updates the focused field value and the visible preview in the open app.
+If a supported art field is focused, media goes there before canvas or chat handling.
 
-### Chat behavior
+| Focused field | Supported media | Result |
+| --- | --- | --- |
+| Actor or Item `img` | Images | Upload the media and update the field plus visible preview |
+| Token `texture.src` | Images and video | Upload the media and update the field plus visible preview |
+| Actor `prototypeToken.texture.src` | Images and video | Upload the media and update the field plus visible preview |
 
-- When the chat input is focused, normal text paste stays normal chat text.
-- Media paste uploads the media and posts a chat message with an inline preview.
-- Direct media URLs pasted into chat are downloaded and uploaded when the browser allows it.
-- If a direct media URL cannot be downloaded because the remote host blocks browser-side access, the original URL text is inserted into chat instead of creating a broken or empty media message.
-- Non-media URLs pasted into chat stay as normal text.
-- Chat also supports drag and drop plus an `Upload Chat Media` button.
+Direct media URLs in focused art fields are downloaded and uploaded when the browser allows it. If the remote host blocks browser-side download, the original URL can still be written into a supported field instead of creating broken canvas content.
+
+### Canvas media
+
+On the canvas, replacement happens before creation.
+
+| Current situation | Default result | Notes |
+| --- | --- | --- |
+| One or more selected tokens | Replace selected token art | Image default is scene-only; video is always scene-only |
+| One or more selected tiles | Replace selected tile art | Preserves size and position |
+| One or more selected scene notes | Replace selected note icon | Image only |
+| No selection on Tokens layer | Create a token | Default empty-canvas targeting follows active layer |
+| No selection on Tiles layer | Create a tile | Large images are scaled down for tiles |
+| No selection on Notes layer | Create a tile | Notes layer does not create notes from media |
+
+Additional canvas rules:
+- New pasted tokens create backing world Actors by default so they can be opened and edited normally afterward.
+- Large pasted images are scaled down for tile creation.
+- Video tiles are created muted, looping, and autoplaying.
+- `Caps Lock` hidden mode affects newly created canvas media, not replacement updates.
+- Normal keyboard or browser canvas paste respects Foundry's copied-object buffer before creating module content.
+
+### Canvas media selection priority
+
+Foundry layer behavior matters. If selected placeables exist on multiple layers, the active layer decides which type is preferred first.
+
+| Active layer | Replacement priority |
+| --- | --- |
+| Tokens | Selected tokens, then selected tiles, then selected notes |
+| Tiles | Selected tiles, then selected tokens, then selected notes |
+| Notes | Selected notes, then selected tokens, then selected tiles |
+
+If the first matching replacement type is present but blocked by role, ownership, or feature settings, the module stops cleanly instead of silently creating a different kind of placeable.
+
+### Selected token image modes
+
+The default image behavior for selected tokens is intentionally conservative.
+
+| Setting | Intended behavior |
+| --- | --- |
+| `Scene token only` | Replace only `Token.texture.src` for the selected scene token. This is the default. |
+| `Actor portrait + linked token art` | Update `Actor.img`, update linked-token default art, and update linked placed tokens for eligible linked Actors. Image only. |
+| `Ask each time` | Prompt with `Scene token only` and `Actor portrait + linked token art` when the selected token set is eligible for actor-wide updates. |
+
+Important limits:
+- `Actor portrait + linked token art` requires every selected token to be linked to a base Actor the current user can update.
+- If any selected token is ineligible, actor-wide mode fails closed instead of partially changing the scene.
+- Video pastes never become actor-wide portrait or linked-token updates. They stay scene-local.
+
+### Empty-canvas media targeting
+
+| Setting | Result when nothing is selected |
+| --- | --- |
+| `Active layer` | Tokens layer creates tokens. Tiles and Notes layers create tiles. |
+| `Token` | Always create a token |
+| `Tile` | Always create a tile |
+
+## Text Behavior By Context
+
+Plain text and non-media URLs stay useful on the canvas.
+
+| Canvas situation | Result |
+| --- | --- |
+| Selected token | Create or reuse a Journal-backed note associated with that token, then append text |
+| Selected tile | Create or reuse a Journal-backed note associated with that tile, then append text |
+| Selected scene note | Append text to the linked Journal page, creating a text page when needed |
+| No supported selection | Create a standalone scene note at the current mouse position |
+| `Canvas text paste mode` disabled | Do nothing |
+
+If pasted content looks like a media URL but does not resolve to supported media, canvas paste falls back to note creation instead of failing silently.
+
+## Chat Behavior
+
+| Chat action | Result |
+| --- | --- |
+| Paste an image or video | Upload and post a chat media message |
+| Paste a direct media URL | Download, upload, and post media when the browser allows it |
+| Paste a direct media URL from a host that blocks browser-side download | Leave the original URL text in chat instead of creating a broken or empty message |
+| Paste plain text or a non-media URL | Keep normal chat text |
+| Drag and drop media into chat | Upload and post chat media |
+| Use `Upload Chat Media` | Pick a local file and post it to chat |
+
+Chat also supports three display modes:
+- `Full preview`
+- `Thumbnail`
+- `Link only`
+
+## Scene Tools And Upload Fallbacks
+
+The Tiles and Tokens controls add:
+- `Paste Media`
+- `Upload Media`
+
+Use these when:
+- you want an explicit scene action
+- browser restrictions make normal clipboard reads unreliable
+- you are on a touch-oriented device
+- you want a file-picker fallback instead of clipboard paste
+
+| Tool | Intended behavior |
+| --- | --- |
+| `Paste Media` | Media only. Uses direct clipboard read, the manual paste prompt, or both depending on `Scene Paste Media prompt mode`. |
+| `Upload Media` | Media only. Opens a file picker and then applies normal scene create-or-replace rules. |
+
+Additional scene-tool rules:
+- These tools do not create Journal notes from plain text.
+- These tools do not defer to Foundry's copied-object buffer.
+- These tools can still work when normal canvas focus is not active.
+- `Paste Media` can fall back to a manual paste prompt so the browser's native `paste` event can finish the workflow.
+
+## Access, Ownership, And Permission Rules
+
+Foundry Paste Eater has both role-based and real document-permission checks.
+
+| Concern | Expected behavior |
+| --- | --- |
+| Canvas media role minimum | Controls who can create or replace canvas media |
+| Canvas text role minimum | Controls who can create or update scene notes from pasted text |
+| Chat media role minimum | Controls who can post pasted or uploaded media into chat |
+| Non-GM scene controls | Non-GMs only see scene buttons when enabled and when they already meet the canvas-media role requirement |
+| Token replacement | Non-GMs must be able to update the token or its Actor |
+| Tile replacement | Non-GMs must be able to update the tile |
+| Actor-wide token image mode | Every selected token must be linked to a base Actor the user can update |
+
+Player uploads also depend on Foundry core file permissions. See [Permissions And Storage](#permissions-and-storage).
+
+## Settings That Change Default Behavior
+
+These are the settings most likely to change what your players expect.
+
+| Setting | Default | What it changes |
+| --- | --- | --- |
+| `Selected token image paste mode` | `Scene token only` | Whether selected-token image paste stays scene-local, becomes actor-wide for eligible linked tokens, or prompts each time |
+| `Default empty-canvas paste target` | `Active layer` | Whether new canvas media follows the active layer, always creates tiles, or always creates tokens |
+| `Create backing Actors for pasted tokens` | Enabled | Whether new pasted tokens get world Actors or remain actorless scene tokens |
+| `Canvas text paste mode` | `Scene notes` | Whether plain text on the canvas creates notes or is disabled |
+| `Scene Paste Media prompt mode` | `Auto` | Whether the explicit scene paste button uses direct read, always opens the prompt, or never opens the prompt |
+| `Chat media display` | `Thumbnail` | How uploaded chat media is rendered |
+| `Upload path organization` | `Flat` | Whether uploads stay in one folder or are separated into `canvas`, `chat`, and `document-art` subfolders |
+| `Allow token creation from pasted media` | Enabled | Whether empty-canvas token-targeted media can create new tokens |
+| `Allow tile creation from pasted media` | Enabled | Whether empty-canvas tile-targeted media can create new tiles |
+| `Allow token art replacement` | Enabled | Whether pasted media may replace selected token art |
+| `Allow tile art replacement` | Enabled | Whether pasted media may replace selected tile art |
+| `Enable chat media handling` | Enabled | Whether chat media paste, drag/drop, and upload are active |
+| `Enable chat upload button` | Enabled | Whether the explicit `Upload Chat Media` button is shown |
+| `Allow non-GMs to use scene controls` | Disabled | Whether non-GMs can see the scene control buttons when they otherwise qualify |
+
+## Settings Reference
+
+Open Foundry's Game Settings and look for the module settings and menu.
+
+### Storage and diagnostics
+
+- `Upload destination`
+  World-level storage target for pasted media. Supports User Data, The Forge, Foundry-configured S3-compatible storage, and other picker-provided sources.
+  The module reads the live endpoint or base URL from Foundry's server-side S3 configuration, so providers like Cloudflare R2 or MinIO work as long as Foundry itself is configured for them.
+- `Upload path organization`
+  Keeps the configured base upload destination, then optionally appends context, user, and month subfolders such as `canvas/<user-id>/<YYYY-MM>/`, `chat/<user-id>/<YYYY-MM>/`, and `document-art/<user-id>/<YYYY-MM>/`.
+- `Verbose logging`
+  Client-level debugging setting that writes detailed foundry-paste-eater diagnostics to the browser console.
+  When enabled, client-side error reports also download a full module logfile automatically for that client.
+
+### Access control
+
+- `Minimum role for canvas media paste`
+  Lowest Foundry role allowed to create or replace tiles and tokens from pasted media.
+- `Minimum role for canvas text paste`
+  Lowest Foundry role allowed to create or update Journal-backed scene notes from pasted text.
+- `Minimum role for chat media paste`
+  Lowest Foundry role allowed to post pasted or uploaded media into chat.
+- `Allow non-GMs to use scene controls`
+  Lets non-GM users who meet the canvas-media role requirement see the Foundry Paste Eater scene-control buttons.
+
+### Canvas media
+
+- `Allow token creation from pasted media`
+  Allows new token creation when media targets token placement.
+- `Allow tile creation from pasted media`
+  Allows new tile creation when media targets tile placement.
+- `Allow token art replacement`
+  Allows pasted media to replace selected token art. Non-GMs are limited to tokens they can actually update, which is typically actor ownership.
+- `Selected token image paste mode`
+  Chooses between `Scene token only`, `Actor portrait + linked token art`, and `Ask each time`.
+  `Actor portrait + linked token art` is image-only and requires every selected token to be linked to a base Actor the current user can update.
+- `Allow tile art replacement`
+  Allows pasted media to replace selected tile art.
+- `Default empty-canvas paste target`
+  Chooses whether new canvas media follows the active layer, always creates tiles, or always creates tokens.
+- `Create backing Actors for pasted tokens`
+  Keeps newly pasted tokens editable through a normal token sheet.
+
+### Canvas text
+
+- `Canvas text paste mode`
+  Supports Journal-backed scene notes or fully disabling canvas text paste.
+
+### Chat
+
+- `Enable chat media handling`
+  Master toggle for chat media paste, drag/drop, and upload behavior.
+- `Enable chat upload button`
+  Controls whether the explicit `Upload Chat Media` button appears.
+- `Chat media display`
+  Chooses between full preview, thumbnail preview, or link-only chat posts.
+
+### Scene tools
+
+- `Enable scene Paste Media tool`
+  Controls whether the explicit scene-control paste button is shown.
+- `Enable scene Upload Media tool`
+  Controls whether the explicit scene-control upload button is shown.
+- `Scene Paste Media prompt mode`
+  Chooses whether the explicit scene-control paste button uses automatic browser behavior, always opens the manual paste prompt, or only uses direct clipboard reads.
+
+## Permissions And Storage
+
+### Player upload fix
+
+When a player hits a storage permission error, the GM fix is in Foundry core permissions, not the module destination form:
+- Open `Game Settings -> Configure Permissions`.
+- Enable `Use File Browser`.
+- Enable `Upload Files`.
+- Apply those permissions to the affected player role, then retry the paste or upload.
+
+If those permissions are already enabled, the problem is usually backend write access instead, such as filesystem permissions, S3 credentials, or bucket policy.
+
+### Default upload location
+
+By default, pasted media is uploaded under:
+
+```text
+pasted_images
+```
+
+If you want world-local storage, a typical example is:
+
+```text
+worlds/<your-world>/pasted_images
+```
+
+### Storage governance and S3-friendly organization
+
+If you use S3-compatible storage and want lower retention costs, a sensible pattern is:
+- Keep a durable base prefix for long-lived Actor and sheet art.
+- Enable `Upload path organization` so chat, canvas, and document-art uploads land in separate subfolders.
+- Apply backend lifecycle rules only to clearly ephemeral prefixes such as `chat/` or temporary canvas scratch uploads.
+
+Foundry Paste Eater does not delete uploads or manage retention policies itself. Storage cleanup remains a GM or storage-backend responsibility.
+
+## Troubleshooting By Symptom
+
+| Symptom | What to check |
+| --- | --- |
+| Nothing happened when a player pasted on the canvas | Check canvas-media role minimums, feature toggles, actual document ownership or update rights, canvas focus, and whether Foundry copied objects were already waiting to paste |
+| A player could paste to chat but not replace token or tile art | Check token or tile replacement settings, real update rights, and player file permissions |
+| Pasting changed only the token in this scene | That is the default. Change `Selected token image paste mode` if you want actor-wide image updates for eligible linked tokens |
+| Actor-wide selected-token image paste failed | At least one selected token was probably unlinked, actorless, or tied to an Actor the user could not update |
+| A direct media URL turned into normal text in chat | The remote host probably blocked browser-side download. Upload locally or use a CORS-friendly host |
+| A direct media URL did not create canvas content | The remote host probably blocked browser-side download, so the module failed cleanly instead of creating broken scene content |
+| The scene `Paste Media` button opened a prompt | This is expected when the prompt mode is `Always show prompt` or when direct clipboard reads could not provide usable media in `Auto` mode |
+| Players can browse or upload nowhere | Check `Game Settings -> Configure Permissions` for `Use File Browser` and `Upload Files`, then check backend storage credentials or filesystem access |
+| New media became a token when you expected a tile | The scene probably had Tokens active, and the default empty-canvas behavior follows the active layer |
+
+## Browser Notes
+
+### Secure-context restrictions
+
+Direct clipboard reads are stricter than normal browser paste events. On raw IP addresses, insecure origins, or other untrusted contexts:
+
+- `navigator.clipboard.read()` may be blocked
+- the scene-control `Paste Media` action may warn or fall back to its manual prompt
+- normal browser paste events may still work
+- `Upload Media` and chat upload remain the safest fallback
+
+### Firefox
+
+Modern Firefox is much more usable than older versions for clipboard media workflows, but clipboard permission behavior can still differ from Chromium browsers. If direct clipboard reads prompt or fail, browser paste events and upload fallbacks should still cover the main workflows.
+
+### Remote media URLs
+
+Direct media URLs are downloaded in the browser before upload when possible. If a remote host blocks that browser-side download:
+- canvas paste will warn instead of creating broken tiles or tokens
+- chat paste will leave the original URL text in the input instead of creating a broken or empty media message
+- focused art fields may fall back to the original URL when that media kind is supported there
+- the safest workaround is to upload the file locally or use a host that allows browser-side downloads
+
+## Supported Input Types
+
+- Images, including animated formats such as `.gif` and `.webp`
+- Browser-supported video formats such as `.webm`, `.mp4`, `.m4v`, `.mpeg`, `.mpg`, `.ogg`, and `.ogv`
+- Direct media URLs
+- Clipboard payloads that expose media through `text/uri-list`, `text/plain`, or HTML media tags
+- Plain text for contextual note creation
+
+When the browser exposes multiple `ClipboardItem` entries through `navigator.clipboard.read()`, the module scans all of them instead of assuming the first entry is the useful one.
+
+That means:
+- it can find media in a later clipboard item even if an earlier one only contains text or another unsupported payload
+- it checks the current clipboard snapshot, not clipboard history
+- it stops at the first usable media or text result and does not paste multiple clipboard items at once
 
 ## Suggested README GIFs
 
@@ -136,132 +480,6 @@ These placeholder callouts are grouped by feature area so recorded media can be 
 
 > INSERT `17-upload-destination-config.gif` HERE
 > Open the Upload destination settings, change the target folder or source, then paste media so the README captures the storage configuration workflow.
-
-## Supported Input Types
-
-- Images, including animated formats such as `.gif` and `.webp`
-- Browser-supported video formats such as `.webm`, `.mp4`, `.m4v`, `.mpeg`, `.mpg`, `.ogg`, and `.ogv`
-- Direct media URLs
-- Clipboard payloads that expose media through `text/uri-list`, `text/plain`, or HTML media tags
-- Plain text for contextual note creation
-
-When the browser exposes multiple `ClipboardItem` entries through `navigator.clipboard.read()`, the module scans all of them instead of assuming the first entry is the useful one.
-
-That means:
-- it can find media in a later clipboard item even if an earlier one only contains text or another unsupported payload
-- it checks the current clipboard snapshot, not clipboard history
-- it stops at the first usable media or text result and does not paste multiple clipboard items at once
-
-## Quick Start
-
-### Desktop paste
-
-1. Copy media or text.
-2. Focus the canvas and use your normal paste gesture:
-   `Ctrl+V` on Windows/Linux, `Cmd+V` on macOS, or your browser's Paste action.
-3. Focus the chat input first if you want media to go to chat instead of the scene.
-
-Keyboard paste follows the browser's native `paste` event rather than a custom module shortcut. That matters for cases like Finder-copied files on macOS, where the browser paste event can expose the real file payload even when direct clipboard reads only expose a filename.
-
-### Scene controls
-
-The Tiles and Tokens controls add:
-- `Paste Media`
-- `Upload Media`
-
-Use these when:
-- you want an explicit scene action
-- direct paste is blocked by browser restrictions
-- you are on a touch-oriented device
-
-`Paste Media` first tries a direct clipboard read. If the browser cannot expose usable media through that API, the module now opens a focused paste prompt so you can finish with the browser's native paste event. This is especially useful for local files copied from Finder on macOS.
-`Upload Media` works as a file-picker fallback.
-Unlike normal canvas paste, these explicit scene tools do not defer to Foundry's copied-object buffer.
-
-The "scan all clipboard items" behavior matters most for the direct-read path used by `Paste Media`. Normal keyboard paste still follows the browser's native `paste` event and uses whatever the browser exposes through `event.clipboardData`.
-
-### Hidden mode
-
-When pasting media from the keyboard, Caps Lock can be used to create newly pasted tiles or tokens as hidden.
-
-## Settings
-
-Open Foundry's Game Settings and look for the module settings/menu:
-
-- `Upload destination`
-  World-level storage target for pasted media. Supports User Data, The Forge, Foundry-configured S3-compatible storage, and other picker-provided sources.
-  The module reads the live endpoint or base URL from Foundry's server-side S3 configuration, so providers like Cloudflare R2 or MinIO work as long as Foundry itself is configured for them.
-- `Minimum role for canvas media paste`
-  Lowest Foundry role allowed to create or replace tiles and tokens from pasted media.
-- `Minimum role for canvas text paste`
-  Lowest Foundry role allowed to create or update Journal-backed scene notes from pasted text.
-- `Minimum role for chat media paste`
-  Lowest Foundry role allowed to post pasted or uploaded media into chat.
-- `Allow non-GMs to use scene controls`
-  Lets non-GM users who meet the canvas-media role requirement see the Foundry Paste Eater scene-control buttons.
-- `Enable chat media handling`
-  Master toggle for chat media paste, drag/drop, and upload behavior.
-- `Enable chat upload button`
-  Controls whether the explicit `Upload Chat Media` button appears.
-- `Allow token creation from pasted media`
-  Allows new token creation when media targets token placement.
-- `Allow tile creation from pasted media`
-  Allows new tile creation when media targets tile placement.
-- `Allow token art replacement`
-  Allows pasted media to replace selected token art. Non-GMs are limited to tokens they can actually update, which is typically actor ownership.
-- `Allow tile art replacement`
-  Allows pasted media to replace selected tile art.
-- `Enable scene Paste Media tool`
-  Controls whether the explicit scene-control paste button is shown.
-- `Enable scene Upload Media tool`
-  Controls whether the explicit scene-control upload button is shown.
-- `Default empty-canvas paste target`
-  Chooses whether new canvas media follows the active layer, always creates tiles, or always creates tokens.
-- `Create backing Actors for pasted tokens`
-  Keeps newly pasted tokens editable through a normal token sheet.
-- `Chat media display`
-  Chooses between full preview, thumbnail preview, or link-only chat posts.
-- `Canvas text paste mode`
-  Currently supports Journal-backed scene notes or fully disabling canvas text paste.
-- `Scene Paste Media prompt mode`
-  Chooses whether the explicit scene-control paste button uses automatic browser behavior, always opens the manual paste prompt, or only uses direct clipboard reads.
-- `Verbose logging`
-  Client-level debugging setting that writes detailed foundry-paste-eater diagnostics to the browser console.
-  When enabled, client-side error reports also download a full module logfile automatically for that client.
-
-By default, pasted media is uploaded under:
-
-```text
-pasted_images
-```
-
-If you want world-local storage, a typical example is:
-
-```text
-worlds/<your-world>/pasted_images
-```
-
-## Browser Notes
-
-### Secure-context restrictions
-
-Direct clipboard reads are stricter than normal browser paste events. On raw IP addresses, insecure origins, or other untrusted contexts:
-
-- `navigator.clipboard.read()` may be blocked
-- the scene-control `Paste Media` action may warn and do nothing
-- normal browser paste events may still work
-- `Upload Media` and chat upload remain the safest fallback
-
-### Firefox
-
-Modern Firefox is much more usable than older versions for clipboard media workflows, but clipboard permission behavior can still differ from Chromium browsers. If direct clipboard reads prompt or fail, browser paste events and upload fallbacks should still cover the main workflows.
-
-### Remote media URLs
-
-Direct media URLs are downloaded in the browser before upload when possible. If a remote host blocks that browser-side download:
-- canvas paste will warn instead of creating broken tiles or tokens
-- chat paste will leave the original URL text in the input instead of creating a broken or empty media message
-- the safest workaround is to upload the file locally or use a host that allows browser-side downloads
 
 ## Testing And Debugging
 

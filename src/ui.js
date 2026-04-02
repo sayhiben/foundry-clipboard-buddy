@@ -217,6 +217,45 @@ function _clipboardOpenScenePastePrompt() {
   return prompt;
 }
 
+function _clipboardResolveScenePasteToolPlan({
+  canUseScenePasteTool = _clipboardCanUseScenePasteTool(),
+  promptMode = _clipboardGetScenePastePromptMode(),
+} = {}) {
+  if (!canUseScenePasteTool) {
+    return {
+      action: "disabled",
+      openPrompt: false,
+      tryDirectReadInPrompt: false,
+      useDirectSceneAction: false,
+    };
+  }
+
+  if (promptMode === CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER) {
+    return {
+      action: "direct-read-only",
+      openPrompt: false,
+      tryDirectReadInPrompt: false,
+      useDirectSceneAction: true,
+    };
+  }
+
+  if (promptMode === CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS) {
+    return {
+      action: "prompt-only",
+      openPrompt: true,
+      tryDirectReadInPrompt: false,
+      useDirectSceneAction: false,
+    };
+  }
+
+  return {
+    action: "prompt-then-direct-read",
+    openPrompt: true,
+    tryDirectReadInPrompt: true,
+    useDirectSceneAction: false,
+  };
+}
+
 async function _clipboardTryScenePastePromptDirectRead(prompt) {
   if (!navigator.clipboard?.read) {
     _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard reads are unavailable here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media.");
@@ -260,18 +299,44 @@ async function _clipboardTryScenePastePromptDirectRead(prompt) {
 }
 
 function _clipboardHandleScenePasteToolClick() {
-  if (!_clipboardCanUseScenePasteTool()) return false;
-
-  const promptMode = _clipboardGetScenePastePromptMode();
-  if (promptMode === CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER) {
+  const plan = _clipboardResolveScenePasteToolPlan();
+  if (plan.action === "disabled") return false;
+  if (plan.useDirectSceneAction) {
     return _clipboardHandleScenePasteAction();
   }
 
   const prompt = _clipboardOpenScenePastePrompt();
-  if (promptMode !== CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS) {
+  if (plan.tryDirectReadInPrompt) {
     void _clipboardTryScenePastePromptDirectRead(prompt);
   }
   return true;
+}
+
+function _clipboardResolveNativePasteRoute({
+  hasMediaInput = false,
+  hasTextInput = false,
+  hasArtFieldTarget = false,
+  isChatTarget = false,
+  isEditableTarget = false,
+  canUseChatMedia = _clipboardCanUseChatMedia(),
+  canvasContextEligible = false,
+} = {}) {
+  if (hasMediaInput) {
+    if (hasArtFieldTarget) return {route: "art-field-media"};
+    if (isChatTarget) {
+      return {route: canUseChatMedia ? "chat-media" : "ignore-chat-media-disabled"};
+    }
+    if (isEditableTarget) return {route: "ignore-editable-media"};
+    return {route: canvasContextEligible ? "canvas-media" : "ignore-media-ineligible"};
+  }
+
+  if (hasTextInput) {
+    if (isChatTarget) return {route: "ignore-chat-text"};
+    if (isEditableTarget) return {route: "ignore-editable-text"};
+    return {route: canvasContextEligible ? "canvas-text" : "ignore-text-ineligible"};
+  }
+
+  return {route: "ignore-empty"};
 }
 
 function _clipboardToggleChatDropTarget(root, active) {
@@ -400,9 +465,21 @@ function _clipboardOnPaste(event) {
   });
 
   const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
+  const context = _clipboardResolvePasteContext();
+  const isChatTarget = Boolean(_clipboardGetChatRootFromTarget(event.target));
+  const isEditableTarget = _clipboardIsEditableTarget(event.target);
   if (imageInput) {
     const artFieldTarget = _clipboardGetFocusedArtFieldTarget(event.target);
-    if (artFieldTarget) {
+    const route = _clipboardResolveNativePasteRoute({
+      hasMediaInput: true,
+      hasArtFieldTarget: Boolean(artFieldTarget),
+      isChatTarget,
+      isEditableTarget,
+      canUseChatMedia: _clipboardCanUseChatMedia(),
+      canvasContextEligible: _clipboardCanPasteToContext(context),
+    });
+
+    if (route.route === "art-field-media") {
       if (_clipboardHasPasteConflict({respectCopiedObjects: false})) return;
 
       _clipboardConsumePasteEvent(event);
@@ -412,8 +489,7 @@ function _clipboardOnPaste(event) {
       return;
     }
 
-    if (_clipboardGetChatRootFromTarget(event.target)) {
-      if (!_clipboardCanUseChatMedia()) return;
+    if (route.route === "chat-media") {
       if (_clipboardHasPasteConflict({respectCopiedObjects: false})) return;
 
       _clipboardConsumePasteEvent(event);
@@ -423,7 +499,9 @@ function _clipboardOnPaste(event) {
       return;
     }
 
-    if (_clipboardIsEditableTarget(event.target)) {
+    if (route.route === "ignore-chat-media-disabled") return;
+
+    if (route.route === "ignore-editable-media") {
       _clipboardLog("info", "Ignoring pasted media in an unsupported editable target.", {
         targetTagName: event.target?.tagName || null,
         targetName: event.target?.name || event.target?.dataset?.edit || null,
@@ -431,8 +509,10 @@ function _clipboardOnPaste(event) {
       return;
     }
 
-    const context = _clipboardResolvePasteContext();
-    if (!_clipboardCanHandleCanvasPasteContext(context, "Ignoring pasted media because the canvas context is not eligible.")) return;
+    if (route.route === "ignore-media-ineligible") {
+      if (!_clipboardCanHandleCanvasPasteContext(context, "Ignoring pasted media because the canvas context is not eligible.")) return;
+    }
+
     if (_clipboardHasPasteConflict()) return;
 
     _clipboardConsumePasteEvent(event);
@@ -444,10 +524,18 @@ function _clipboardOnPaste(event) {
 
   const textInput = _clipboardExtractTextInputFromDataTransfer(event.clipboardData);
   if (!textInput) return;
-  if (_clipboardGetChatRootFromTarget(event.target) || _clipboardIsEditableTarget(event.target)) return;
+  const route = _clipboardResolveNativePasteRoute({
+    hasTextInput: true,
+    isChatTarget,
+    isEditableTarget,
+    canvasContextEligible: _clipboardCanPasteToContext(context),
+  });
+  if (route.route === "ignore-chat-text" || route.route === "ignore-editable-text") return;
 
-  const context = _clipboardResolvePasteContext();
-  if (!_clipboardCanHandleCanvasPasteContext(context, "Ignoring pasted text because the canvas context is not eligible.")) return;
+  if (route.route === "ignore-text-ineligible") {
+    if (!_clipboardCanHandleCanvasPasteContext(context, "Ignoring pasted text because the canvas context is not eligible.")) return;
+  }
+
   if (_clipboardHasPasteConflict()) return;
 
   _clipboardConsumePasteEvent(event);
@@ -481,6 +569,7 @@ module.exports = {
   _clipboardOnScenePastePromptPaste,
   _clipboardOpenScenePastePrompt,
   _clipboardTryScenePastePromptDirectRead,
+  _clipboardResolveScenePasteToolPlan,
   _clipboardHandleScenePasteToolClick,
   _clipboardToggleChatDropTarget,
   _clipboardOnChatDragOver,
@@ -492,6 +581,7 @@ module.exports = {
   _clipboardHandleChatImageInputWithTextFallback,
   _clipboardConsumePasteEvent,
   _clipboardCanHandleCanvasPasteContext,
+  _clipboardResolveNativePasteRoute,
   _clipboardOnPaste,
   _clipboardOnKeydown,
 };

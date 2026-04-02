@@ -412,6 +412,12 @@ describe("journal, note, and upload workflows", () => {
     });
 
     it("wraps storage permission failures with gm-facing guidance", async () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      env.settingsValues.set("core.permissions", {
+        FILES_BROWSE: [4],
+        FILES_UPLOAD: [4],
+      });
       env.MockFilePicker.upload.mockRejectedValueOnce(new Error("You do not have permission to upload files to this location"));
 
       await expect(api._clipboardUploadBlob(new File(["x"], "upload.png", {type: "image/png"}), {
@@ -421,7 +427,7 @@ describe("journal, note, and upload workflows", () => {
         endpoint: "https://storage.example.com",
       })).rejects.toMatchObject({
         clipboardSummary: "Foundry denied permission to upload pasted media in the active storage destination.",
-        clipboardResolution: expect.stringContaining("Foundry's core settings"),
+        clipboardResolution: expect.stringContaining("Game Settings -> Configure Permissions"),
       });
     });
 

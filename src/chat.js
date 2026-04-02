@@ -3,6 +3,7 @@ const {_clipboardGetMediaKind} = require("./media");
 const {
   CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW,
   CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY,
+  CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT,
 } = require("./constants");
 const {_clipboardGetChatMediaDisplayMode} = require("./settings");
 const {
@@ -74,7 +75,9 @@ async function _clipboardCreateChatMessage(path) {
 }
 
 async function _clipboardPostChatImage(blob) {
-  const destination = _clipboardGetUploadDestination();
+  const destination = _clipboardGetUploadDestination({
+    uploadContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT,
+  });
   await _clipboardCreateFolderIfMissing(destination);
   const path = _clipboardCreateFreshMediaPath(await _clipboardUploadBlob(blob, destination));
   await _clipboardCreateChatMessage(path);

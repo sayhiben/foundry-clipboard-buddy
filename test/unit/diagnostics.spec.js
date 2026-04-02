@@ -336,6 +336,24 @@ describe("diagnostics and settings helpers", () => {
       createElementSpy.mockRestore();
     });
 
+    it("returns a report file without attempting a download when no download path is available", () => {
+      const report = api._clipboardBuildErrorReport(new Error("no download path"));
+      const originalCreateObjectURL = globalThis.URL.createObjectURL;
+      const createElementSpy = vi.spyOn(document, "createElement");
+      globalThis.saveDataToFile = undefined;
+      globalThis.URL.createObjectURL = undefined;
+
+      const file = api._clipboardDownloadReportFile(report);
+
+      expect(file).toMatchObject({
+        filename: expect.stringMatching(/^foundry-paste-eater-error-/),
+        url: "",
+      });
+      expect(createElementSpy).not.toHaveBeenCalled();
+      globalThis.URL.createObjectURL = originalCreateObjectURL;
+      createElementSpy.mockRestore();
+    });
+
     it("omits the gm logfile link when object urls are unavailable", () => {
       const originalCreateObjectURL = globalThis.URL.createObjectURL;
       globalThis.URL.createObjectURL = undefined;
@@ -422,6 +440,21 @@ describe("diagnostics and settings helpers", () => {
       expect(env.dialogInstances[0].data.content).toContain("Review the attached logfile for full details.");
     });
 
+    it("can relay gm dialogs without a logfile link when object urls are unavailable", () => {
+      const originalCreateObjectURL = globalThis.URL.createObjectURL;
+      globalThis.URL.createObjectURL = undefined;
+
+      const handled = api._clipboardHandleSocketReport({
+        type: "clipboard-error-report",
+        report: api._clipboardBuildErrorReport(new Error("socket boom")),
+      });
+
+      expect(handled).toBe(true);
+      expect(env.dialogInstances[0].data.content).toContain("Another user encountered a Foundry Paste Eater error.");
+      expect(env.dialogInstances[0].data.content).not.toContain("Download module logfile");
+      globalThis.URL.createObjectURL = originalCreateObjectURL;
+    });
+
     it("tolerates missing dialog support on GM clients", () => {
       globalThis.Dialog = undefined;
 
@@ -476,6 +509,23 @@ describe("diagnostics and settings helpers", () => {
       expect(globalThis.game.socket.emit).toHaveBeenCalledWith("module.foundry-paste-eater", expect.objectContaining({
         type: "clipboard-error-report",
       }));
+    });
+
+    it("does not emit socket relays for gm-local errors", () => {
+      api._clipboardReportError(new Error("gm emit skip"));
+      expect(globalThis.game.socket.emit).not.toHaveBeenCalled();
+    });
+
+    it("returns a report and skips relays when socket support is unavailable", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      globalThis.game.socket.emit = undefined;
+      const report = api._clipboardReportError(new Error("no emit"), {
+        notifyLocal: false,
+      });
+
+      expect(report.summary).toBe("no emit");
+      expect(globalThis.ui.notifications.error).not.toHaveBeenCalled();
     });
 
     it("uses content summaries and explicit resolutions when available", () => {
@@ -607,6 +657,57 @@ describe("diagnostics and settings helpers", () => {
       });
     });
 
+    it("can organize upload destinations by context, user, and month", () => {
+      const destination = api._clipboardGetUploadDestination({
+        storedSource: "data",
+        target: "nested/folder",
+        uploadContext: "document-art",
+        organizationMode: "context-user-month",
+        userId: "player-2",
+        date: new Date("2026-04-01T10:00:00Z"),
+      });
+
+      expect(destination).toEqual({
+        storedSource: "data",
+        source: "data",
+        target: "nested/folder/document-art/player-2/2026-04",
+        bucket: "",
+        endpoint: "",
+      });
+    });
+
+    it("normalizes organized upload path helpers", () => {
+      expect(api._clipboardGetUploadContextSegment("chat")).toBe("chat");
+      expect(api._clipboardGetUploadContextSegment("document-art")).toBe("document-art");
+      expect(api._clipboardGetUploadContextSegment("weird")).toBe("canvas");
+      expect(api._clipboardNormalizeUploadPathSegment("\\nested//folder\\", "fallback")).toBe("nested/folder");
+      expect(api._clipboardNormalizeUploadPathSegment("", "fallback")).toBe("fallback");
+      expect(api._clipboardBuildOrganizedUploadTarget("base", {
+        organizationMode: "context-user-month",
+        uploadContext: "chat",
+        userId: "user/with/slash",
+        date: "bad-date",
+      })).toMatch(/^base\/chat\/user\/with\/slash\/\d{4}-\d{2}$/);
+    });
+
+    it("inspects core file permissions when building storage guidance", () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      env.settingsValues.set("core.permissions", {
+        FILES_BROWSE: [4],
+        FILES_UPLOAD: [4],
+      });
+
+      expect(api._clipboardGetCurrentUserRole()).toBe(globalThis.CONST.USER_ROLES.PLAYER);
+      expect(api._clipboardGetCorePermissionRoles("FILES_UPLOAD")).toEqual([4]);
+      expect(api._clipboardUserHasCorePermission("FILES_UPLOAD")).toBe(false);
+      expect(api._clipboardHasCoreFileUploadPermissions()).toBe(false);
+      expect(api._clipboardBuildStoragePermissionDestinationLabel({
+        source: "s3",
+        bucket: "bucket-a",
+      })).toBe("the active S3-Compatible Storage destination (bucket-a)");
+    });
+
     it("describes upload destinations", () => {
       expect(api._clipboardDescribeDestination({
         storedSource: "auto",
@@ -645,6 +746,21 @@ describe("diagnostics and settings helpers", () => {
         bucket: "bucket-a",
         endpoint: "https://r2.example.com",
       });
+    });
+
+    it("resolves image-input blobs directly from blob and url payloads", async () => {
+      const directBlob = new Blob(["x"], {type: "image/png"});
+      expect(await api._clipboardResolveImageInputBlob({blob: directBlob})).toBe(directBlob);
+
+      globalThis.fetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: () => "image/png",
+        },
+        blob: async () => new Blob(["x"], {type: ""}),
+      });
+      await expect(api._clipboardResolveImageInputBlob({url: "https://example.com/file.png"})).resolves.toBeInstanceOf(File);
+      await expect(api._clipboardResolveImageInputBlob(null)).resolves.toBeNull();
     });
   });
 
@@ -732,7 +848,13 @@ describe("diagnostics and settings helpers", () => {
       })).rejects.toThrow("nope");
     });
 
-    it("wraps upload-folder permission errors with Foundry-core guidance", async () => {
+    it("wraps upload-folder permission errors with exact Foundry permission guidance when the player lacks file permissions", async () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      env.settingsValues.set("core.permissions", {
+        FILES_BROWSE: [4],
+        FILES_UPLOAD: [4],
+      });
       env.MockFilePicker.browse.mockRejectedValueOnce(new Error("You do not have permission to browse this location"));
 
       await expect(api._clipboardCreateFolderIfMissing({
@@ -741,11 +863,17 @@ describe("diagnostics and settings helpers", () => {
         bucket: "",
       })).rejects.toMatchObject({
         clipboardSummary: "Foundry denied permission to create or access the upload folder in the active storage destination.",
-        clipboardResolution: expect.stringContaining("Foundry's core settings"),
+        clipboardResolution: expect.stringContaining("Game Settings -> Configure Permissions"),
       });
     });
 
-    it("wraps nested upload-folder permission errors with Foundry-core guidance", async () => {
+    it("falls back to backend write guidance when core file permissions are already present", async () => {
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.PLAYER;
+      env.settingsValues.set("core.permissions", {
+        FILES_BROWSE: [1, 2, 3, 4],
+        FILES_UPLOAD: [1, 2, 3, 4],
+      });
       env.MockFilePicker.browse
         .mockRejectedValueOnce(new Error("missing"))
         .mockRejectedValueOnce(new Error("missing"));
@@ -757,7 +885,7 @@ describe("diagnostics and settings helpers", () => {
         bucket: "",
       })).rejects.toMatchObject({
         clipboardSummary: "Foundry denied permission to create or access the upload folder in the active storage destination.",
-        clipboardResolution: expect.stringContaining("Foundry's core settings"),
+        clipboardResolution: expect.stringContaining("backend write access"),
       });
     });
   });

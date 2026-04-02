@@ -79,7 +79,13 @@ function createActor(env, data = {}) {
       height: data.prototypeToken?.height ?? 1,
     },
     update: vi.fn(async updateData => {
-      Object.assign(actor, updateData);
+      for (const [key, value] of Object.entries(updateData || {})) {
+        if (key === "prototypeToken.texture.src") {
+          actor.prototypeToken.texture.src = value;
+          continue;
+        }
+        actor[key] = value;
+      }
       return actor;
     }),
   };
@@ -110,6 +116,8 @@ function createPlaceableDocument(documentName, data = {}) {
     texture: {
       src: data.texture?.src || "",
     },
+    actorId: data.actorId ?? data.actor?.id ?? null,
+    actorLink: data.actorLink ?? false,
     actor: data.actor || null,
     isOwner: data.isOwner ?? true,
     object: data.object || null,
@@ -179,6 +187,7 @@ function loadRuntime(options = {}) {
     ["foundry-paste-eater.image-location", "pasted_images"],
     ["foundry-paste-eater.image-location-bucket", ""],
     ["foundry-paste-eater.verbose-logging", false],
+    ["core.permissions", {FILES_BROWSE: [1, 2, 3, 4], FILES_UPLOAD: [1, 2, 3, 4]}],
     ["foundry-paste-eater.minimum-role-canvas-media", "PLAYER"],
     ["foundry-paste-eater.minimum-role-canvas-text", "PLAYER"],
     ["foundry-paste-eater.minimum-role-chat-media", "PLAYER"],
@@ -196,6 +205,8 @@ function loadRuntime(options = {}) {
     ["foundry-paste-eater.chat-media-display", "thumbnail"],
     ["foundry-paste-eater.canvas-text-paste-mode", "scene-notes"],
     ["foundry-paste-eater.scene-paste-prompt-mode", "auto"],
+    ["foundry-paste-eater.selected-token-paste-mode", "scene-only"],
+    ["foundry-paste-eater.upload-path-organization", "flat"],
   ]);
   const settingsRegistry = new Map();
   const worldStorage = new Map();
@@ -260,10 +271,31 @@ function loadRuntime(options = {}) {
   };
 
   const scene = {
-    notes: {
-      get: id => sceneNotes.get(id),
+    tokens: {
+      contents: [],
+      get: id => scene.tokens.contents.find(token => token.id === id) || null,
     },
-    updateEmbeddedDocuments: vi.fn(async (_documentName, updates) => updates),
+    tiles: {
+      contents: [],
+      get: id => scene.tiles.contents.find(tile => tile.id === id) || null,
+    },
+    notes: {
+      contents: [],
+      get: id => sceneNotes.get(id) || scene.notes.contents.find(note => note.id === id) || null,
+    },
+    updateEmbeddedDocuments: vi.fn(async (documentName, updates) => {
+      const collection = documentName === "Token"
+        ? scene.tokens.contents
+        : documentName === "Tile"
+          ? scene.tiles.contents
+          : scene.notes.contents;
+      for (const update of updates || []) {
+        const document = collection.find(entry => entry.id === update._id);
+        if (!document) continue;
+        await document.update(update);
+      }
+      return updates;
+    }),
     createEmbeddedDocuments: vi.fn(async (documentName, dataList) => {
       if (documentName === "Note") {
         return dataList.map(data => {
@@ -276,14 +308,18 @@ function loadRuntime(options = {}) {
             }),
           };
           sceneNotes.set(note.id, note);
+          scene.notes.contents.push(note);
           return note;
         });
       }
 
-      return dataList.map(data => ({
-        id: data.id || makeId(documentName.toLowerCase()),
-        ...data,
-      }));
+      const documents = dataList.map(data => createPlaceableDocument(documentName, data));
+      if (documentName === "Token") {
+        scene.tokens.contents.push(...documents);
+      } else if (documentName === "Tile") {
+        scene.tiles.contents.push(...documents);
+      }
+      return documents;
     }),
   };
 
@@ -412,10 +448,19 @@ function loadRuntime(options = {}) {
       },
     },
     journal: {
+      get contents() {
+        return Array.from(journalEntries.values());
+      },
       get: id => journalEntries.get(id),
     },
     actors: {
+      get contents() {
+        return Array.from(actors.values());
+      },
       get: id => actors.get(id),
+    },
+    scenes: {
+      contents: [scene],
     },
     world: {
       id: "world-1",

@@ -26,7 +26,7 @@ The suite is designed to cover the browser-driven flows that can be validated ag
 - Multi-item async clipboard-read handling
 - Copied-object priority handling
 - Chat upload button flow
-- Behavior-setting flows in `test/playwright/config.spec.js`, including empty-canvas targeting, backing-actor creation, chat display modes, canvas text mode, prompt mode, and upload-destination persistence
+- Behavior-setting flows in `test/playwright/config.spec.js`, including empty-canvas targeting, backing-actor creation, chat display modes, canvas text mode, scene-paste prompt mode, selected-token image modes, and upload-destination persistence
 - Permissions and feature-toggle flows in `test/playwright/permissions.spec.js`, including non-GM scene controls, minimum-role gates, and owned-token replacement
 - Error-reporting flows in `test/playwright/error-reporting.spec.js`, including player alerts, GM relay dialogs, and verbose logfile download behavior
 
@@ -133,6 +133,8 @@ npm run test:smoke:s3
 - When local headless Chromium is necessary, keep both parts of the workaround in `playwright.config.js`: use the full `chromium` channel and keep the software-WebGL launch flags. Removing either one reintroduces a Foundry bootstrap failure in this environment.
 - Keyboard paste coverage follows the browser's native `paste` event. The module's explicit `Paste Media` scene tool is the only path that still depends on `navigator.clipboard.read()`.
 - Uploaded media files remain in the configured `playwright` upload subfolders. They are isolated by test run id but are not automatically deleted from disk.
+- The module now supports organized upload subfolders such as `canvas/<user-id>/<YYYY-MM>/`, `chat/<user-id>/<YYYY-MM>/`, and `document-art/<user-id>/<YYYY-MM>/`. Browser tests that assert uploaded paths should account for those context prefixes when the setting is enabled.
+- The module does not delete uploaded media or manage lifecycle expiration. Treat cleanup and retention as backend-admin policy, especially for S3-compatible storage.
 - Player media-upload smoke paths need an upload folder that already exists. The harness now pre-creates those folders as GM before player-upload tests run.
 - The optional S3-compatible storage smoke spec deletes the uploaded S3 prefix after it verifies the object landed in the configured bucket.
 - The S3-compatible storage smoke now checks browser render success as well as upload success. Your bucket needs CORS for media `GET` and `HEAD` requests or Foundry may create the tile document but fail to render the texture.

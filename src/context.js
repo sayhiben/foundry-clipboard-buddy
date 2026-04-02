@@ -105,6 +105,62 @@ function _clipboardCanReplaceDocument(documentName, document) {
   return false;
 }
 
+function _clipboardGetTokenActorArtEligibility(replacementTarget, {mediaKind = "image"} = {}) {
+  if (!replacementTarget?.documents?.length || replacementTarget.documentName !== "Token") {
+    return {
+      eligible: false,
+      reason: "Actor portrait + linked token art only applies when selected tokens are being replaced.",
+      actors: [],
+      documents: [],
+    };
+  }
+
+  if (mediaKind !== "image") {
+    return {
+      eligible: false,
+      reason: "Actor portrait + linked token art only supports pasted images. Video pastes stay scene-only.",
+      actors: [],
+      documents: replacementTarget.documents,
+    };
+  }
+
+  if ((replacementTarget.requestedCount ?? replacementTarget.documents.length) > replacementTarget.documents.length) {
+    return {
+      eligible: false,
+      reason: "Actor portrait + linked token art requires every selected token to be editable before anything is changed.",
+      actors: [],
+      documents: replacementTarget.documents,
+    };
+  }
+
+  const actors = [];
+  const seenActorIds = new Set();
+  for (const document of replacementTarget.documents) {
+    const actor = document?.actor || null;
+    const actorId = actor?.id || document?.actorId || null;
+    if (!document?.actorLink || !actor || !_clipboardCanUserModifyDocument(actor, "update")) {
+      return {
+        eligible: false,
+        reason: "Actor portrait + linked token art requires every selected token to be linked to a base Actor you can update.",
+        actors: [],
+        documents: replacementTarget.documents,
+      };
+    }
+
+    if (actorId && !seenActorIds.has(actorId)) {
+      seenActorIds.add(actorId);
+      actors.push(actor);
+    }
+  }
+
+  return {
+    eligible: true,
+    reason: "",
+    actors,
+    documents: replacementTarget.documents,
+  };
+}
+
 function _clipboardCanCreateDocument(documentName) {
   if (documentName === "Token") return _clipboardCanCreateTokens();
   return _clipboardCanCreateTiles();
@@ -297,14 +353,42 @@ const CLIPBOARD_IMAGE_REPLACEMENT_ORDER = {
   Note: ["Note", "Token", "Tile"],
 };
 
+function _clipboardGetReplacementOrder(activeDocumentName = "Tile") {
+  return CLIPBOARD_IMAGE_REPLACEMENT_ORDER[activeDocumentName] || CLIPBOARD_IMAGE_REPLACEMENT_ORDER.Tile;
+}
+
+function _clipboardResolveReplacementTargetFromCandidates(activeDocumentName = _clipboardGetActiveDocumentName(), replacementCandidates = {}) {
+  for (const documentName of _clipboardGetReplacementOrder(activeDocumentName)) {
+    const candidate = replacementCandidates?.[documentName] || null;
+    const requestedCount = candidate?.requestedCount ?? candidate?.documents?.length ?? 0;
+    if (!requestedCount) continue;
+
+    const documents = Array.isArray(candidate?.documents)
+      ? candidate.documents.filter(Boolean)
+      : [];
+
+    return {
+      documentName,
+      documents,
+      requestedCount,
+      blocked: documents.length < 1,
+    };
+  }
+
+  return null;
+}
+
 function _clipboardGetActiveDocumentName() {
   if (canvas?.activeLayer === canvas?.tokens) return "Token";
   if (canvas?.activeLayer === canvas?.notes) return "Note";
   return "Tile";
 }
 
-function _clipboardGetCreateDocumentName(activeDocumentName = _clipboardGetActiveDocumentName()) {
-  switch (_clipboardGetDefaultEmptyCanvasTarget()) {
+function _clipboardGetCreateDocumentName(
+  activeDocumentName = _clipboardGetActiveDocumentName(),
+  emptyCanvasTarget = _clipboardGetDefaultEmptyCanvasTarget()
+) {
+  switch (emptyCanvasTarget) {
     case CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN:
       return "Token";
     case CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE:
@@ -320,7 +404,8 @@ function _clipboardGetPlaceableStrategy(documentName = _clipboardGetCreateDocume
 }
 
 function _clipboardGetReplacementTarget(activeDocumentName = _clipboardGetActiveDocumentName()) {
-  for (const documentName of CLIPBOARD_IMAGE_REPLACEMENT_ORDER[activeDocumentName]) {
+  const replacementCandidates = {};
+  for (const documentName of _clipboardGetReplacementOrder(activeDocumentName)) {
     const strategy = _clipboardGetPlaceableStrategy(documentName);
     const layer = strategy.getLayer?.();
     const controlledPlaceables = _clipboardGetControlledPlaceables(layer);
@@ -344,29 +429,49 @@ function _clipboardGetReplacementTarget(activeDocumentName = _clipboardGetActive
       eligibleIds: eligibleDocuments.map(document => document.id),
       blocked: eligibleDocuments.length < 1,
     });
-
-    return {
-      documentName: strategy.documentName,
+    replacementCandidates[strategy.documentName] = {
       documents: eligibleDocuments,
       requestedCount: documents.length,
-      blocked: eligibleDocuments.length < 1,
     };
   }
 
-  return null;
+  return _clipboardResolveReplacementTargetFromCandidates(activeDocumentName, replacementCandidates);
+}
+
+function _clipboardResolveCanvasMediaPlan({
+  activeDocumentName = _clipboardGetActiveDocumentName(),
+  emptyCanvasTarget = _clipboardGetDefaultEmptyCanvasTarget(),
+  replacementCandidates = null,
+  canCreateTokens = _clipboardCanCreateTokens(),
+  canCreateTiles = _clipboardCanCreateTiles(),
+} = {}) {
+  const createDocumentName = _clipboardGetCreateDocumentName(activeDocumentName, emptyCanvasTarget);
+  const replacementTarget = replacementCandidates
+    ? _clipboardResolveReplacementTargetFromCandidates(activeDocumentName, replacementCandidates)
+    : _clipboardGetReplacementTarget(activeDocumentName);
+  const canCreateDocument = createDocumentName === "Token" ? canCreateTokens : canCreateTiles;
+
+  return {
+    activeDocumentName,
+    createDocumentName,
+    replacementTarget,
+    replacementBlocked: Boolean(replacementTarget?.blocked),
+    canCreateDocument,
+    shouldCreate: !replacementTarget && canCreateDocument,
+  };
 }
 
 function _clipboardResolvePasteContext({fallbackToCenter = false, requireCanvasFocus = true} = {}) {
   const activeDocumentName = _clipboardGetActiveDocumentName();
-  const createDocumentName = _clipboardGetCreateDocumentName(activeDocumentName);
+  const mediaPlan = _clipboardResolveCanvasMediaPlan({activeDocumentName});
   const mousePos = _clipboardGetMousePosition() || (fallbackToCenter ? _clipboardGetCanvasCenter() : null);
 
   return {
     mousePos,
     activeDocumentName,
-    createDocumentName,
-    createStrategy: _clipboardCanCreateDocument(createDocumentName) ? _clipboardGetPlaceableStrategy(createDocumentName) : null,
-    replacementTarget: _clipboardGetReplacementTarget(activeDocumentName),
+    createDocumentName: mediaPlan.createDocumentName,
+    createStrategy: mediaPlan.canCreateDocument ? _clipboardGetPlaceableStrategy(mediaPlan.createDocumentName) : null,
+    replacementTarget: mediaPlan.replacementTarget,
     requireCanvasFocus,
   };
 }
@@ -400,8 +505,75 @@ function _clipboardPrepareCreateLayer(context) {
   }
 }
 
-async function _clipboardReplaceControlledMedia(path, replacementTarget, mediaKind) {
+function _clipboardGetAllScenesForLinkedTokenUpdates() {
+  if (Array.isArray(game?.scenes?.contents) && game.scenes.contents.length) {
+    return game.scenes.contents.filter(Boolean);
+  }
+
+  return canvas?.scene ? [canvas.scene] : [];
+}
+
+async function _clipboardReplaceControlledTokenActorArt(path, replacementTarget, options = {}) {
+  const eligibility = options.eligibility || _clipboardGetTokenActorArtEligibility(replacementTarget, {mediaKind: "image"});
+  if (!eligibility.eligible) {
+    throw new Error(eligibility.reason || "Actor portrait + linked token art is unavailable for the current token selection.");
+  }
+
+  _clipboardLog("info", "Replacing actor portrait and linked token art", {
+    actorIds: eligibility.actors.map(actor => actor.id || null),
+    replacementTarget: _clipboardDescribeReplacementTarget(replacementTarget),
+    path,
+  });
+
+  for (const actor of eligibility.actors) {
+    await actor.update({
+      img: path,
+      "prototypeToken.texture.src": path,
+    });
+  }
+
+  const updatesByScene = new Map();
+  const trackSceneUpdate = (scene, tokenDocument) => {
+    if (!scene?.updateEmbeddedDocuments || !tokenDocument?.id) return;
+    const existing = updatesByScene.get(scene) || new Map();
+    existing.set(tokenDocument.id, {
+      _id: tokenDocument.id,
+      "texture.src": path,
+    });
+    updatesByScene.set(scene, existing);
+  };
+
+  for (const scene of _clipboardGetAllScenesForLinkedTokenUpdates()) {
+    const tokenDocuments = scene?.tokens?.contents || [];
+    for (const tokenDocument of tokenDocuments) {
+      if (!tokenDocument?.actorLink || !tokenDocument?.actorId) continue;
+      if (!eligibility.actors.some(actor => actor.id === tokenDocument.actorId)) continue;
+      trackSceneUpdate(scene, tokenDocument);
+    }
+  }
+
+  for (const document of replacementTarget.documents) {
+    trackSceneUpdate(canvas?.scene, document);
+  }
+
+  for (const [scene, sceneUpdates] of updatesByScene.entries()) {
+    if (!sceneUpdates.size) continue;
+    await scene.updateEmbeddedDocuments("Token", Array.from(sceneUpdates.values()));
+  }
+
+  return true;
+}
+
+async function _clipboardReplaceControlledMedia(path, replacementTarget, mediaKind, options = {}) {
   if (!replacementTarget) return false;
+
+  if (
+    options.mode === "actor-art" &&
+    replacementTarget.documentName === "Token" &&
+    mediaKind === "image"
+  ) {
+    return _clipboardReplaceControlledTokenActorArt(path, replacementTarget, options);
+  }
 
   const updates = replacementTarget.documents.map(document => {
     const update = {
@@ -433,6 +605,7 @@ module.exports = {
   _clipboardCanUserModifyDocument,
   _clipboardGetControlledPlaceables,
   _clipboardCanReplaceDocument,
+  _clipboardGetTokenActorArtEligibility,
   _clipboardCanCreateDocument,
   _clipboardGetPastedDocumentName,
   _clipboardGetAvailableActorTypes,
@@ -440,14 +613,19 @@ module.exports = {
   _clipboardGetDefaultActorType,
   _clipboardGetPastedTokenActorImage,
   _clipboardCreatePastedTokenActor,
+  _clipboardGetReplacementOrder,
   _clipboardGetActiveDocumentName,
   _clipboardGetCreateDocumentName,
   _clipboardGetPlaceableStrategy,
+  _clipboardResolveReplacementTargetFromCandidates,
   _clipboardGetReplacementTarget,
+  _clipboardResolveCanvasMediaPlan,
   _clipboardResolvePasteContext,
   _clipboardHasCanvasFocus,
   _clipboardIsMouseWithinCanvas,
   _clipboardCanPasteToContext,
   _clipboardPrepareCreateLayer,
+  _clipboardGetAllScenesForLinkedTokenUpdates,
+  _clipboardReplaceControlledTokenActorArt,
   _clipboardReplaceControlledMedia,
 };
