@@ -10,6 +10,11 @@ describe("ui and hook integration helpers", () => {
   beforeEach(() => {
     env = loadRuntime();
     api = env.api;
+    env.settingsValues.set("foundry-paste-eater.default-empty-canvas-target", "active-layer");
+    env.settingsValues.set("foundry-paste-eater.create-backing-actors", true);
+    env.settingsValues.set("foundry-paste-eater.canvas-text-paste-mode", "scene-notes");
+    env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "scene-only");
+    env.settingsValues.set("foundry-paste-eater.upload-path-organization", "flat");
   });
 
   describe("file chooser helpers", () => {
@@ -1337,7 +1342,7 @@ describe("ui and hook integration helpers", () => {
     it("registers every module setting with the expected defaults and scopes", () => {
       api._clipboardRegisterSettings();
 
-      expect(env.registeredMenus).toHaveLength(1);
+      expect(env.registeredMenus).toHaveLength(2);
       expect(env.registeredMenus[0]).toMatchObject({
         moduleId: "foundry-paste-eater",
         key: "upload-destination",
@@ -1346,17 +1351,25 @@ describe("ui and hook integration helpers", () => {
           type: env.runtime.FoundryPasteEaterDestinationConfig,
         },
       });
+      expect(env.registeredMenus[1]).toMatchObject({
+        moduleId: "foundry-paste-eater",
+        key: "recommended-defaults",
+        config: {
+          restricted: true,
+          type: api.FoundryPasteEaterRecommendedDefaultsConfig,
+        },
+      });
 
       const registeredByKey = new Map(env.registeredSettings.map(entry => [entry.key, entry.config]));
       const expectedSettings = {
         "image-location": {scope: "world", config: false, default: "pasted_images", type: String},
-        "image-location-source": {scope: "world", config: false, default: "auto", type: String},
+        "image-location-source": {scope: "world", config: false, default: "data", type: String},
         "image-location-bucket": {scope: "world", config: false, default: "", type: String},
         "verbose-logging": {scope: "client", config: true, default: false, type: Boolean},
         "minimum-role-canvas-media": {scope: "world", config: true, default: "PLAYER", type: String},
         "minimum-role-canvas-text": {scope: "world", config: true, default: "PLAYER", type: String},
         "minimum-role-chat-media": {scope: "world", config: true, default: "PLAYER", type: String},
-        "allow-non-gm-scene-controls": {scope: "world", config: true, default: false, type: Boolean},
+        "allow-non-gm-scene-controls": {scope: "world", config: true, default: true, type: Boolean},
         "enable-chat-media": {scope: "world", config: true, default: true, type: Boolean},
         "enable-chat-upload-button": {scope: "world", config: true, default: true, type: Boolean},
         "enable-token-creation": {scope: "world", config: true, default: true, type: Boolean},
@@ -1365,13 +1378,13 @@ describe("ui and hook integration helpers", () => {
         "enable-tile-replacement": {scope: "world", config: true, default: true, type: Boolean},
         "enable-scene-paste-tool": {scope: "world", config: true, default: true, type: Boolean},
         "enable-scene-upload-tool": {scope: "world", config: true, default: true, type: Boolean},
-        "default-empty-canvas-target": {scope: "world", config: true, default: "active-layer", type: String},
-        "create-backing-actors": {scope: "world", config: true, default: true, type: Boolean},
+        "default-empty-canvas-target": {scope: "world", config: true, default: "tile", type: String},
+        "create-backing-actors": {scope: "world", config: true, default: false, type: Boolean},
         "chat-media-display": {scope: "world", config: true, default: "thumbnail", type: String},
-        "canvas-text-paste-mode": {scope: "world", config: true, default: "scene-notes", type: String},
+        "canvas-text-paste-mode": {scope: "world", config: true, default: "disabled", type: String},
         "scene-paste-prompt-mode": {scope: "world", config: true, default: "auto", type: String},
-        "selected-token-paste-mode": {scope: "world", config: true, default: "scene-only", type: String},
-        "upload-path-organization": {scope: "world", config: true, default: "flat", type: String},
+        "selected-token-paste-mode": {scope: "world", config: true, default: "prompt", type: String},
+        "upload-path-organization": {scope: "world", config: true, default: "context-user-month", type: String},
       };
 
       expect(registeredByKey.size).toBe(Object.keys(expectedSettings).length);
@@ -1397,6 +1410,39 @@ describe("ui and hook integration helpers", () => {
         expect(registeredByKey.get(key).onChange).toBeTypeOf("function");
       }
       expect(env.settingsRegistry.size).toBe(Object.keys(expectedSettings).length);
+    });
+
+    it("opens the recommended-defaults review dialog and only reapplies configurable world defaults", async () => {
+      api._clipboardRegisterSettings();
+
+      await globalThis.game.settings.set("foundry-paste-eater", "image-location-source", "s3");
+      await globalThis.game.settings.set("foundry-paste-eater", "verbose-logging", true);
+      await globalThis.game.settings.set("foundry-paste-eater", "default-empty-canvas-target", "active-layer");
+      await globalThis.game.settings.set("foundry-paste-eater", "canvas-text-paste-mode", "scene-notes");
+      await globalThis.game.settings.set("foundry-paste-eater", "selected-token-paste-mode", "scene-only");
+
+      const app = new api.FoundryPasteEaterRecommendedDefaultsConfig();
+      await app.render(true);
+
+      expect(env.dialogInstances).toHaveLength(1);
+      const dialog = env.dialogInstances[0];
+      expect(dialog.data.title).toBe("Foundry Paste Eater: Apply Recommended Defaults");
+      expect(dialog.data.content).toContain("Only configurable world behavior settings are changed here.");
+      expect(dialog.data.content).toContain("Default empty-canvas paste target");
+      expect(dialog.data.content).not.toContain("Pasted media source");
+
+      await dialog.data.buttons.apply.callback();
+
+      expect(env.settingsValues.get("foundry-paste-eater.default-empty-canvas-target")).toBe("tile");
+      expect(env.settingsValues.get("foundry-paste-eater.create-backing-actors")).toBe(false);
+      expect(env.settingsValues.get("foundry-paste-eater.canvas-text-paste-mode")).toBe("disabled");
+      expect(env.settingsValues.get("foundry-paste-eater.selected-token-paste-mode")).toBe("prompt");
+      expect(env.settingsValues.get("foundry-paste-eater.upload-path-organization")).toBe("context-user-month");
+      expect(env.settingsValues.get("foundry-paste-eater.image-location-source")).toBe("s3");
+      expect(env.settingsValues.get("foundry-paste-eater.verbose-logging")).toBe(true);
+      expect(globalThis.ui.notifications.info).toHaveBeenCalledWith(
+        "Foundry Paste Eater: Applied 5 recommended world settings."
+      );
     });
 
     it("rerenders scene controls when scene-control visibility settings change", async () => {

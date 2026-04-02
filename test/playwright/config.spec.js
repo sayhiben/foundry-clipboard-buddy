@@ -232,6 +232,127 @@ async function getExpectedOrganizedUploadPrefix(page, baseTarget, uploadContext)
   }, {baseTarget, uploadContext});
 }
 
+test("registers the intended first-run defaults for key behavior settings", async ({foundryPage: page}) => {
+  const defaults = await page.evaluate(() => {
+    const keys = [
+      "image-location-source",
+      "allow-non-gm-scene-controls",
+      "default-empty-canvas-target",
+      "create-backing-actors",
+      "canvas-text-paste-mode",
+      "scene-paste-prompt-mode",
+      "selected-token-paste-mode",
+      "upload-path-organization",
+    ];
+
+    return Object.fromEntries(keys.map(key => [
+      key,
+      game.settings.settings.get(`foundry-paste-eater.${key}`)?.default,
+    ]));
+  });
+
+  expect(defaults).toEqual({
+    "image-location-source": "data",
+    "allow-non-gm-scene-controls": true,
+    "default-empty-canvas-target": "tile",
+    "create-backing-actors": false,
+    "canvas-text-paste-mode": "disabled",
+    "scene-paste-prompt-mode": "auto",
+    "selected-token-paste-mode": "prompt",
+    "upload-path-organization": "context-user-month",
+  });
+});
+
+test("shipped default profile creates tiles on an empty canvas even from the Tokens layer", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "default-empty-canvas-target": "tile",
+  });
+
+  try {
+    await focusCanvas(page);
+    await page.evaluate(() => canvas.tokens.activate());
+    await setCanvasMousePosition(page, await getSafeCanvasPoint(page, 39));
+
+    const before = await getStateSnapshot(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-token.png",
+      mimeType: "image/png",
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+    const after = await getStateSnapshot(page);
+    expect(after.tokens.length).toBe(before.tokens.length);
+  } finally {
+    await restoreModuleSettings(page, previousSettings);
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("shipped default profile prompts before eligible selected-token image changes", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "selected-token-paste-mode": "prompt",
+  });
+
+  try {
+    await focusCanvas(page);
+    const linked = await createLinkedActorToken(page, {
+      actorName: `${run.prefix} Default Prompt Actor`,
+      tokenName: `${run.prefix} Default Prompt Token`,
+      textureSrc: getFixtureUrl("test-token.png"),
+      x: 540,
+      y: 540,
+    });
+    const beforeActor = await getActorArtInfo(page, linked.actorId);
+
+    await controlPlaceable(page, "Token", linked.tokenId);
+    await focusCanvas(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-portrait.svg",
+      mimeType: "image/svg+xml",
+    });
+
+    await expect(page.locator("button:has-text('Actor portrait + linked token art')")).toBeVisible();
+    await page.locator("button:has-text('Scene token only')").click();
+
+    await expect.poll(() => getTokenDocument(page, linked.tokenId)).toMatchObject({
+      textureSrc: expect.stringContaining(run.uploadFolder),
+    });
+    expect(await getActorArtInfo(page, linked.actorId)).toEqual(beforeActor);
+  } finally {
+    await restoreModuleSettings(page, previousSettings);
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("shipped default profile ignores plain text on the canvas", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "canvas-text-paste-mode": "disabled",
+  });
+
+  try {
+    await focusCanvas(page);
+    const before = await getStateSnapshot(page);
+
+    await dispatchTextPaste(page, {
+      targetSelector: ".game",
+      text: `${run.prefix} untouched default text`,
+    });
+    await page.waitForTimeout(250);
+
+    const after = await getStateSnapshot(page);
+    expect(after.notes.length).toBe(before.notes.length);
+    expect(after.journals.length).toBe(before.journals.length);
+  } finally {
+    await restoreModuleSettings(page, previousSettings);
+    await cleanupClipboardRun(page, run);
+  }
+});
+
 test("default empty-canvas target steers new media creation across all configured modes", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {

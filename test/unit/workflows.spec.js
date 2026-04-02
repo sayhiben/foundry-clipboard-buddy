@@ -10,6 +10,11 @@ describe("paste and handler workflows", () => {
   beforeEach(() => {
     env = loadRuntime();
     api = env.api;
+    env.settingsValues.set("foundry-paste-eater.default-empty-canvas-target", "active-layer");
+    env.settingsValues.set("foundry-paste-eater.create-backing-actors", true);
+    env.settingsValues.set("foundry-paste-eater.canvas-text-paste-mode", "scene-notes");
+    env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "scene-only");
+    env.settingsValues.set("foundry-paste-eater.upload-path-organization", "flat");
   });
 
   describe("_clipboardApplyPasteResult", () => {

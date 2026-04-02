@@ -36,19 +36,19 @@
 ## Runtime Invariants
 - Chat-targeted media paste should create chat content only, never scene content.
 - Chat-targeted normal text should remain normal text.
-- Canvas-targeted plain text should create or update Journal-backed scene notes, not chat content.
+- Canvas-targeted plain text should only create or update Journal-backed scene notes when `canvas-text-paste-mode` is enabled. With the shipped defaults, canvas plain text is ignored.
 - Selected scene notes should behave like first-class paste targets: media replaces the note icon in place, and plain text appends to the linked Journal page.
 - Normal keyboard/browser canvas paste respects Foundry's copied-object buffer before module behavior runs.
 - Explicit scene-control `Paste Media` and `Upload Media` actions are media-only tools and do not defer to Foundry's copied-object buffer.
 - `Paste Media` is a hybrid flow: it should try direct clipboard reads first, then fall back to the manual paste prompt when browsers do not expose usable media there.
 - Focused supported art fields take precedence over canvas and chat routing for media paste. Actor and Item `img` fields accept images, while token-style `texture.src` fields accept image and video media.
 - Replacing selected tokens or tiles must preserve size and position.
-- Selected-token image paste now has explicit modes: default `scene-only`, strict `actor-art`, and `prompt`.
+- Selected-token image paste now has explicit modes: default `prompt`, strict `actor-art`, and `scene-only`.
 - `scene-only` selected-token replacement updates only `Token.texture.src` in place and never mutates actor data.
 - `actor-art` selected-token replacement is image-only, updates both `Actor.img` and `Actor.prototypeToken.texture.src`, and must fail closed unless every selected token is linked to a base Actor the current user can update.
 - Selected-token video paste always stays scene-local, even when `actor-art` or `prompt` is enabled.
-- Empty-canvas media targeting is now configurable. Default behavior follows the active layer, but tests and docs must respect the `default-empty-canvas-target` setting.
-- New pasted tokens create backing Actors by default, but that is also configurable. When the setting is disabled, tests should expect actorless tokens instead of treating that as a regression.
+- Empty-canvas media targeting is now configurable. The shipped default is `tile`, but tests and docs must respect the `default-empty-canvas-target` setting.
+- New pasted tokens are actorless by default, but `create-backing-actors` can opt back into automatic world Actor creation. Tests should expect actorless tokens unless they explicitly enable backing Actors.
 - Scene-local token replacement is gated both by the module setting and by real ownership or update rights for non-GM users. Actor-wide replacement additionally requires actor update rights for every targeted Actor.
 - Non-media URLs pasted on canvas should fall back to contextual text-note behavior.
 - Non-media URLs pasted into chat should remain plain text.
@@ -57,6 +57,35 @@
 - If `vtta-tokenizer` is open, media paste is intentionally suppressed.
 - Organized uploads may live under context-specific subfolders like `canvas/<user>/<YYYY-MM>/`, `chat/<user>/<YYYY-MM>/`, and `document-art/<user>/<YYYY-MM>/` beneath the configured base destination.
 - Storage governance in this module means upload-path organization and diagnostics only. The module does not delete uploads or manage retention or lifecycle.
+
+## Shipped Default Configuration
+| Setting | Default | Notes |
+| --- | --- | --- |
+| `image-location-source` | `data` | The module now defaults to Foundry User Data instead of the misleading `auto` fallback. |
+| `image-location` | `pasted_images` | Base upload folder before any organization subpaths. |
+| `image-location-bucket` | `""` | Empty unless S3 is explicitly selected. |
+| `verbose-logging` | `false` | Debug logging stays opt-in. |
+| `minimum-role-canvas-media` | `PLAYER` | Canvas media is available to Players by default. |
+| `minimum-role-canvas-text` | `PLAYER` | Role gate stays permissive even though canvas text handling is disabled by default. |
+| `minimum-role-chat-media` | `PLAYER` | Chat media is available to Players by default. |
+| `allow-non-gm-scene-controls` | `true` | Eligible non-GMs see the explicit scene tools by default. |
+| `enable-chat-media` | `true` | Chat media workflows are on by default. |
+| `enable-chat-upload-button` | `true` | Explicit chat upload stays visible by default. |
+| `enable-token-creation` | `true` | Token creation remains available when targeted explicitly by setting or layer. |
+| `enable-tile-creation` | `true` | Tile creation remains available by default. |
+| `enable-token-replacement` | `true` | Token replacement remains available, subject to ownership. |
+| `enable-tile-replacement` | `true` | Tile replacement remains available, subject to ownership. |
+| `enable-scene-paste-tool` | `true` | Scene `Paste Media` tool is enabled by default. |
+| `enable-scene-upload-tool` | `true` | Scene `Upload Media` tool is enabled by default. |
+| `default-empty-canvas-target` | `tile` | Empty-canvas media now creates tiles unless the GM changes the setting. |
+| `create-backing-actors` | `false` | New pasted tokens are actorless unless the GM opts in. |
+| `chat-media-display` | `thumbnail` | Chat media uses thumbnail previews by default. |
+| `canvas-text-paste-mode` | `disabled` | Canvas text-note creation is opt-in. |
+| `scene-paste-prompt-mode` | `auto` | Scene paste tool uses direct read plus prompt fallback. |
+| `selected-token-paste-mode` | `prompt` | Eligible token image replacement now asks before actor-wide mutations. |
+| `upload-path-organization` | `context-user-month` | New uploads organize into `canvas`, `chat`, and `document-art` subpaths by default. |
+
+Existing worlds keep their previously persisted settings. The GM-only `recommended-defaults` settings menu is the supported upgrade path for adopting the current shipped behavior defaults on an older world, and it must only touch configurable world settings. It must not reset upload destination or client-only diagnostics.
 
 ## Behavior Lookup
 ### Routing dimensions
@@ -67,7 +96,7 @@
 | Focus target | Supported art field, chat root, unsupported editable target, `.game` canvas root, scene paste prompt textarea | Determines routing precedence before any layer or selection logic runs. |
 | Canvas focus | `.game` focused or not | Normal keyboard canvas paste requires `.game` focus. Scene-tool workflows set `requireCanvasFocus: false` and can still create or replace scene content. |
 | Modal open | Scene paste prompt open, selected-token mode prompt open, other app window open | The scene paste prompt captures its own paste events. The selected-token mode prompt may temporarily steal focus, but the workflow restores `.game` focus before resolving. |
-| Active layer | `tokens`, `tiles`, `notes` | Determines replacement priority and, when no replacement happens, the default create target unless `default-empty-canvas-target` overrides it. |
+| Active layer | `tokens`, `tiles`, `notes` | Determines replacement priority and, when `default-empty-canvas-target` is `active-layer`, also determines which placeable type is created. |
 | Selection state | Controlled tokens, tiles, notes, none | Controlled placeables are replacement targets before create behavior. With no eligible replacement target, the workflow may create new content if creation is allowed and the mouse position is valid. |
 | User type | GM, Assistant GM, Trusted Player, Player | Role gates determine access to canvas media, canvas text, chat media, and scene-control visibility. |
 | Ownership or update rights | Updatable token, actor, tile, or note vs not | Non-GM replacement is further limited by actual document update rights. Actor-wide token art also requires update rights on every targeted Actor. |
@@ -243,6 +272,7 @@
 - Player media-upload tests need a destination folder that already exists. Pre-create the upload directory as GM before exercising player chat-media or token-replacement uploads, or the failure will come from Foundry's directory-creation rules rather than the module policy layer.
 - The Playwright harness now recovers if the test world has no active scene. It waits for `game.ready`, activates an existing scene or creates a throwaway one, and only then waits for `canvas.ready`. Do not assume the local world will always boot with an active scene already selected.
 - The main single-user browser specs now reuse a logged-in Foundry page per spec worker instead of creating a brand-new session for every test. Keep that shared-page model, but reload the page in `beforeEach` so DOM state does not leak between tests.
+- The long-lived QA world persists old module settings between runs. Browser tests that prove shipped-default behavior must explicitly seed the relevant settings instead of assuming the world behaves like a brand-new install.
 - In that shared-page Playwright model, scene-paste smoke tests must set `scene-paste-prompt-mode` explicitly when they depend on `auto`, `always`, or `never`. Do not rely on ambient world-setting state from earlier specs.
 - Playwright global setup now writes a reusable default GM storage-state file under `test/playwright/.auth/` when `FOUNDRY_STORAGE_STATE` is not provided. Prefer reusing that auth state over reimplementing slower login flows.
 - In this local setup, an expired AWS session often surfaces as a blank or `null` S3 endpoint in the destination UI and `Failed to determine S3 endpoint` server logs. Reauthenticate with `aws login`, refresh Foundry's AWS JSON config from the current CLI session, and restart Foundry before treating it as a module regression.

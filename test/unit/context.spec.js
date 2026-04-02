@@ -56,6 +56,7 @@ describe("canvas context helpers", () => {
     });
 
     it("builds actor-backed token create data", async () => {
+      env.settingsValues.set("foundry-paste-eater.create-backing-actors", true);
       api._clipboardSetRuntimeState({hiddenMode: true});
       await expect(api._clipboardGetPlaceableStrategy("Token").createData({
         path: "image.png",

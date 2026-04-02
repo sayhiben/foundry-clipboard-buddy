@@ -628,6 +628,7 @@ describe("diagnostics and settings helpers", () => {
     });
 
     it("builds upload destinations and picker options", () => {
+      env.settingsValues.set("foundry-paste-eater.upload-path-organization", "flat");
       globalThis.game.data.files.s3.endpoint = "https://r2.example.com";
       const destination = api._clipboardGetUploadDestination({
         storedSource: "s3",

@@ -34,7 +34,7 @@ function _clipboardUsingTheForge() {
 }
 
 function _clipboardGetStoredSource() {
-  return game.settings.get(CLIPBOARD_IMAGE_MODULE_ID, "image-location-source")?.trim() || CLIPBOARD_IMAGE_SOURCE_AUTO;
+  return game.settings.get(CLIPBOARD_IMAGE_MODULE_ID, "image-location-source")?.trim() || CLIPBOARD_IMAGE_SOURCE_DATA;
 }
 
 function _clipboardResolveSource(source) {

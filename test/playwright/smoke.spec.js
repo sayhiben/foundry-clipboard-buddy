@@ -48,6 +48,14 @@ const GM_CREDENTIALS = {
   password: process.env.FOUNDRY_GM_PASSWORD ?? "",
 };
 
+const SMOKE_BASELINE_SETTINGS = {
+  "default-empty-canvas-target": "active-layer",
+  "create-backing-actors": true,
+  "canvas-text-paste-mode": "scene-notes",
+  "selected-token-paste-mode": "scene-only",
+  "upload-path-organization": "flat",
+};
+
 const test = buildSharedFoundryTest(base, GM_CREDENTIALS, {acceptDownloads: true});
 
 async function startBlockedMediaServer() {
@@ -159,6 +167,7 @@ test.describe.configure({mode: "serial"});
 
 test.beforeEach(async ({foundryPage: page}) => {
   await resetFoundryUiState(page);
+  await setModuleSettings(page, SMOKE_BASELINE_SETTINGS);
 });
 
 test.afterEach(async ({foundryPage: page}) => {
@@ -482,8 +491,11 @@ test("replaces a selected token image in place", async ({foundryPage: page}, tes
       mimeType: "image/svg+xml",
     });
 
-    await expect.poll(async () => (await getTokenDocument(page, token.id)).textureSrc).toContain(run.uploadFolder);
-    const updated = await getTokenDocument(page, token.id);
+    let updated;
+    await expect.poll(async () => {
+      updated = await getTokenDocument(page, token.id);
+      return updated?.textureSrc || "";
+    }).toContain(run.uploadFolder);
 
     expect(updated.textureSrc).not.toBe(token.textureSrc);
     expect(updated.x).toBe(token.x);
@@ -519,8 +531,11 @@ test("replaces a selected tile image in place", async ({foundryPage: page}, test
       mimeType: "image/svg+xml",
     });
 
-    await expect.poll(async () => (await getTileDocument(page, tile.id)).textureSrc).toContain(run.uploadFolder);
-    const updated = await getTileDocument(page, tile.id);
+    let updated;
+    await expect.poll(async () => {
+      updated = await getTileDocument(page, tile.id);
+      return updated?.textureSrc || "";
+    }).toContain(run.uploadFolder);
 
     expect(updated.textureSrc).not.toBe(tile.textureSrc);
     expect(updated.x).toBe(tile.x);
@@ -755,8 +770,11 @@ test("replaces a selected tile with video media in place", async ({foundryPage: 
       mimeType: "video/webm",
     });
 
-    await expect.poll(async () => (await getTileDocument(page, tile.id)).textureSrc).toContain(run.uploadFolder);
-    const updated = await getTileDocument(page, tile.id);
+    let updated;
+    await expect.poll(async () => {
+      updated = await getTileDocument(page, tile.id);
+      return updated?.textureSrc || "";
+    }).toContain(run.uploadFolder);
 
     expect(updated.textureSrc).toContain(".webm");
     expect(updated.x).toBe(tile.x);
@@ -948,9 +966,13 @@ test("appends plain text to the same linked note for a selected token", async ({
     expect(secondNoteData.entryId).toBe(firstNoteData.entryId);
     expect(secondNoteData.pageId).toBe(firstNoteData.pageId);
 
+    await expect.poll(async () => {
+      const updatedJournal = await getJournalEntry(page, firstJournal.id);
+      return updatedJournal.pages[0].content || "";
+    }).toContain(secondText);
+
     const updatedJournal = await getJournalEntry(page, firstJournal.id);
     expect(updatedJournal.pages[0].content).toContain(firstText);
-    expect(updatedJournal.pages[0].content).toContain(secondText);
   } finally {
     await cleanupClipboardRun(page, run);
   }
@@ -2093,8 +2115,11 @@ test("downloads a direct media URL and replaces a selected token in place", asyn
       mimeType: "text/plain",
     });
 
-    await expect.poll(async () => (await getTokenDocument(page, token.id)).textureSrc).toContain(run.uploadFolder);
-    const updated = await getTokenDocument(page, token.id);
+    let updated;
+    await expect.poll(async () => {
+      updated = await getTokenDocument(page, token.id);
+      return updated?.textureSrc || "";
+    }).toContain(run.uploadFolder);
 
     expect(updated.textureSrc).not.toBe(token.textureSrc);
     expect(updated.textureSrc).not.toContain("/modules/foundry-paste-eater/test/assets/test-token.png");
@@ -2131,8 +2156,11 @@ test("downloads a direct media URL and replaces a selected tile in place", async
       mimeType: "text/plain",
     });
 
-    await expect.poll(async () => (await getTileDocument(page, tile.id)).textureSrc).toContain(run.uploadFolder);
-    const updated = await getTileDocument(page, tile.id);
+    let updated;
+    await expect.poll(async () => {
+      updated = await getTileDocument(page, tile.id);
+      return updated?.textureSrc || "";
+    }).toContain(run.uploadFolder);
 
     expect(updated.textureSrc).not.toBe(tile.textureSrc);
     expect(updated.textureSrc).not.toContain("/modules/foundry-paste-eater/test/assets/test-token.png");

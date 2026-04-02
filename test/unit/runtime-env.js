@@ -183,7 +183,7 @@ function loadRuntime(options = {}) {
   const socketHandlers = new Map();
   const dialogInstances = [];
   const settingsValues = new Map([
-    ["foundry-paste-eater.image-location-source", "auto"],
+    ["foundry-paste-eater.image-location-source", "data"],
     ["foundry-paste-eater.image-location", "pasted_images"],
     ["foundry-paste-eater.image-location-bucket", ""],
     ["foundry-paste-eater.verbose-logging", false],
@@ -191,7 +191,7 @@ function loadRuntime(options = {}) {
     ["foundry-paste-eater.minimum-role-canvas-media", "PLAYER"],
     ["foundry-paste-eater.minimum-role-canvas-text", "PLAYER"],
     ["foundry-paste-eater.minimum-role-chat-media", "PLAYER"],
-    ["foundry-paste-eater.allow-non-gm-scene-controls", false],
+    ["foundry-paste-eater.allow-non-gm-scene-controls", true],
     ["foundry-paste-eater.enable-chat-media", true],
     ["foundry-paste-eater.enable-chat-upload-button", true],
     ["foundry-paste-eater.enable-token-creation", true],
@@ -200,13 +200,13 @@ function loadRuntime(options = {}) {
     ["foundry-paste-eater.enable-tile-replacement", true],
     ["foundry-paste-eater.enable-scene-paste-tool", true],
     ["foundry-paste-eater.enable-scene-upload-tool", true],
-    ["foundry-paste-eater.default-empty-canvas-target", "active-layer"],
-    ["foundry-paste-eater.create-backing-actors", true],
+    ["foundry-paste-eater.default-empty-canvas-target", "tile"],
+    ["foundry-paste-eater.create-backing-actors", false],
     ["foundry-paste-eater.chat-media-display", "thumbnail"],
-    ["foundry-paste-eater.canvas-text-paste-mode", "scene-notes"],
+    ["foundry-paste-eater.canvas-text-paste-mode", "disabled"],
     ["foundry-paste-eater.scene-paste-prompt-mode", "auto"],
-    ["foundry-paste-eater.selected-token-paste-mode", "scene-only"],
-    ["foundry-paste-eater.upload-path-organization", "flat"],
+    ["foundry-paste-eater.selected-token-paste-mode", "prompt"],
+    ["foundry-paste-eater.upload-path-organization", "context-user-month"],
   ]);
   const settingsRegistry = new Map();
   const worldStorage = new Map();

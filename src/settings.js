@@ -1,8 +1,10 @@
 const {
   CLIPBOARD_IMAGE_MODULE_ID,
   CLIPBOARD_IMAGE_LEGACY_MODULE_ID,
+  CLIPBOARD_IMAGE_TITLE,
   CLIPBOARD_IMAGE_DEFAULT_FOLDER,
-  CLIPBOARD_IMAGE_SOURCE_AUTO,
+  CLIPBOARD_IMAGE_SOURCE_DATA,
+  CLIPBOARD_IMAGE_FORM_APPLICATION,
   CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING,
   CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING,
   CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING,
@@ -47,6 +49,32 @@ const {
 const {_clipboardLog} = require("./diagnostics");
 const {FoundryPasteEaterDestinationConfig} = require("./config-app");
 
+const CLIPBOARD_IMAGE_SHIPPED_DEFAULTS = Object.freeze({
+  "image-location": Object.freeze({scope: "world", config: false, value: CLIPBOARD_IMAGE_DEFAULT_FOLDER}),
+  "image-location-source": Object.freeze({scope: "world", config: false, value: CLIPBOARD_IMAGE_SOURCE_DATA}),
+  "image-location-bucket": Object.freeze({scope: "world", config: false, value: ""}),
+  [CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING]: Object.freeze({scope: "client", config: true, value: false}),
+  [CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING]: Object.freeze({scope: "world", config: true, value: CLIPBOARD_IMAGE_ROLE_PLAYER}),
+  [CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING]: Object.freeze({scope: "world", config: true, value: CLIPBOARD_IMAGE_ROLE_PLAYER}),
+  [CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING]: Object.freeze({scope: "world", config: true, value: CLIPBOARD_IMAGE_ROLE_PLAYER}),
+  [CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING]: Object.freeze({scope: "world", config: true, value: true}),
+  [CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING]: Object.freeze({scope: "world", config: true, value: true}),
+  [CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING]: Object.freeze({scope: "world", config: true, value: true}),
+  [CLIPBOARD_IMAGE_ENABLE_TOKEN_CREATION_SETTING]: Object.freeze({scope: "world", config: true, value: true}),
+  [CLIPBOARD_IMAGE_ENABLE_TILE_CREATION_SETTING]: Object.freeze({scope: "world", config: true, value: true}),
+  [CLIPBOARD_IMAGE_ENABLE_TOKEN_REPLACEMENT_SETTING]: Object.freeze({scope: "world", config: true, value: true}),
+  [CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING]: Object.freeze({scope: "world", config: true, value: true}),
+  [CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING]: Object.freeze({scope: "world", config: true, value: true}),
+  [CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING]: Object.freeze({scope: "world", config: true, value: true}),
+  [CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING]: Object.freeze({scope: "world", config: true, value: CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE}),
+  [CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING]: Object.freeze({scope: "world", config: true, value: false}),
+  [CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING]: Object.freeze({scope: "world", config: true, value: CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL}),
+  [CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING]: Object.freeze({scope: "world", config: true, value: CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED}),
+  [CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING]: Object.freeze({scope: "world", config: true, value: CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO}),
+  [CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SETTING]: Object.freeze({scope: "world", config: true, value: CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_PROMPT}),
+  [CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING]: Object.freeze({scope: "world", config: true, value: CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_CONTEXT_USER_MONTH}),
+});
+
 const CLIPBOARD_IMAGE_SETTINGS_MIGRATION_KEYS = [
   "image-location",
   "image-location-source",
@@ -72,6 +100,105 @@ const CLIPBOARD_IMAGE_SETTINGS_MIGRATION_KEYS = [
   CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SETTING,
   CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING,
 ];
+
+function _clipboardGetShippedDefaultValue(key) {
+  return CLIPBOARD_IMAGE_SHIPPED_DEFAULTS[key]?.value;
+}
+
+function _clipboardGetShippedDefaultSettings({scope = null, config = null} = {}) {
+  return Object.fromEntries(
+    Object.entries(CLIPBOARD_IMAGE_SHIPPED_DEFAULTS)
+      .filter(([, entry]) => {
+        if (scope !== null && entry.scope !== scope) return false;
+        if (config !== null && entry.config !== config) return false;
+        return true;
+      })
+      .map(([key, entry]) => [key, entry.value])
+  );
+}
+
+function _clipboardDescribeSettingValue(key, value) {
+  const registeredConfig = _clipboardGetRegisteredSettingConfig(CLIPBOARD_IMAGE_MODULE_ID, key) ||
+    _clipboardGetRegisteredSettingConfig(CLIPBOARD_IMAGE_LEGACY_MODULE_ID, key) ||
+    null;
+
+  if (registeredConfig?.choices && Object.hasOwn(registeredConfig.choices, value)) {
+    return String(registeredConfig.choices[value]);
+  }
+  if (typeof value === "boolean") return value ? "Enabled" : "Disabled";
+  if (value === "") return "(empty)";
+  if (value === null || value === undefined) return "(unset)";
+  return String(value);
+}
+
+function _clipboardGetSettingsThatDifferFromDefaults({scope = "world", config = true} = {}) {
+  const defaults = _clipboardGetShippedDefaultSettings({scope, config});
+  return Object.entries(defaults)
+    .reduce((differences, [key, defaultValue]) => {
+      const currentValue = _clipboardGetSetting(key);
+      if (currentValue === defaultValue) return differences;
+
+      differences.push({
+        key,
+        currentValue,
+        defaultValue,
+        displayName: _clipboardGetRegisteredSettingConfig(CLIPBOARD_IMAGE_MODULE_ID, key)?.name || key,
+      });
+      return differences;
+    }, [])
+    .sort((left, right) => left.displayName.localeCompare(right.displayName));
+}
+
+async function _clipboardApplyShippedDefaults({scope = "world", config = true} = {}) {
+  const differences = _clipboardGetSettingsThatDifferFromDefaults({scope, config});
+  for (const difference of differences) {
+    await game.settings.set(CLIPBOARD_IMAGE_MODULE_ID, difference.key, difference.defaultValue);
+  }
+  return differences.map(difference => difference.key);
+}
+
+class FoundryPasteEaterRecommendedDefaultsConfig extends CLIPBOARD_IMAGE_FORM_APPLICATION {
+  async render(force, options) {
+    const differences = _clipboardGetSettingsThatDifferFromDefaults();
+    const summary = differences.length
+      ? `<p>This world differs from the current ${CLIPBOARD_IMAGE_TITLE} recommended behavior defaults in <strong>${differences.length}</strong> configurable world setting${differences.length === 1 ? "" : "s"}.</p>`
+      : `<p>This world already matches the current ${CLIPBOARD_IMAGE_TITLE} configurable behavior defaults.</p>`;
+    const details = differences.length
+      ? `<ul>${differences.map(difference => `<li><strong>${foundry.utils.escapeHTML(difference.displayName)}</strong>: ${foundry.utils.escapeHTML(_clipboardDescribeSettingValue(difference.key, difference.currentValue))} -> ${foundry.utils.escapeHTML(_clipboardDescribeSettingValue(difference.key, difference.defaultValue))}</li>`).join("")}</ul>`
+      : "";
+    const scopeNote = "<p>Only configurable world behavior settings are changed here. Upload destination and client-only diagnostics stay untouched.</p>";
+
+    const dialog = new globalThis.Dialog({
+      title: `${CLIPBOARD_IMAGE_TITLE}: Apply Recommended Defaults`,
+      content: `${summary}${scopeNote}${details}`,
+      buttons: differences.length
+        ? {
+          apply: {
+            icon: "fa-solid fa-wand-magic-sparkles",
+            label: `Apply ${differences.length} Change${differences.length === 1 ? "" : "s"}`,
+            callback: async () => {
+              const updatedKeys = await _clipboardApplyShippedDefaults();
+              if (!updatedKeys.length) return;
+              ui.notifications.info(`${CLIPBOARD_IMAGE_TITLE}: Applied ${updatedKeys.length} recommended world setting${updatedKeys.length === 1 ? "" : "s"}.`);
+            },
+          },
+          cancel: {
+            icon: "fa-solid fa-xmark",
+            label: "Cancel",
+          },
+        }
+        : {
+          close: {
+            icon: "fa-solid fa-check",
+            label: "Close",
+          },
+        },
+      default: differences.length ? "apply" : "close",
+    });
+
+    return dialog.render(force, options);
+  }
+}
 
 function _clipboardGetRoleChoices() {
   return {
@@ -181,12 +308,13 @@ function _clipboardGetDefaultEmptyCanvasTarget() {
   const configuredTarget = _clipboardGetSetting(CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING);
   if (
     configuredTarget === CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE ||
+    configuredTarget === CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER ||
     configuredTarget === CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN
   ) {
     return configuredTarget;
   }
 
-  return CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER;
+  return CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE;
 }
 
 function _clipboardShouldCreateBackingActors() {
@@ -207,11 +335,14 @@ function _clipboardGetChatMediaDisplayMode() {
 
 function _clipboardGetCanvasTextPasteMode() {
   const configuredMode = _clipboardGetSetting(CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING);
-  if (configuredMode === CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED) {
+  if (
+    configuredMode === CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES ||
+    configuredMode === CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED
+  ) {
     return configuredMode;
   }
 
-  return CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES;
+  return CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED;
 }
 
 function _clipboardGetScenePastePromptMode() {
@@ -229,22 +360,26 @@ function _clipboardGetScenePastePromptMode() {
 function _clipboardGetSelectedTokenPasteMode() {
   const configuredMode = _clipboardGetSetting(CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SETTING);
   if (
+    configuredMode === CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SCENE_ONLY ||
     configuredMode === CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_ACTOR_ART ||
     configuredMode === CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_PROMPT
   ) {
     return configuredMode;
   }
 
-  return CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SCENE_ONLY;
+  return CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_PROMPT;
 }
 
 function _clipboardGetUploadPathOrganizationMode() {
   const configuredMode = _clipboardGetSetting(CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING);
-  if (configuredMode === CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_CONTEXT_USER_MONTH) {
+  if (
+    configuredMode === CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_FLAT ||
+    configuredMode === CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_CONTEXT_USER_MONTH
+  ) {
     return configuredMode;
   }
 
-  return CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_FLAT;
+  return CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_CONTEXT_USER_MONTH;
 }
 
 function _clipboardCanCreateTokens() {
@@ -325,13 +460,22 @@ function _clipboardRegisterSettings() {
     restricted: true,
   });
 
+  game.settings.registerMenu(CLIPBOARD_IMAGE_MODULE_ID, "recommended-defaults", {
+    name: "Apply recommended defaults",
+    label: "Review",
+    hint: "Review and apply the current recommended world behavior defaults without changing upload destination or client-only diagnostics.",
+    icon: "fa-solid fa-wand-magic-sparkles",
+    type: FoundryPasteEaterRecommendedDefaultsConfig,
+    restricted: true,
+  });
+
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, "image-location", {
     name: "Pasted media location",
     hint: "Folder where pasted media is saved.",
     scope: "world",
     config: false,
     type: String,
-    default: CLIPBOARD_IMAGE_DEFAULT_FOLDER,
+    default: _clipboardGetShippedDefaultValue("image-location"),
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, "image-location-source", {
@@ -340,7 +484,7 @@ function _clipboardRegisterSettings() {
     scope: "world",
     config: false,
     type: String,
-    default: CLIPBOARD_IMAGE_SOURCE_AUTO,
+    default: _clipboardGetShippedDefaultValue("image-location-source"),
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, "image-location-bucket", {
@@ -349,7 +493,7 @@ function _clipboardRegisterSettings() {
     scope: "world",
     config: false,
     type: String,
-    default: "",
+    default: _clipboardGetShippedDefaultValue("image-location-bucket"),
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING, {
@@ -358,7 +502,7 @@ function _clipboardRegisterSettings() {
     scope: "client",
     config: true,
     type: Boolean,
-    default: false,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING),
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING, {
@@ -368,7 +512,7 @@ function _clipboardRegisterSettings() {
     config: true,
     type: String,
     choices: _clipboardGetRoleChoices(),
-    default: CLIPBOARD_IMAGE_ROLE_PLAYER,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_MEDIA_SETTING),
     onChange: refreshSceneControls,
   });
 
@@ -379,7 +523,7 @@ function _clipboardRegisterSettings() {
     config: true,
     type: String,
     choices: _clipboardGetRoleChoices(),
-    default: CLIPBOARD_IMAGE_ROLE_PLAYER,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING),
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING, {
@@ -389,7 +533,7 @@ function _clipboardRegisterSettings() {
     config: true,
     type: String,
     choices: _clipboardGetRoleChoices(),
-    default: CLIPBOARD_IMAGE_ROLE_PLAYER,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING),
     onChange: refreshChatUi,
   });
 
@@ -399,7 +543,7 @@ function _clipboardRegisterSettings() {
     scope: "world",
     config: true,
     type: Boolean,
-    default: false,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_ALLOW_NON_GM_SCENE_CONTROLS_SETTING),
     onChange: refreshSceneControls,
   });
 
@@ -409,7 +553,7 @@ function _clipboardRegisterSettings() {
     scope: "world",
     config: true,
     type: Boolean,
-    default: true,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING),
     onChange: refreshChatUi,
   });
 
@@ -419,7 +563,7 @@ function _clipboardRegisterSettings() {
     scope: "world",
     config: true,
     type: Boolean,
-    default: true,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING),
     onChange: refreshChatUi,
   });
 
@@ -429,7 +573,7 @@ function _clipboardRegisterSettings() {
     scope: "world",
     config: true,
     type: Boolean,
-    default: true,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_ENABLE_TOKEN_CREATION_SETTING),
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_TILE_CREATION_SETTING, {
@@ -438,7 +582,7 @@ function _clipboardRegisterSettings() {
     scope: "world",
     config: true,
     type: Boolean,
-    default: true,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_ENABLE_TILE_CREATION_SETTING),
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_TOKEN_REPLACEMENT_SETTING, {
@@ -447,7 +591,7 @@ function _clipboardRegisterSettings() {
     scope: "world",
     config: true,
     type: Boolean,
-    default: true,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_ENABLE_TOKEN_REPLACEMENT_SETTING),
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING, {
@@ -456,7 +600,7 @@ function _clipboardRegisterSettings() {
     scope: "world",
     config: true,
     type: Boolean,
-    default: true,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING),
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING, {
@@ -465,7 +609,7 @@ function _clipboardRegisterSettings() {
     scope: "world",
     config: true,
     type: Boolean,
-    default: true,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING),
     onChange: refreshSceneControls,
   });
 
@@ -475,7 +619,7 @@ function _clipboardRegisterSettings() {
     scope: "world",
     config: true,
     type: Boolean,
-    default: true,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING),
     onChange: refreshSceneControls,
   });
 
@@ -490,7 +634,7 @@ function _clipboardRegisterSettings() {
       [CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE]: "Tile",
       [CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN]: "Token",
     },
-    default: CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING),
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING, {
@@ -499,7 +643,7 @@ function _clipboardRegisterSettings() {
     scope: "world",
     config: true,
     type: Boolean,
-    default: true,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING),
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING, {
@@ -513,7 +657,7 @@ function _clipboardRegisterSettings() {
       [CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL]: "Thumbnail",
       [CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY]: "Link only",
     },
-    default: CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING),
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING, {
@@ -526,7 +670,7 @@ function _clipboardRegisterSettings() {
       [CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES]: "Scene notes",
       [CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED]: "Disabled",
     },
-    default: CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING),
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING, {
@@ -540,7 +684,7 @@ function _clipboardRegisterSettings() {
       [CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS]: "Always show prompt",
       [CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER]: "Never show prompt",
     },
-    default: CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING),
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SETTING, {
@@ -554,7 +698,7 @@ function _clipboardRegisterSettings() {
       [CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_ACTOR_ART]: "Actor portrait + linked token art",
       [CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_PROMPT]: "Ask each time",
     },
-    default: CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SCENE_ONLY,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SETTING),
   });
 
   game.settings.register(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING, {
@@ -567,11 +711,17 @@ function _clipboardRegisterSettings() {
       [CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_FLAT]: "Flat",
       [CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_CONTEXT_USER_MONTH]: "Context / user / month",
     },
-    default: CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_FLAT,
+    default: _clipboardGetShippedDefaultValue(CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING),
   });
 }
 
 module.exports = {
+  FoundryPasteEaterRecommendedDefaultsConfig,
+  _clipboardGetShippedDefaultValue,
+  _clipboardGetShippedDefaultSettings,
+  _clipboardDescribeSettingValue,
+  _clipboardGetSettingsThatDifferFromDefaults,
+  _clipboardApplyShippedDefaults,
   _clipboardGetRoleChoices,
   _clipboardGetRoleValue,
   _clipboardGetCurrentUserRole,

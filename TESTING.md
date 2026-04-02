@@ -61,7 +61,7 @@ These flows should stay true across the test matrix:
 
 1. Chat-targeted paste should not also create scene content.
 2. Canvas-targeted media paste should create or replace scene content, not chat content.
-3. Canvas-targeted plain text should create or update Journal-backed scene notes.
+3. When `Canvas text paste mode` is enabled, canvas-targeted plain text should create or update Journal-backed scene notes.
 4. Scene-control `Paste Media` and `Upload Media` actions are media-only tools.
 5. Existing token or tile replacements must preserve position and dimensions.
 6. New uploads should respect the configured upload destination.
@@ -72,38 +72,40 @@ These flows should stay true across the test matrix:
 
 ### 1. Canvas Media Creation
 
-1. Activate the Tiles layer, clear selection, and paste a static image.
+1. Leave the default settings in place, activate the Tiles layer, clear selection, and paste a static image.
    Expected: a new tile appears at the mouse position.
-2. Activate the Tokens layer, clear selection, and paste a static image.
+2. Set `Default empty-canvas paste target` to `Token`, clear selection, and paste a static image.
    Expected: a new token appears snapped to the grid, with its shortest side normalized to one grid square.
-3. Double-click a newly pasted token.
+3. Leave `Create backing Actors for pasted tokens` disabled and inspect a newly pasted token.
+   Expected: the token is actorless and does not unexpectedly create a world Actor.
+4. Enable `Create backing Actors for pasted tokens`, paste another token, and double-click it.
    Expected: it opens normally for editing and does not warn about a missing Actor.
-4. Paste a large image onto the Tiles layer.
+5. Return `Default empty-canvas paste target` to `Tile`, then paste a large image onto the Tiles layer.
    Expected: the created tile scales down to fit roughly one-third of the scene width while preserving aspect ratio.
-5. Hold `Caps Lock` during media paste on the canvas.
+6. Hold `Caps Lock` during media paste on the canvas.
    Expected: the newly created tile or token is hidden.
-6. Copy a Foundry placeable, then paste media on the canvas with the normal keyboard or browser paste path.
+7. Copy a Foundry placeable, then paste media on the canvas with the normal keyboard or browser paste path.
    Expected: Foundry's copied-object buffer takes priority and the module does not create media.
 
 ### 2. Media Replacement
 
-1. Select one token and paste a static image.
-   Expected: only that token's texture updates; size and position stay unchanged.
-1. Set `Selected token image paste mode` to `Actor portrait + linked token art`, select one linked token, and paste a static image.
-   Expected: the selected token updates, the Actor portrait updates, and the Actor's linked-token default art updates.
-1. Set `Selected token image paste mode` to `Ask each time`, select one linked token, and paste a static image.
+1. Leave `Selected token image paste mode` at its default `Ask each time`, select one linked token, and paste a static image.
    Expected: the prompt appears with `Scene token only` and `Actor portrait + linked token art`.
-1. Set `Selected token image paste mode` to `Actor portrait + linked token art`, select an unlinked token, and paste a static image.
+2. Choose `Scene token only` from that prompt.
+   Expected: only that token's texture updates; size and position stay unchanged.
+3. Set `Selected token image paste mode` to `Actor portrait + linked token art`, select one linked token, and paste a static image.
+   Expected: the selected token updates, the Actor portrait updates, and the Actor's linked-token default art updates.
+4. Set `Selected token image paste mode` to `Actor portrait + linked token art`, select an unlinked token, and paste a static image.
    Expected: the paste fails clearly, the token is unchanged, and the Actor is unchanged.
-2. Select one tile and paste a static image.
+5. Select one tile and paste a static image.
    Expected: only that tile's texture updates; size and position stay unchanged.
-3. Select multiple tokens and paste media.
+6. Select multiple tokens and paste media.
    Expected: every selected token updates in place.
-4. Select multiple tiles and paste media.
+7. Select multiple tiles and paste media.
    Expected: every selected tile updates in place.
-5. Select one scene note and paste static image media.
+8. Select one scene note and paste static image media.
    Expected: only that note's icon or texture updates in place and no new tile is created.
-6. Arrange a case where both tokens and tiles are selected on different layers, then paste once with Tokens active and once with Tiles active.
+9. Arrange a case where both tokens and tiles are selected on different layers, then paste once with Tokens active and once with Tiles active.
    Expected: the active layer's supported selection wins each time.
 
 ### 3. Animated And Video Media
@@ -131,6 +133,8 @@ These flows should stay true across the test matrix:
    Expected: canvas paste warns and does not create broken scene content; chat paste does not create an empty media message and instead leaves the original URL text in the chat input.
 
 ### 5. Contextual Plain-Text Notes
+
+Enable `Canvas text paste mode = Scene notes` before running this section.
 
 1. Select one token and paste one line of plain text onto the canvas.
    Expected: a Journal-backed scene note is created or reused for that token.
@@ -205,8 +209,8 @@ These flows should stay true across the test matrix:
 
 ### 10. Upload Destination
 
-1. Leave the upload destination at its default value and paste media.
-   Expected: uploads land in `pasted_images`.
+1. Leave the upload destination and upload-path organization at their default values and paste media.
+   Expected: uploads land beneath `pasted_images/<context>/<user-id>/<YYYY-MM>/`.
 2. Change the upload destination to a world-scoped folder such as `worlds/<world-name>/pasted_images`.
    Expected: new uploads are created in that folder.
 3. Enable `Upload path organization` and paste one canvas image, one chat image, and one focused art-field image.
@@ -277,6 +281,8 @@ These flows should stay true across the test matrix:
    Expected: plain text canvas paste no longer creates scene notes.
 15. Toggle `Scene Paste Media prompt mode` between `Auto`, `Always show prompt`, and `Never show prompt`.
    Expected: the explicit scene-control paste button follows the configured behavior.
+16. Open `Apply recommended defaults` from the module settings menu on a world that already has custom behavior settings.
+   Expected: the review dialog lists only configurable world-setting diffs, applying it resets those behavior settings to the shipped defaults, and it does not change the upload destination or client-only `Verbose logging`.
 
 ### 13. Regression Watchlist
 
