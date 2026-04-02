@@ -1,12 +1,12 @@
-const legacy = require("./legacy-foundry");
+const core = require("./core");
 
 module.exports = {
-  closeUploadDestinationConfig: legacy.closeUploadDestinationConfig,
-  focusChatInput: legacy.focusChatInput,
-  getSceneToolState: legacy.getSceneToolState,
-  getUploadDestinationSummary: legacy.getUploadDestinationSummary,
-  invokeSceneTool: legacy.invokeSceneTool,
-  openUploadDestinationConfig: legacy.openUploadDestinationConfig,
-  restoreModuleSettings: legacy.restoreModuleSettings,
-  setModuleSettings: legacy.setModuleSettings,
+  closeUploadDestinationConfig: core.closeUploadDestinationConfig,
+  focusChatInput: core.focusChatInput,
+  getSceneToolState: core.getSceneToolState,
+  getUploadDestinationSummary: core.getUploadDestinationSummary,
+  invokeSceneTool: core.invokeSceneTool,
+  openUploadDestinationConfig: core.openUploadDestinationConfig,
+  restoreModuleSettings: core.restoreModuleSettings,
+  setModuleSettings: core.setModuleSettings,
 };

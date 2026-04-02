@@ -1,1 +1,1 @@
-export {loadRuntime} from "./legacy-env.js";
+export {loadRuntime} from "./core.js";

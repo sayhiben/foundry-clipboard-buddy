@@ -1,11 +1,11 @@
-const legacy = require("./legacy-foundry");
+const core = require("./core");
 
 module.exports = {
-  getCanvasDimensions: legacy.getCanvasDimensions,
-  getJournalEntry: legacy.getJournalEntry,
-  getNewDocuments: legacy.getNewDocuments,
-  getNoteDocument: legacy.getNoteDocument,
-  getStateSnapshot: legacy.getStateSnapshot,
-  getTileDocument: legacy.getTileDocument,
-  getTokenDocument: legacy.getTokenDocument,
+  getCanvasDimensions: core.getCanvasDimensions,
+  getJournalEntry: core.getJournalEntry,
+  getNewDocuments: core.getNewDocuments,
+  getNoteDocument: core.getNoteDocument,
+  getStateSnapshot: core.getStateSnapshot,
+  getTileDocument: core.getTileDocument,
+  getTokenDocument: core.getTokenDocument,
 };

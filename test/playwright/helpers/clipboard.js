@@ -1,13 +1,13 @@
-const legacy = require("./legacy-foundry");
+const core = require("./core");
 
 module.exports = {
-  dispatchClipboardModeKeydown: legacy.dispatchClipboardModeKeydown,
-  dispatchFileDrop: legacy.dispatchFileDrop,
-  dispatchFilePaste: legacy.dispatchFilePaste,
-  dispatchMixedPaste: legacy.dispatchMixedPaste,
-  dispatchTextPaste: legacy.dispatchTextPaste,
-  getFixturePath: legacy.getFixturePath,
-  getFixtureUrl: legacy.getFixtureUrl,
-  restoreClipboardRead: legacy.restoreClipboardRead,
-  stubClipboardRead: legacy.stubClipboardRead,
+  dispatchClipboardModeKeydown: core.dispatchClipboardModeKeydown,
+  dispatchFileDrop: core.dispatchFileDrop,
+  dispatchFilePaste: core.dispatchFilePaste,
+  dispatchMixedPaste: core.dispatchMixedPaste,
+  dispatchTextPaste: core.dispatchTextPaste,
+  getFixturePath: core.getFixturePath,
+  getFixtureUrl: core.getFixtureUrl,
+  restoreClipboardRead: core.restoreClipboardRead,
+  stubClipboardRead: core.stubClipboardRead,
 };

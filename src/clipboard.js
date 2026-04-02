@@ -248,6 +248,7 @@ async function _clipboardExtractImageInput(clipItems) {
     html: await _clipboardReadClipboardText(clipItems, "text/html"),
     plainText: await _clipboardReadClipboardText(clipItems, "text/plain"),
   }, {
+    blobMessage: "Resolved media input from async clipboard file data",
     uriListMessage: "Resolved media input from async clipboard uri-list",
     htmlMessage: "Resolved media input from async clipboard HTML",
     plainTextMessage: "Resolved media input from async clipboard plain text",

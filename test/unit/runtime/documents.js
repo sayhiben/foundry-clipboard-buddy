@@ -4,4 +4,4 @@ export {
   createJournalEntry,
   createPage,
   createPlaceableDocument,
-} from "./legacy-env.js";
+} from "./core.js";

@@ -1,9 +1,9 @@
-const legacy = require("./legacy-foundry");
+const core = require("./core");
 
 module.exports = {
-  closeOwnedContext: legacy.closeOwnedContext,
-  ensureFoundryUsers: legacy.ensureFoundryUsers,
-  ensureUploadDirectory: legacy.ensureUploadDirectory,
-  restoreCorePermissions: legacy.restoreCorePermissions,
-  setCorePermissions: legacy.setCorePermissions,
+  closeOwnedContext: core.closeOwnedContext,
+  ensureFoundryUsers: core.ensureFoundryUsers,
+  ensureUploadDirectory: core.ensureUploadDirectory,
+  restoreCorePermissions: core.restoreCorePermissions,
+  setCorePermissions: core.setCorePermissions,
 };
