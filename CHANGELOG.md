@@ -1,3 +1,12 @@
+### 1.2.0
+* Add explicit selected-token image paste modes with `Scene token only`, `Actor portrait + linked token art`, and `Ask each time`; actor-wide updates now apply both portrait and linked-token defaults while video stays scene-local
+* Improve storage-permission diagnostics so player upload failures tell GMs exactly where to fix Foundry core permissions: `Game Settings -> Configure Permissions`, including `Use File Browser` and `Upload Files`
+* Add organized upload-path routing for `canvas`, `chat`, and `document-art` contexts so S3 and other storage backends can apply safer lifecycle rules without the module owning retention
+* Ship safer first-run defaults for new worlds, including visible non-GM scene controls, tile-first empty-canvas media, disabled canvas text paste, prompted token-image behavior, and organized upload paths
+* Add a GM-only `Apply recommended defaults` menu for existing worlds that want to adopt the current shipped behavior defaults without changing upload destinations or client-only diagnostics
+* Rework the README and testing docs around real GM expectations, shipped defaults, permissions, storage, and case-by-case paste behavior
+* Expand unit and Playwright coverage for routing, actor-art propagation, permission/error guidance, upload-path organization, default-profile behavior, and cross-browser stability; harden smoke assertions against stale document reads after successful replacement polls
+
 ### 1.1.0
 * Add selected scene notes as first-class paste targets: media now replaces note icons in place and plain text appends to linked Journal content
 * Route media paste into focused Actor, Item, and token-style art fields before canvas or chat handling, including direct media URL support and preview refresh
