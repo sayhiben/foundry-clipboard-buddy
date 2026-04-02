@@ -526,9 +526,9 @@ var FoundryPasteEaterRuntime = (() => {
     }
   });
 
-  // src/storage.js
-  var require_storage = __commonJS({
-    "src/storage.js"(exports, module) {
+  // src/storage/legacy.js
+  var require_legacy = __commonJS({
+    "src/storage/legacy.js"(exports, module) {
       var {
         CLIPBOARD_IMAGE_MODULE_ID,
         CLIPBOARD_IMAGE_DEFAULT_FOLDER,
@@ -918,6 +918,86 @@ var FoundryPasteEaterRuntime = (() => {
     }
   });
 
+  // src/storage/destination.js
+  var require_destination = __commonJS({
+    "src/storage/destination.js"(exports, module) {
+      var legacy = require_legacy();
+      module.exports = {
+        _clipboardUsingTheForge: legacy._clipboardUsingTheForge,
+        _clipboardGetStoredSource: legacy._clipboardGetStoredSource,
+        _clipboardResolveSource: legacy._clipboardResolveSource,
+        _clipboardGetSourceLabel: legacy._clipboardGetSourceLabel,
+        _clipboardGetSourceChoices: legacy._clipboardGetSourceChoices,
+        _clipboardCanSelectSource: legacy._clipboardCanSelectSource,
+        _clipboardGetStoredBucket: legacy._clipboardGetStoredBucket,
+        _clipboardGetConfiguredS3Endpoint: legacy._clipboardGetConfiguredS3Endpoint,
+        _clipboardGetTargetFolder: legacy._clipboardGetTargetFolder,
+        _clipboardGetUploadPathOrganizationSetting: legacy._clipboardGetUploadPathOrganizationSetting,
+        _clipboardGetUploadContextSegment: legacy._clipboardGetUploadContextSegment,
+        _clipboardNormalizeUploadPathSegment: legacy._clipboardNormalizeUploadPathSegment,
+        _clipboardBuildOrganizedUploadTarget: legacy._clipboardBuildOrganizedUploadTarget,
+        _clipboardGetUploadDestination: legacy._clipboardGetUploadDestination,
+        _clipboardGetFilePickerOptions: legacy._clipboardGetFilePickerOptions,
+        _clipboardDescribeDestination: legacy._clipboardDescribeDestination
+      };
+    }
+  });
+
+  // src/storage/permissions.js
+  var require_permissions = __commonJS({
+    "src/storage/permissions.js"(exports, module) {
+      var legacy = require_legacy();
+      module.exports = {
+        _clipboardIsStoragePermissionError: legacy._clipboardIsStoragePermissionError,
+        _clipboardGetCurrentUserRole: legacy._clipboardGetCurrentUserRole,
+        _clipboardGetCorePermissionRoles: legacy._clipboardGetCorePermissionRoles,
+        _clipboardUserHasCorePermission: legacy._clipboardUserHasCorePermission,
+        _clipboardHasCoreFileUploadPermissions: legacy._clipboardHasCoreFileUploadPermissions,
+        _clipboardBuildStoragePermissionDestinationLabel: legacy._clipboardBuildStoragePermissionDestinationLabel,
+        _clipboardBuildStoragePermissionResolution: legacy._clipboardBuildStoragePermissionResolution,
+        _clipboardAssertUploadDestination: legacy._clipboardAssertUploadDestination,
+        _clipboardWrapStoragePermissionError: legacy._clipboardWrapStoragePermissionError
+      };
+    }
+  });
+
+  // src/storage/upload.js
+  var require_upload = __commonJS({
+    "src/storage/upload.js"(exports, module) {
+      var legacy = require_legacy();
+      module.exports = {
+        _clipboardCreateFolderIfMissing: legacy._clipboardCreateFolderIfMissing,
+        _clipboardCreateVersionedFilename: legacy._clipboardCreateVersionedFilename,
+        _clipboardCreateUploadFile: legacy._clipboardCreateUploadFile,
+        _clipboardCreateFreshMediaPath: legacy._clipboardCreateFreshMediaPath,
+        _clipboardUploadBlob: legacy._clipboardUploadBlob
+      };
+    }
+  });
+
+  // src/storage/remote-url.js
+  var require_remote_url = __commonJS({
+    "src/storage/remote-url.js"(exports, module) {
+      var legacy = require_legacy();
+      module.exports = {
+        _clipboardFetchImageUrl: legacy._clipboardFetchImageUrl,
+        _clipboardResolveImageInputBlob: legacy._clipboardResolveImageInputBlob
+      };
+    }
+  });
+
+  // src/storage.js
+  var require_storage = __commonJS({
+    "src/storage.js"(exports, module) {
+      module.exports = {
+        ...require_destination(),
+        ...require_permissions(),
+        ...require_upload(),
+        ...require_remote_url()
+      };
+    }
+  });
+
   // src/config-app.js
   var require_config_app = __commonJS({
     "src/config-app.js"(exports, module) {
@@ -1056,9 +1136,9 @@ var FoundryPasteEaterRuntime = (() => {
     }
   });
 
-  // src/settings.js
-  var require_settings = __commonJS({
-    "src/settings.js"(exports, module) {
+  // src/settings/legacy.js
+  var require_legacy2 = __commonJS({
+    "src/settings/legacy.js"(exports, module) {
       var {
         CLIPBOARD_IMAGE_MODULE_ID,
         CLIPBOARD_IMAGE_LEGACY_MODULE_ID,
@@ -1686,14 +1766,118 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardRefreshChatUi,
         _clipboardRefreshUiForSettingsChange,
         _clipboardMigrateLegacySettings,
-        _clipboardRegisterSettings
+        _clipboardRegisterSettings,
+        CLIPBOARD_IMAGE_SHIPPED_DEFAULTS,
+        CLIPBOARD_IMAGE_SETTINGS_MIGRATION_KEYS
       };
     }
   });
 
-  // src/context.js
-  var require_context = __commonJS({
-    "src/context.js"(exports, module) {
+  // src/settings/schema.js
+  var require_schema = __commonJS({
+    "src/settings/schema.js"(exports, module) {
+      var legacy = require_legacy2();
+      module.exports = {
+        CLIPBOARD_IMAGE_SHIPPED_DEFAULTS: legacy.CLIPBOARD_IMAGE_SHIPPED_DEFAULTS,
+        CLIPBOARD_IMAGE_SETTINGS_MIGRATION_KEYS: legacy.CLIPBOARD_IMAGE_SETTINGS_MIGRATION_KEYS,
+        _clipboardGetShippedDefaultValue: legacy._clipboardGetShippedDefaultValue,
+        _clipboardGetShippedDefaultSettings: legacy._clipboardGetShippedDefaultSettings,
+        _clipboardDescribeSettingValue: legacy._clipboardDescribeSettingValue,
+        _clipboardGetRegisteredSettingConfig: legacy._clipboardGetRegisteredSettingConfig,
+        _clipboardGetSettingScope: legacy._clipboardGetSettingScope,
+        _clipboardGetSettingsStorage: legacy._clipboardGetSettingsStorage,
+        _clipboardGetStoredSettingDocument: legacy._clipboardGetStoredSettingDocument,
+        _clipboardHasStoredSetting: legacy._clipboardHasStoredSetting,
+        _clipboardGetStoredSettingValue: legacy._clipboardGetStoredSettingValue,
+        _clipboardGetSetting: legacy._clipboardGetSetting
+      };
+    }
+  });
+
+  // src/settings/recommended-defaults.js
+  var require_recommended_defaults = __commonJS({
+    "src/settings/recommended-defaults.js"(exports, module) {
+      var legacy = require_legacy2();
+      module.exports = {
+        FoundryPasteEaterRecommendedDefaultsConfig: legacy.FoundryPasteEaterRecommendedDefaultsConfig,
+        _clipboardGetSettingsThatDifferFromDefaults: legacy._clipboardGetSettingsThatDifferFromDefaults,
+        _clipboardApplyShippedDefaults: legacy._clipboardApplyShippedDefaults
+      };
+    }
+  });
+
+  // src/settings/policy.js
+  var require_policy = __commonJS({
+    "src/settings/policy.js"(exports, module) {
+      var legacy = require_legacy2();
+      module.exports = {
+        _clipboardGetRoleChoices: legacy._clipboardGetRoleChoices,
+        _clipboardGetRoleValue: legacy._clipboardGetRoleValue,
+        _clipboardGetCurrentUserRole: legacy._clipboardGetCurrentUserRole,
+        _clipboardSettingEnabled: legacy._clipboardSettingEnabled,
+        _clipboardGetConfiguredMinimumRole: legacy._clipboardGetConfiguredMinimumRole,
+        _clipboardUserMeetsMinimumRole: legacy._clipboardUserMeetsMinimumRole,
+        _clipboardCanUseCanvasMedia: legacy._clipboardCanUseCanvasMedia,
+        _clipboardCanUseCanvasText: legacy._clipboardCanUseCanvasText,
+        _clipboardCanUseChatMedia: legacy._clipboardCanUseChatMedia,
+        _clipboardCanUseChatUploadButton: legacy._clipboardCanUseChatUploadButton,
+        _clipboardCanUseSceneControls: legacy._clipboardCanUseSceneControls,
+        _clipboardCanUseScenePasteTool: legacy._clipboardCanUseScenePasteTool,
+        _clipboardCanUseSceneUploadTool: legacy._clipboardCanUseSceneUploadTool,
+        _clipboardGetDefaultEmptyCanvasTarget: legacy._clipboardGetDefaultEmptyCanvasTarget,
+        _clipboardShouldCreateBackingActors: legacy._clipboardShouldCreateBackingActors,
+        _clipboardGetChatMediaDisplayMode: legacy._clipboardGetChatMediaDisplayMode,
+        _clipboardGetCanvasTextPasteMode: legacy._clipboardGetCanvasTextPasteMode,
+        _clipboardGetScenePastePromptMode: legacy._clipboardGetScenePastePromptMode,
+        _clipboardGetSelectedTokenPasteMode: legacy._clipboardGetSelectedTokenPasteMode,
+        _clipboardGetUploadPathOrganizationMode: legacy._clipboardGetUploadPathOrganizationMode,
+        _clipboardCanCreateTokens: legacy._clipboardCanCreateTokens,
+        _clipboardCanCreateTiles: legacy._clipboardCanCreateTiles,
+        _clipboardCanReplaceTokens: legacy._clipboardCanReplaceTokens,
+        _clipboardCanReplaceTiles: legacy._clipboardCanReplaceTiles,
+        _clipboardRefreshSceneControlsUi: legacy._clipboardRefreshSceneControlsUi,
+        _clipboardRefreshChatUi: legacy._clipboardRefreshChatUi,
+        _clipboardRefreshUiForSettingsChange: legacy._clipboardRefreshUiForSettingsChange
+      };
+    }
+  });
+
+  // src/settings/migrations.js
+  var require_migrations = __commonJS({
+    "src/settings/migrations.js"(exports, module) {
+      var legacy = require_legacy2();
+      module.exports = {
+        _clipboardMigrateLegacySettings: legacy._clipboardMigrateLegacySettings
+      };
+    }
+  });
+
+  // src/settings/register.js
+  var require_register = __commonJS({
+    "src/settings/register.js"(exports, module) {
+      var legacy = require_legacy2();
+      module.exports = {
+        _clipboardRegisterSettings: legacy._clipboardRegisterSettings
+      };
+    }
+  });
+
+  // src/settings.js
+  var require_settings = __commonJS({
+    "src/settings.js"(exports, module) {
+      module.exports = {
+        ...require_schema(),
+        ...require_recommended_defaults(),
+        ...require_policy(),
+        ...require_migrations(),
+        ...require_register()
+      };
+    }
+  });
+
+  // src/canvas/legacy.js
+  var require_legacy3 = __commonJS({
+    "src/canvas/legacy.js"(exports, module) {
       var { _clipboardDescribeReplacementTarget, _clipboardLog } = require_diagnostics();
       var {
         _clipboardGetTileVideoData,
@@ -2223,9 +2407,98 @@ var FoundryPasteEaterRuntime = (() => {
     }
   });
 
-  // src/diagnostics.js
-  var require_diagnostics = __commonJS({
-    "src/diagnostics.js"(exports, module) {
+  // src/canvas/selection.js
+  var require_selection = __commonJS({
+    "src/canvas/selection.js"(exports, module) {
+      var legacy = require_legacy3();
+      module.exports = {
+        _clipboardHasCopiedObjects: legacy._clipboardHasCopiedObjects,
+        _clipboardGetControlledPlaceables: legacy._clipboardGetControlledPlaceables,
+        _clipboardGetReplacementOrder: legacy._clipboardGetReplacementOrder,
+        _clipboardResolveReplacementTargetFromCandidates: legacy._clipboardResolveReplacementTargetFromCandidates,
+        _clipboardGetReplacementTarget: legacy._clipboardGetReplacementTarget
+      };
+    }
+  });
+
+  // src/canvas/eligibility.js
+  var require_eligibility = __commonJS({
+    "src/canvas/eligibility.js"(exports, module) {
+      var legacy = require_legacy3();
+      module.exports = {
+        _clipboardCanUserModifyDocument: legacy._clipboardCanUserModifyDocument,
+        _clipboardCanReplaceDocument: legacy._clipboardCanReplaceDocument,
+        _clipboardGetTokenActorArtEligibility: legacy._clipboardGetTokenActorArtEligibility,
+        _clipboardCanCreateDocument: legacy._clipboardCanCreateDocument,
+        _clipboardHasCanvasFocus: legacy._clipboardHasCanvasFocus,
+        _clipboardIsMouseWithinCanvas: legacy._clipboardIsMouseWithinCanvas,
+        _clipboardCanPasteToContext: legacy._clipboardCanPasteToContext
+      };
+    }
+  });
+
+  // src/canvas/create-strategies.js
+  var require_create_strategies = __commonJS({
+    "src/canvas/create-strategies.js"(exports, module) {
+      var legacy = require_legacy3();
+      module.exports = {
+        CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES: legacy.CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES,
+        _clipboardGetMousePosition: legacy._clipboardGetMousePosition,
+        _clipboardGetCanvasCenter: legacy._clipboardGetCanvasCenter,
+        _clipboardGetTokenPosition: legacy._clipboardGetTokenPosition,
+        _clipboardGetPastedDocumentName: legacy._clipboardGetPastedDocumentName,
+        _clipboardGetAvailableActorTypes: legacy._clipboardGetAvailableActorTypes,
+        _clipboardGetActorDocumentClass: legacy._clipboardGetActorDocumentClass,
+        _clipboardGetDefaultActorType: legacy._clipboardGetDefaultActorType,
+        _clipboardGetPastedTokenActorImage: legacy._clipboardGetPastedTokenActorImage,
+        _clipboardCreatePastedTokenActor: legacy._clipboardCreatePastedTokenActor,
+        _clipboardGetActiveDocumentName: legacy._clipboardGetActiveDocumentName,
+        _clipboardGetCreateDocumentName: legacy._clipboardGetCreateDocumentName,
+        _clipboardGetPlaceableStrategy: legacy._clipboardGetPlaceableStrategy,
+        _clipboardPrepareCreateLayer: legacy._clipboardPrepareCreateLayer
+      };
+    }
+  });
+
+  // src/canvas/plan.js
+  var require_plan = __commonJS({
+    "src/canvas/plan.js"(exports, module) {
+      var legacy = require_legacy3();
+      module.exports = {
+        _clipboardResolveCanvasMediaPlan: legacy._clipboardResolveCanvasMediaPlan,
+        _clipboardResolvePasteContext: legacy._clipboardResolvePasteContext
+      };
+    }
+  });
+
+  // src/canvas/actor-art.js
+  var require_actor_art = __commonJS({
+    "src/canvas/actor-art.js"(exports, module) {
+      var legacy = require_legacy3();
+      module.exports = {
+        _clipboardGetAllScenesForLinkedTokenUpdates: legacy._clipboardGetAllScenesForLinkedTokenUpdates,
+        _clipboardReplaceControlledTokenActorArt: legacy._clipboardReplaceControlledTokenActorArt,
+        _clipboardReplaceControlledMedia: legacy._clipboardReplaceControlledMedia
+      };
+    }
+  });
+
+  // src/context.js
+  var require_context = __commonJS({
+    "src/context.js"(exports, module) {
+      module.exports = {
+        ...require_selection(),
+        ...require_eligibility(),
+        ...require_create_strategies(),
+        ...require_plan(),
+        ...require_actor_art()
+      };
+    }
+  });
+
+  // src/diagnostics/legacy.js
+  var require_legacy4 = __commonJS({
+    "src/diagnostics/legacy.js"(exports, module) {
       var {
         CLIPBOARD_IMAGE_MODULE_ID,
         CLIPBOARD_IMAGE_VERBOSE_LOGGING_SETTING
@@ -2612,6 +2885,64 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardRegisterErrorReporting,
         _clipboardReportError,
         _clipboardLog
+      };
+    }
+  });
+
+  // src/diagnostics/logging.js
+  var require_logging = __commonJS({
+    "src/diagnostics/logging.js"(exports, module) {
+      var legacy = require_legacy4();
+      module.exports = {
+        _clipboardVerboseLoggingEnabled: legacy._clipboardVerboseLoggingEnabled,
+        _clipboardSerializeError: legacy._clipboardSerializeError,
+        _clipboardGetLogHistory: legacy._clipboardGetLogHistory,
+        _clipboardLog: legacy._clipboardLog
+      };
+    }
+  });
+
+  // src/diagnostics/describers.js
+  var require_describers = __commonJS({
+    "src/diagnostics/describers.js"(exports, module) {
+      var legacy = require_legacy4();
+      module.exports = {
+        _clipboardDescribeFile: legacy._clipboardDescribeFile,
+        _clipboardDescribeDestinationForLog: legacy._clipboardDescribeDestinationForLog,
+        _clipboardDescribeReplacementTarget: legacy._clipboardDescribeReplacementTarget,
+        _clipboardDescribePasteContext: legacy._clipboardDescribePasteContext,
+        _clipboardDescribeClipboardItems: legacy._clipboardDescribeClipboardItems,
+        _clipboardDescribeDataTransfer: legacy._clipboardDescribeDataTransfer,
+        _clipboardDescribeImageInput: legacy._clipboardDescribeImageInput
+      };
+    }
+  });
+
+  // src/diagnostics/reporting.js
+  var require_reporting = __commonJS({
+    "src/diagnostics/reporting.js"(exports, module) {
+      var legacy = require_legacy4();
+      module.exports = {
+        _clipboardBuildErrorReport: legacy._clipboardBuildErrorReport,
+        _clipboardFormatErrorReport: legacy._clipboardFormatErrorReport,
+        _clipboardCreateReportFile: legacy._clipboardCreateReportFile,
+        _clipboardDownloadReportFile: legacy._clipboardDownloadReportFile,
+        _clipboardOpenGmErrorDialog: legacy._clipboardOpenGmErrorDialog,
+        _clipboardEmitErrorReport: legacy._clipboardEmitErrorReport,
+        _clipboardHandleSocketReport: legacy._clipboardHandleSocketReport,
+        _clipboardRegisterErrorReporting: legacy._clipboardRegisterErrorReporting,
+        _clipboardReportError: legacy._clipboardReportError
+      };
+    }
+  });
+
+  // src/diagnostics.js
+  var require_diagnostics = __commonJS({
+    "src/diagnostics.js"(exports, module) {
+      module.exports = {
+        ...require_logging(),
+        ...require_describers(),
+        ...require_reporting()
       };
     }
   });
@@ -3590,9 +3921,9 @@ var FoundryPasteEaterRuntime = (() => {
     }
   });
 
-  // src/workflows.js
-  var require_workflows = __commonJS({
-    "src/workflows.js"(exports, module) {
+  // src/paste/legacy.js
+  var require_legacy5 = __commonJS({
+    "src/paste/legacy.js"(exports, module) {
       var {
         CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS,
         CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT,
@@ -4277,9 +4608,114 @@ var FoundryPasteEaterRuntime = (() => {
     }
   });
 
-  // src/ui.js
-  var require_ui = __commonJS({
-    "src/ui.js"(exports, module) {
+  // src/paste/workflow-runner.js
+  var require_workflow_runner = __commonJS({
+    "src/paste/workflow-runner.js"(exports, module) {
+      var legacy = require_legacy5();
+      module.exports = {
+        _clipboardHasPasteConflict: legacy._clipboardHasPasteConflict,
+        _clipboardExecutePasteWorkflow: legacy._clipboardExecutePasteWorkflow
+      };
+    }
+  });
+
+  // src/paste/token-modes.js
+  var require_token_modes = __commonJS({
+    "src/paste/token-modes.js"(exports, module) {
+      var legacy = require_legacy5();
+      module.exports = {
+        _clipboardGetDefaultTokenReplacementBehavior: legacy._clipboardGetDefaultTokenReplacementBehavior,
+        _clipboardPromptSelectedTokenPasteMode: legacy._clipboardPromptSelectedTokenPasteMode,
+        _clipboardResolveTokenReplacementBehavior: legacy._clipboardResolveTokenReplacementBehavior
+      };
+    }
+  });
+
+  // src/paste/canvas-media.js
+  var require_canvas_media = __commonJS({
+    "src/paste/canvas-media.js"(exports, module) {
+      var legacy = require_legacy5();
+      module.exports = {
+        _clipboardApplyPasteResult: legacy._clipboardApplyPasteResult,
+        _clipboardPasteBlob: legacy._clipboardPasteBlob,
+        _clipboardPasteMediaPath: legacy._clipboardPasteMediaPath,
+        _clipboardIsBlockedDirectMediaUrlDownload: legacy._clipboardIsBlockedDirectMediaUrlDownload,
+        _clipboardGetBlockedDirectMediaUrlError: legacy._clipboardGetBlockedDirectMediaUrlError,
+        _clipboardShouldFallbackToText: legacy._clipboardShouldFallbackToText,
+        _clipboardHandleImageBlob: legacy._clipboardHandleImageBlob,
+        _clipboardHandleImageInput: legacy._clipboardHandleImageInput,
+        _clipboardHandleImageInputWithTextFallback: legacy._clipboardHandleImageInputWithTextFallback
+      };
+    }
+  });
+
+  // src/paste/chat-media.js
+  var require_chat_media = __commonJS({
+    "src/paste/chat-media.js"(exports, module) {
+      var legacy = require_legacy5();
+      module.exports = {
+        _clipboardHandleChatImageBlob: legacy._clipboardHandleChatImageBlob,
+        _clipboardHandleChatImageInput: legacy._clipboardHandleChatImageInput,
+        _clipboardHandleChatUploadAction: legacy._clipboardHandleChatUploadAction
+      };
+    }
+  });
+
+  // src/paste/art-fields.js
+  var require_art_fields = __commonJS({
+    "src/paste/art-fields.js"(exports, module) {
+      var legacy = require_legacy5();
+      module.exports = {
+        _clipboardHandleArtFieldImageInput: legacy._clipboardHandleArtFieldImageInput
+      };
+    }
+  });
+
+  // src/paste/text-workflows.js
+  var require_text_workflows = __commonJS({
+    "src/paste/text-workflows.js"(exports, module) {
+      var legacy = require_legacy5();
+      module.exports = {
+        _clipboardHandleTextInput: legacy._clipboardHandleTextInput
+      };
+    }
+  });
+
+  // src/paste/scene-tools.js
+  var require_scene_tools = __commonJS({
+    "src/paste/scene-tools.js"(exports, module) {
+      var legacy = require_legacy5();
+      module.exports = {
+        _clipboardReadAndPasteImage: legacy._clipboardReadAndPasteImage,
+        _clipboardReadAndPasteClipboardContent: legacy._clipboardReadAndPasteClipboardContent,
+        _clipboardChooseImageFile: legacy._clipboardChooseImageFile,
+        _clipboardChooseAndHandleMediaFile: legacy._clipboardChooseAndHandleMediaFile,
+        _clipboardOpenUploadPicker: legacy._clipboardOpenUploadPicker,
+        _clipboardOpenChatUploadPicker: legacy._clipboardOpenChatUploadPicker,
+        _clipboardHandleScenePasteAction: legacy._clipboardHandleScenePasteAction,
+        _clipboardHandleSceneUploadAction: legacy._clipboardHandleSceneUploadAction
+      };
+    }
+  });
+
+  // src/workflows.js
+  var require_workflows = __commonJS({
+    "src/workflows.js"(exports, module) {
+      module.exports = {
+        ...require_workflow_runner(),
+        ...require_token_modes(),
+        ...require_canvas_media(),
+        ...require_chat_media(),
+        ...require_art_fields(),
+        ...require_text_workflows(),
+        ...require_scene_tools()
+      };
+    }
+  });
+
+  // src/paste/ui-legacy.js
+  var require_ui_legacy = __commonJS({
+    "src/paste/ui-legacy.js"(exports, module) {
       var {
         CLIPBOARD_IMAGE_SCENE_CONTROLS,
         CLIPBOARD_IMAGE_TOOL_PASTE,
@@ -4787,6 +5223,70 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardResolveNativePasteRoute,
         _clipboardOnPaste,
         _clipboardOnKeydown
+      };
+    }
+  });
+
+  // src/ui/scene-controls.js
+  var require_scene_controls = __commonJS({
+    "src/ui/scene-controls.js"(exports, module) {
+      var legacy = require_ui_legacy();
+      module.exports = {
+        _clipboardAddSceneControlButtons: legacy._clipboardAddSceneControlButtons,
+        _clipboardGetScenePastePrompt: legacy._clipboardGetScenePastePrompt,
+        _clipboardScenePastePromptIsOpen: legacy._clipboardScenePastePromptIsOpen,
+        _clipboardSetScenePastePromptMessage: legacy._clipboardSetScenePastePromptMessage,
+        _clipboardCloseScenePastePrompt: legacy._clipboardCloseScenePastePrompt,
+        _clipboardFocusScenePastePrompt: legacy._clipboardFocusScenePastePrompt,
+        _clipboardGetScenePastePromptFallbackMessage: legacy._clipboardGetScenePastePromptFallbackMessage,
+        _clipboardUpsertSceneControlTool: legacy._clipboardUpsertSceneControlTool,
+        _clipboardOnScenePastePromptPaste: legacy._clipboardOnScenePastePromptPaste,
+        _clipboardOpenScenePastePrompt: legacy._clipboardOpenScenePastePrompt,
+        _clipboardTryScenePastePromptDirectRead: legacy._clipboardTryScenePastePromptDirectRead,
+        _clipboardResolveScenePasteToolPlan: legacy._clipboardResolveScenePasteToolPlan,
+        _clipboardHandleScenePasteToolClick: legacy._clipboardHandleScenePasteToolClick
+      };
+    }
+  });
+
+  // src/ui/chat.js
+  var require_chat2 = __commonJS({
+    "src/ui/chat.js"(exports, module) {
+      var legacy = require_ui_legacy();
+      module.exports = {
+        _clipboardToggleChatDropTarget: legacy._clipboardToggleChatDropTarget,
+        _clipboardOnChatDragOver: legacy._clipboardOnChatDragOver,
+        _clipboardOnChatDragLeave: legacy._clipboardOnChatDragLeave,
+        _clipboardOnChatDrop: legacy._clipboardOnChatDrop,
+        _clipboardAttachChatUploadButton: legacy._clipboardAttachChatUploadButton,
+        _clipboardBindChatRoot: legacy._clipboardBindChatRoot,
+        _clipboardOnRenderChatInput: legacy._clipboardOnRenderChatInput,
+        _clipboardHandleChatImageInputWithTextFallback: legacy._clipboardHandleChatImageInputWithTextFallback
+      };
+    }
+  });
+
+  // src/ui/paste-events.js
+  var require_paste_events = __commonJS({
+    "src/ui/paste-events.js"(exports, module) {
+      var legacy = require_ui_legacy();
+      module.exports = {
+        _clipboardConsumePasteEvent: legacy._clipboardConsumePasteEvent,
+        _clipboardCanHandleCanvasPasteContext: legacy._clipboardCanHandleCanvasPasteContext,
+        _clipboardResolveNativePasteRoute: legacy._clipboardResolveNativePasteRoute,
+        _clipboardOnPaste: legacy._clipboardOnPaste,
+        _clipboardOnKeydown: legacy._clipboardOnKeydown
+      };
+    }
+  });
+
+  // src/ui.js
+  var require_ui = __commonJS({
+    "src/ui.js"(exports, module) {
+      module.exports = {
+        ...require_scene_controls(),
+        ...require_chat2(),
+        ...require_paste_events()
       };
     }
   });

@@ -123,7 +123,7 @@ npm run test:smoke:s3
 
 ## Notes
 
-- The main single-user browser specs (`smoke.spec.js`, `config.spec.js`, and `s3.spec.js`) reuse one authenticated Foundry page per spec worker instead of logging in again for every test. That shared page is reloaded in `beforeEach` so the DOM starts clean without paying the full login cost repeatedly.
+- The main single-user browser specs (`smoke.canvas-media.spec.js`, `smoke.canvas-text.spec.js`, `smoke.chat.spec.js`, `smoke.art-fields.spec.js`, `smoke.direct-urls.spec.js`, `smoke.misc.spec.js`, `config.spec.js`, and `s3.spec.js`) reuse one authenticated Foundry page per spec worker instead of logging in again for every test. That shared page is reloaded in `beforeEach` so the DOM starts clean without paying the full login cost repeatedly.
 - Multi-user specs still create separate authenticated contexts per user, but they reuse cached storage state where possible instead of rejoining from scratch on every session.
 - The suite uses the active scene, but `beginClipboardRun(...)` now clears all scene `Token`, `Tile`, and `Note` documents before each browser test run. Tests must create the exact scene fixtures they need instead of relying on pre-existing placeables.
 - If a browser test truly needs preserved scene state, opt out deliberately with `cleanScenePlaceables: false` when calling `beginClipboardRun(...)`.

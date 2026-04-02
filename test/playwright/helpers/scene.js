@@ -1,0 +1,26 @@
+const legacy = require("./legacy-foundry");
+
+module.exports = {
+  beginClipboardRun: legacy.beginClipboardRun,
+  clearActiveLayerClipboardObjects: legacy.clearActiveLayerClipboardObjects,
+  clearCanvasMousePosition: legacy.clearCanvasMousePosition,
+  cleanupClipboardRun: legacy.cleanupClipboardRun,
+  controlPlaceable: legacy.controlPlaceable,
+  controlPlaceables: legacy.controlPlaceables,
+  createActorBackedToken: legacy.createActorBackedToken,
+  createTile: legacy.createTile,
+  createToken: legacy.createToken,
+  focusCanvas: legacy.focusCanvas,
+  getCanvasDimensions: legacy.getCanvasDimensions,
+  getJournalEntry: legacy.getJournalEntry,
+  getNewDocuments: legacy.getNewDocuments,
+  getNoteDocument: legacy.getNoteDocument,
+  getSafeCanvasPoint: legacy.getSafeCanvasPoint,
+  getStateSnapshot: legacy.getStateSnapshot,
+  getTileDocument: legacy.getTileDocument,
+  getTokenDocument: legacy.getTokenDocument,
+  releaseAllControlledPlaceables: legacy.releaseAllControlledPlaceables,
+  resetFoundryUiState: legacy.resetFoundryUiState,
+  setActiveLayerClipboardObjects: legacy.setActiveLayerClipboardObjects,
+  setCanvasMousePosition: legacy.setCanvasMousePosition,
+};

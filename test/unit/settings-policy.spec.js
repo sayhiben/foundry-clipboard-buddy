@@ -1,6 +1,13 @@
 import {beforeEach, describe, expect, it} from "vitest";
 
 import {loadRuntime} from "./runtime-env.js";
+import defaultsContract from "../shared/defaults-contract.js";
+
+const {
+  CONFIGURABLE_WORLD_DEFAULT_SETTINGS,
+  SHIPPED_DEFAULT_SETTINGS,
+  USER_VISIBLE_SETTING_LABELS,
+} = defaultsContract;
 
 describe("settings and permission helpers", () => {
   let env;
@@ -161,21 +168,8 @@ describe("settings and permission helpers", () => {
 
   describe("behavior settings", () => {
     it("exposes shipped defaults and configurable world-default filters", () => {
-      expect(api._clipboardGetShippedDefaultSettings()).toMatchObject({
-        "image-location-source": "data",
-        "default-empty-canvas-target": "tile",
-        "canvas-text-paste-mode": "disabled",
-        "selected-token-paste-mode": "prompt",
-        "upload-path-organization": "context-user-month",
-      });
-
-      expect(api._clipboardGetShippedDefaultSettings({scope: "world", config: true})).toMatchObject({
-        "allow-non-gm-scene-controls": true,
-        "default-empty-canvas-target": "tile",
-        "create-backing-actors": false,
-        "canvas-text-paste-mode": "disabled",
-        "selected-token-paste-mode": "prompt",
-      });
+      expect(api._clipboardGetShippedDefaultSettings()).toMatchObject(SHIPPED_DEFAULT_SETTINGS);
+      expect(api._clipboardGetShippedDefaultSettings({scope: "world", config: true})).toMatchObject(CONFIGURABLE_WORLD_DEFAULT_SETTINGS);
       expect(api._clipboardGetShippedDefaultSettings({scope: "world", config: true})).not.toHaveProperty("image-location-source");
       expect(api._clipboardGetShippedDefaultSettings({scope: "world", config: true})).not.toHaveProperty("verbose-logging");
     });
@@ -192,13 +186,13 @@ describe("settings and permission helpers", () => {
           key: "default-empty-canvas-target",
           currentValue: "active-layer",
           defaultValue: "tile",
-          displayName: "Default empty-canvas paste target",
+          displayName: USER_VISIBLE_SETTING_LABELS["default-empty-canvas-target"],
         }),
         expect.objectContaining({
           key: "selected-token-paste-mode",
           currentValue: "scene-only",
           defaultValue: "prompt",
-          displayName: "Selected token image paste mode",
+          displayName: USER_VISIBLE_SETTING_LABELS["selected-token-paste-mode"],
         }),
       ]);
     });

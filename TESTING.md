@@ -4,7 +4,7 @@ Use this guide as the working manual-QA checklist for release validation and reg
 
 ## Automated Coverage
 
-This repository also ships a Playwright smoke suite under [test/README.md](./test/README.md) and [test/playwright/smoke.spec.js](./test/playwright/smoke.spec.js).
+This repository also ships a Playwright smoke suite under [test/README.md](./test/README.md), split across the `test/playwright/smoke.*.spec.js` domain files plus the dedicated `config`, `permissions`, `error-reporting`, and opt-in `s3` specs.
 
 The automated suite is intended to cover stable browser-driven workflows such as:
 - Canvas image paste into tiles and tokens
