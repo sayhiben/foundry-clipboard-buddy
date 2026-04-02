@@ -1,6 +1,6 @@
 # Testing Guide
 
-This module relies on manual QA in Foundry VTT. Use this guide as the working checklist for release validation and regression testing.
+Use this guide as the working manual-QA checklist for release validation and regression testing alongside the automated unit and Playwright suites.
 
 ## Automated Coverage
 
@@ -26,6 +26,12 @@ Keep the manual checklist for:
 - Forge or S3-compatible storage integrations
 - Remote-host CORS or download failures
 - Visual playback validation for animation and video
+
+## Scene Isolation
+
+Use a disposable scene for manual QA, or clear existing tokens, tiles, and notes before each scenario.
+
+Many workflows choose between replacement and creation based on the current scene state. Stale placeables from an earlier test can change the result and make a regression look like a false failure.
 
 ## Test Environment
 

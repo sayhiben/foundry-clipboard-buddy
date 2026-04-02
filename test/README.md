@@ -125,7 +125,8 @@ npm run test:smoke:s3
 
 - The main single-user browser specs (`smoke.spec.js`, `config.spec.js`, and `s3.spec.js`) reuse one authenticated Foundry page per spec worker instead of logging in again for every test. That shared page is reloaded in `beforeEach` so the DOM starts clean without paying the full login cost repeatedly.
 - Multi-user specs still create separate authenticated contexts per user, but they reuse cached storage state where possible instead of rejoining from scratch on every session.
-- The suite uses the active scene and creates temporary artifacts inside it, then cleans up the created scene documents and journals after each test.
+- The suite uses the active scene, but `beginClipboardRun(...)` now clears all scene `Token`, `Tile`, and `Note` documents before each browser test run. Tests must create the exact scene fixtures they need instead of relying on pre-existing placeables.
+- If a browser test truly needs preserved scene state, opt out deliberately with `cleanScenePlaceables: false` when calling `beginClipboardRun(...)`.
 - In this local setup, Foundry loads the live module from `/Users/sayhiben/dev/foundry-latest/userdata/Data/modules/foundry-paste-eater`, not directly from the repo root. After changing runtime files, sync the repo into that module directory before trusting browser smoke or manual validation.
 - If the local world boots without an active scene, the Playwright harness now activates an existing scene or creates a temporary one before continuing so `canvas.ready` can succeed.
 - The permissions smoke spec reseeds the local QA users from Foundry's world user store before it runs. The expected local roles are `Gamemaster` and `Clipboard QA 1` as GMs, with `Clipboard QA 2` and `Clipboard QA 3` as Players.

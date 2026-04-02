@@ -572,7 +572,11 @@ async function beginClipboardRun(page, testInfo, options = {}) {
     previousSettings = await applyRunSettings();
   }
 
-  await releaseAllControlledPlaceables(page);
+  if (options.cleanScenePlaceables !== false) {
+    await clearCurrentScenePlaceables(page);
+  } else {
+    await releaseAllControlledPlaceables(page);
+  }
 
   return {
     runId,
@@ -582,6 +586,36 @@ async function beginClipboardRun(page, testInfo, options = {}) {
     bucket,
     previousSettings,
   };
+}
+
+async function clearCurrentScenePlaceables(page) {
+  await page.evaluate(async () => {
+    const scene = canvas?.scene;
+    if (!scene) return;
+
+    const deleteEmbedded = async (documentName, collection) => {
+      const ids = (collection?.contents || [])
+        .map(document => document?.id)
+        .filter(Boolean);
+      if (ids.length) {
+        await scene.deleteEmbeddedDocuments(documentName, ids);
+      }
+    };
+
+    await deleteEmbedded("Note", scene.notes);
+    await deleteEmbedded("Token", scene.tokens);
+    await deleteEmbedded("Tile", scene.tiles);
+  });
+
+  await releaseAllControlledPlaceables(page);
+  await expect.poll(() => page.evaluate(() => ({
+    tokens: canvas?.scene?.tokens?.contents?.length || 0,
+    tiles: canvas?.scene?.tiles?.contents?.length || 0,
+    notes: canvas?.scene?.notes?.contents?.length || 0,
+  })), {
+    timeout: 10_000,
+    message: "Expected beginClipboardRun to start from an empty scene for tokens, tiles, and notes.",
+  }).toEqual({tokens: 0, tiles: 0, notes: 0});
 }
 
 async function setModuleSettings(page, updates, {moduleId = MODULE_ID} = {}) {

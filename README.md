@@ -540,6 +540,8 @@ Contributor workflows:
 - `npm run test:smoke` runs the Playwright smoke suite against a live Foundry instance.
 - `npm run lint` runs ESLint across the runtime and tests.
 
+For manual repros, prefer a disposable scene or clear existing tokens, tiles, and notes before each scenario. Replacement-vs-create behavior depends on current scene state.
+
 If you need to debug a broken paste flow:
 
 1. Enable `Verbose logging`.
