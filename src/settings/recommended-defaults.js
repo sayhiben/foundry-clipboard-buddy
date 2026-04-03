@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 const {
   CLIPBOARD_IMAGE_MODULE_ID,
   CLIPBOARD_IMAGE_TITLE,

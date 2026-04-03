@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "noEmit": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "ignoreDeprecations": "6.0"
+  },
+  "files": [
+    "src/contracts.js",
+    "src/typecheck-globals.d.ts",
+    "src/support/api.js",
+    "src/support/apps.js",
+    "src/support/bundle.js",
+    "src/support/known-roots.js",
+    "src/support/media-audit.js",
+    "src/support/readiness.js",
+    "test/shared/defaults-contract.js",
+    "test/shared/behavior-scenarios.js"
+  ],
+  "exclude": [
+    "foundry-paste-eater.js",
+    "dist/**",
+    "node_modules/**"
+  ]
+}

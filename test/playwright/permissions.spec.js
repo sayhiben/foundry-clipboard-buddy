@@ -20,6 +20,7 @@ const {
   resetFoundrySessions,
   restoreCorePermissions,
   restoreModuleSettings,
+  resetFoundryUiState,
   setCanvasMousePosition,
   setCorePermissions,
   setModuleSettings,
@@ -351,6 +352,8 @@ test("non-gm scene controls require both the world toggle and canvas-media role 
   let previousSettings = null;
   let previousPermissions = null;
   let run = null;
+  let playerContext = null;
+  let playerPage = null;
 
   try {
     const gmSession = await createAuthenticatedPage(browser, {
@@ -384,42 +387,38 @@ test("non-gm scene controls require both the world toggle and canvas-media role 
       ownerUserName: "Clipboard QA 2",
     });
 
-    async function withPlayerSession(callback) {
-      const playerSession = await createAuthenticatedPage(browser, {
-        user: "Clipboard QA 2",
-        password: "",
-      });
-      const context = playerSession.context;
-      const page = playerSession.page;
-      try {
-        return await callback(page);
-      } finally {
-        await closeOwnedContext(context);
-      }
-    }
+    const playerSession = await createAuthenticatedPage(browser, {
+      user: "Clipboard QA 2",
+      password: "",
+    });
+    playerContext = playerSession.context;
+    playerPage = playerSession.page;
 
-    await withPlayerSession(async playerPage => {
+    await resetFoundryUiState(playerPage);
+    {
       const pasteTool = await getHookedSceneToolState(playerPage, "tiles", "foundry-paste-eater-paste");
       const uploadTool = await getHookedSceneToolState(playerPage, "tiles", "foundry-paste-eater-upload");
       expect(pasteTool.visible).toBe(false);
       expect(uploadTool.visible).toBe(false);
-    });
+    }
 
     await setModuleSettings(gmPage, {
       "allow-non-gm-scene-controls": true,
       "minimum-role-canvas-media": "ASSISTANT",
     });
-    await withPlayerSession(async playerPage => {
+    await resetFoundryUiState(playerPage);
+    {
       const pasteTool = await getHookedSceneToolState(playerPage, "tiles", "foundry-paste-eater-paste");
       const uploadTool = await getHookedSceneToolState(playerPage, "tiles", "foundry-paste-eater-upload");
       expect(pasteTool.visible).toBe(false);
       expect(uploadTool.visible).toBe(false);
-    });
+    }
 
     await setModuleSettings(gmPage, {
       "minimum-role-canvas-media": "PLAYER",
     });
-    await withPlayerSession(async playerPage => {
+    await resetFoundryUiState(playerPage);
+    {
       const pasteTool = await getHookedSceneToolState(playerPage, "tiles", "foundry-paste-eater-paste");
       const uploadTool = await getHookedSceneToolState(playerPage, "tiles", "foundry-paste-eater-upload");
       expect(pasteTool.visible).toBe(true);
@@ -438,8 +437,9 @@ test("non-gm scene controls require both the world toggle and canvas-media role 
       });
       await expect.poll(async () => (await getTokenDocument(playerPage, ownedToken.tokenId)).textureSrc).not.toBe(before.textureSrc);
       await expect.poll(async () => (await getTokenDocument(playerPage, ownedToken.tokenId)).textureSrc).toContain(run.uploadFolder);
-    });
+    }
   } finally {
+    await closeOwnedContext(playerContext);
     await restoreCorePermissions(gmPage, previousPermissions);
     await restoreModuleSettings(gmPage, previousSettings || {});
     await cleanupClipboardRun(gmPage, run);

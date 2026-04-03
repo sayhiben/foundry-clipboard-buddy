@@ -1,0 +1,42 @@
+<form class="foundry-paste-eater-uploaded-media-audit flexcol" autocomplete="off">
+  <section class="form-group">
+    <label>Audit Summary</label>
+    <div class="form-fields">
+      <input type="text" value="Roots: {{summary.rootCount}} | Groups: {{summary.groupCount}} | References: {{summary.referenceCount}}" disabled />
+    </div>
+    <p class="notes">This audit is reference-based only. It reports current world references under known upload roots and does not inventory storage or delete anything.</p>
+  </section>
+
+  {{#if groups.length}}
+    {{#each groups}}
+    <section class="form-group">
+      <label>{{uploadRootLabel}}</label>
+      <div class="form-fields" style="display: block;">
+        <p><strong>Context:</strong> {{context}} | <strong>Document type:</strong> {{documentType}} | <strong>References:</strong> {{references.length}}</p>
+        <ul>
+          {{#each references}}
+          <li>
+            <strong>{{documentName}}</strong>
+            <span>({{field}})</span>
+            <span>{{normalizedPath}}</span>
+          </li>
+          {{/each}}
+        </ul>
+      </div>
+    </section>
+    {{/each}}
+  {{else}}
+  <section class="form-group">
+    <label>Current references</label>
+    <div class="form-fields" style="display: block;">
+      <p>No current Actor, scene, note, or chat references were found under the known upload roots.</p>
+    </div>
+  </section>
+  {{/if}}
+
+  <footer class="sheet-footer flexrow">
+    <button type="button" data-action="download-media-audit">
+      <i class="fas fa-download"></i> Download Audit JSON
+    </button>
+  </footer>
+</form>

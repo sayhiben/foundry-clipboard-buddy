@@ -6,9 +6,10 @@
 - `src/canvas/`: internal canvas planning, eligibility, selection, create-strategy, and actor-art helpers behind `src/context.js`.
 - `src/paste/`: internal paste workflow, token-mode, chat, art-field, and scene-tool helpers behind `src/workflows.js`.
 - `src/ui/`: internal browser-event, scene-control, and chat-UI helpers behind `src/ui.js`.
+- `src/support/`: readiness-report, support-bundle, upload-root tracking, audit, runtime-api, and GM app helpers behind `src/support.js`.
 - `foundry-paste-eater.js`: generated bundled runtime loaded by Foundry. Do not edit directly.
 - `foundry-paste-eater.css`: styles for chat media previews and chat drag/drop states.
-- `templates/`: Foundry app templates, currently including upload-destination UI.
+- `templates/`: Foundry app templates, currently including upload-destination, readiness-support, and uploaded-media-audit UI.
 - `module.json`: module manifest and compatibility metadata.
 - `README.md`, `CHANGELOG.md`, `TESTING.md`, `LICENSE.md`: user, release, and QA documentation.
 - `test/shared/`: shared behavior scenarios and defaults contracts used by multiple specs.
@@ -32,6 +33,9 @@
 - `npm run zip`: zip `dist/` into a release archive in the repository root.
 - `npm run lint`: lint the runtime, unit tests, and Playwright helpers.
 - `npm test`: run the jsdom/Vitest unit suite with coverage checks.
+- `npm run typecheck`: run the JS + JSDoc contract check for the support/report surface and shared test contracts.
+- `npm run verify:bundle`: rebuild the runtime and fail if `foundry-paste-eater.js` differs from the committed artifact.
+- `npm run verify:release`: run the local release gate across lint, unit tests, typecheck, bundle parity, packaging, and smoke tests when Foundry is reachable.
 - `npm run test:unit:watch`: run the unit suite in watch mode.
 - `npm run test:smoke`: run the Playwright smoke suite.
 - `npm run test:headed`: run the smoke suite headed.
@@ -63,6 +67,10 @@
 - If `vtta-tokenizer` is open, media paste is intentionally suppressed.
 - Organized uploads may live under context-specific subfolders like `canvas/<user>/<YYYY-MM>/`, `chat/<user>/<YYYY-MM>/`, and `document-art/<user>/<YYYY-MM>/` beneath the configured base destination.
 - Storage governance in this module means upload-path organization and diagnostics only. The module does not delete uploads or manage retention or lifecycle.
+- `Readiness & Support` and `Uploaded Media Audit` are GM-only read-only panels. They may summarize current state or launch existing configuration tools, but they must not mutate world content or storage directly.
+- The support bundle must redact secrets and signed URLs, including URL strings embedded inside larger JSON-like values such as serialized settings payloads.
+- The uploaded-media audit is reference-based only. It reports current world references beneath known upload roots and must not pretend to be a storage inventory or orphan cleaner.
+- Upload-root history is tracked through the hidden `known-upload-roots` world setting whenever the configured destination changes. That tracking exists only to improve support and audit context across destination changes.
 
 ## Shipped Default Configuration
 | Setting | Default | Notes |
@@ -90,6 +98,7 @@
 | `scene-paste-prompt-mode` | `auto` | Scene paste tool uses direct read plus prompt fallback. |
 | `selected-token-paste-mode` | `prompt` | Eligible token image replacement now asks before actor-wide mutations. |
 | `upload-path-organization` | `context-user-month` | New uploads organize into `canvas`, `chat`, and `document-art` subpaths by default. |
+| `known-upload-roots` | `[]` | Hidden world setting used only for support/audit continuity across destination changes. |
 
 Existing worlds keep their previously persisted settings. The GM-only `recommended-defaults` settings menu is the supported upgrade path for adopting the current shipped behavior defaults on an older world, and it must only touch configurable world settings. It must not reset upload destination or client-only diagnostics.
 
@@ -258,6 +267,8 @@ Existing worlds keep their previously persisted settings. The GM-only `recommend
 | `src/storage/` | Split destination, permissions, upload, and remote-URL helpers behind `src/storage.js`. |
 | `src/diagnostics.js` | Compatibility barrel for log history, describe helpers, and error-reporting flow. |
 | `src/diagnostics/` | Split logging, describers, and reporting helpers behind `src/diagnostics.js`. |
+| `src/support.js` | Compatibility barrel for readiness, support bundle, upload-root tracking, uploaded-media audit, runtime API registration, and GM-only support apps. |
+| `src/support/` | Split known-root tracking, readiness, bundle, media-audit, runtime-api, and Foundry app helpers behind `src/support.js`. |
 | `src/settings.js` | Compatibility barrel for setting schema, recommended defaults, policy helpers, migrations, and registration. |
 | `src/settings/` | Split schema, recommended-defaults, policy, migration, and register helpers behind `src/settings.js`. |
 
@@ -321,6 +332,8 @@ Existing worlds keep their previously persisted settings. The GM-only `recommend
 - If Foundry logs `Failed to determine S3 endpoint: UnknownError`, refresh `/Users/sayhiben/dev/foundry-latest/userdata/Config/aws-foundry-store.json` from `aws configure export-credentials --format process`, preserve the bucket list, and restart the container.
 - When changing settings behavior, exercise both layers: unit coverage for registration/defaults/policy and Playwright coverage for the live Configure Settings and world-behavior path.
 - Shared defaults expectations live in `test/shared/defaults-contract.js`, and shared routing scenarios live in `test/shared/behavior-scenarios.js`. Prefer those contracts over retyping the same expectations in multiple specs.
+- Readiness-panel and support-bundle browser coverage belongs in `test/playwright/support.spec.js`, with report-generation and redaction logic covered in `test/unit/support.spec.js`.
+- Support-bundle assertions must verify redaction both for direct URL fields and for URL-bearing strings embedded inside serialized JSON-like values.
 - Selected-token mode coverage belongs in `test/playwright/config.spec.js`, with unit workflow and policy coverage in `test/unit/workflows.spec.js` and `test/unit/settings-policy.spec.js`.
 - Permission-remediation copy belongs in `test/playwright/error-reporting.spec.js` and `test/unit/diagnostics.spec.js`. Assert the exact Foundry guidance: `Game Settings -> Configure Permissions`, `Use File Browser`, and `Upload Files`.
 - When organized upload paths are enabled, assert context-specific subpaths under the configured base folder instead of assuming a flat upload root.
@@ -343,6 +356,7 @@ Existing worlds keep their previously persisted settings. The GM-only `recommend
 - Use the dedicated clipboard QA Foundry users when possible to avoid session collisions during browser testing.
 - When permission or ownership behavior is under test, prefer the dedicated `permissions.spec.js` flows and keep the QA-user role seeding working. Do not assume the browser client can create or demote users on demand.
 - After changing paste routing, extraction logic, upload behavior, or note/chat behavior, run the smoke suite.
+- After changing support, readiness, or audit behavior, run `npm run typecheck`, the unit suite, and `test/playwright/support.spec.js` at minimum before broader smoke coverage.
 - After changing SVG handling, upload naming, or browser-specific rendering behavior, run at least one targeted Firefox smoke in addition to unit tests.
 - After changing user-facing behavior, update `README.md`, `TESTING.md`, and `test/README.md` as needed.
 - After changing settings or permissions, do at least one live manual pass in addition to automated coverage so the Foundry settings UI and notifications are exercised end to end.
@@ -350,13 +364,16 @@ Existing worlds keep their previously persisted settings. The GM-only `recommend
 ## Suggested Verification Sequence
 - `npm run lint`
 - `npm test`
+- `npm run typecheck`
 - `npm run build:runtime`
+- `npm run verify:bundle`
 - `node --check src/index.js`
 - `node --check test/playwright/helpers/foundry.js`
 - `node --check test/playwright/smoke.canvas-media.spec.js`
 - `npm run test:smoke` or a targeted Playwright grep run when browser-level behavior changed
 - For SVG, upload-path, or rendering fixes: run a targeted Firefox Playwright check as well as Chromium
 - `npm run copy`
+- `npm run verify:release` for the full local release gate when the change is release-bound
 
 ## Commit & Pull Request Guidelines
 - Match existing history style: short, imperative commit subjects.

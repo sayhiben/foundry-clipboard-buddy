@@ -2,6 +2,10 @@ const {CLIPBOARD_IMAGE_MODULE_ID} = require("../constants");
 const {FoundryPasteEaterDestinationConfig} = require("../config-app");
 const {FoundryPasteEaterRecommendedDefaultsConfig} = require("./recommended-defaults");
 const {
+  FoundryPasteEaterReadinessSupportConfig,
+  FoundryPasteEaterUploadedMediaAuditConfig,
+} = require("../support");
+const {
   CLIPBOARD_IMAGE_SETTINGS_SCHEMA,
   _clipboardGetShippedDefaultValue,
 } = require("./schema");
@@ -23,6 +27,24 @@ function _clipboardRegisterSettings() {
     hint: "Review and apply the current recommended world behavior defaults without changing upload destination or client-only diagnostics.",
     icon: "fa-solid fa-wand-magic-sparkles",
     type: FoundryPasteEaterRecommendedDefaultsConfig,
+    restricted: true,
+  });
+
+  game.settings.registerMenu(CLIPBOARD_IMAGE_MODULE_ID, "readiness-support", {
+    name: "Readiness & Support",
+    label: "Open",
+    hint: "Review clipboard/browser capability, storage readiness, player upload prerequisites, and a downloadable support bundle without changing world data.",
+    icon: "fa-solid fa-shield-heart",
+    type: FoundryPasteEaterReadinessSupportConfig,
+    restricted: true,
+  });
+
+  game.settings.registerMenu(CLIPBOARD_IMAGE_MODULE_ID, "uploaded-media-audit", {
+    name: "Uploaded Media Audit",
+    label: "Open",
+    hint: "Review current world references to media under the module's configured upload roots and export the audit as JSON.",
+    icon: "fa-solid fa-photo-film",
+    type: FoundryPasteEaterUploadedMediaAuditConfig,
     restricted: true,
   });
 

@@ -37,6 +37,31 @@ const USER_VISIBLE_SETTING_LABELS = Object.freeze({
   "selected-token-paste-mode": "Selected token image paste mode",
 });
 
+const SUPPORT_CONTRACT = Object.freeze({
+  readinessSectionIds: [
+    "client-capability",
+    "storage-readiness",
+    "player-upload-readiness",
+    "default-profile-drift",
+  ],
+  supportBundleKeys: [
+    "generatedAt",
+    "module",
+    "foundry",
+    "world",
+    "browser",
+    "readiness",
+    "storage",
+    "settings",
+    "logs",
+  ],
+  runtimeApiMethods: [
+    "getReadinessReport",
+    "collectSupportBundle",
+    "collectMediaAuditReport",
+  ],
+});
+
 const REQUIRED_TESTABLE_EXPORTS = Object.freeze([
   "_clipboardGetShippedDefaultSettings",
   "_clipboardGetSettingsThatDifferFromDefaults",
@@ -47,10 +72,15 @@ const REQUIRED_TESTABLE_EXPORTS = Object.freeze([
   "_clipboardReplaceControlledTokenActorArt",
   "_clipboardHandleImageInput",
   "_clipboardOnPaste",
+  "_clipboardGetReadinessReport",
+  "_clipboardCollectSupportBundle",
+  "_clipboardCollectMediaAuditReport",
+  "_clipboardRegisterRuntimeApi",
 ]);
 module.exports = {
   CONFIGURABLE_WORLD_DEFAULT_SETTINGS,
   REQUIRED_TESTABLE_EXPORTS,
   SHIPPED_DEFAULT_SETTINGS,
+  SUPPORT_CONTRACT,
   USER_VISIBLE_SETTING_LABELS,
 };

@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 const {CLIPBOARD_IMAGE_SOURCE_S3} = require("../constants");
 const {
   _clipboardGetSourceLabel,

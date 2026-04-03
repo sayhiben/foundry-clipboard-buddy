@@ -186,6 +186,7 @@ function loadRuntime(options = {}) {
     ["foundry-paste-eater.image-location-source", "data"],
     ["foundry-paste-eater.image-location", "pasted_images"],
     ["foundry-paste-eater.image-location-bucket", ""],
+    ["foundry-paste-eater.known-upload-roots", "[]"],
     ["foundry-paste-eater.verbose-logging", false],
     ["core.permissions", {FILES_BROWSE: [1, 2, 3, 4], FILES_UPLOAD: [1, 2, 3, 4]}],
     ["foundry-paste-eater.minimum-role-canvas-media", "PLAYER"],
@@ -241,6 +242,7 @@ function loadRuntime(options = {}) {
 
     constructor() {
       this.form = null;
+      this.id = this.constructor.defaultOptions?.id || makeId("app");
       this.element = {
         find: vi.fn(() => ({
           toggleClass: vi.fn(),
@@ -249,6 +251,19 @@ function loadRuntime(options = {}) {
     }
 
     activateListeners() {}
+
+    async render() {
+      globalThis.ui.windows[this.id] = this;
+      return this;
+    }
+
+    close() {
+      delete globalThis.ui.windows[this.id];
+    }
+
+    bringToFront() {
+      return this;
+    }
   }
 
   const env = {
@@ -431,7 +446,9 @@ function loadRuntime(options = {}) {
     keybindings: {
       register: vi.fn(),
     },
-    modules: new Map(),
+    modules: new Map([
+      ["foundry-paste-eater", {id: "foundry-paste-eater", active: true, version: "1.2.0", api: null}],
+    ]),
     system: {
       documentTypes: {
         Actor: ["character", "npc"],
@@ -466,11 +483,18 @@ function loadRuntime(options = {}) {
       id: "world-1",
       title: "Test World",
     },
+    version: "13.0.0",
+    release: {
+      version: "13.0.0",
+    },
     socket: {
       on: vi.fn((channel, callback) => {
         socketHandlers.set(channel, callback);
       }),
       emit: vi.fn(),
+    },
+    messages: {
+      contents: [],
     },
   };
 
@@ -541,7 +565,14 @@ function loadRuntime(options = {}) {
     },
     documents: {
       ChatMessage: {
-        create: vi.fn(async data => data),
+        create: vi.fn(async data => {
+          const message = {
+            id: data.id || makeId("message"),
+            ...data,
+          };
+          globalThis.game.messages.contents.push(message);
+          return message;
+        }),
         getSpeaker: vi.fn(() => ({alias: "GM"})),
       },
       JournalEntry: {

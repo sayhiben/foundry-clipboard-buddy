@@ -1297,7 +1297,12 @@ describe("ui and hook integration helpers", () => {
         target: "final-folder",
         bucket: "bucket-z",
       });
-      expect(globalThis.game.settings.set).toHaveBeenCalledTimes(3);
+      expect(globalThis.game.settings.set).toHaveBeenCalledTimes(4);
+      expect(globalThis.game.settings.set).toHaveBeenCalledWith(
+        "foundry-paste-eater",
+        "known-upload-roots",
+        expect.any(String)
+      );
     });
 
     it("does not persist any endpoint override from the destination form", async () => {
@@ -1342,7 +1347,7 @@ describe("ui and hook integration helpers", () => {
     it("registers every module setting with the expected defaults and scopes", () => {
       api._clipboardRegisterSettings();
 
-      expect(env.registeredMenus).toHaveLength(2);
+      expect(env.registeredMenus).toHaveLength(4);
       expect(env.registeredMenus[0]).toMatchObject({
         moduleId: "foundry-paste-eater",
         key: "upload-destination",
@@ -1359,12 +1364,29 @@ describe("ui and hook integration helpers", () => {
           type: api.FoundryPasteEaterRecommendedDefaultsConfig,
         },
       });
+      expect(env.registeredMenus[2]).toMatchObject({
+        moduleId: "foundry-paste-eater",
+        key: "readiness-support",
+        config: {
+          restricted: true,
+          type: api.FoundryPasteEaterReadinessSupportConfig,
+        },
+      });
+      expect(env.registeredMenus[3]).toMatchObject({
+        moduleId: "foundry-paste-eater",
+        key: "uploaded-media-audit",
+        config: {
+          restricted: true,
+          type: api.FoundryPasteEaterUploadedMediaAuditConfig,
+        },
+      });
 
       const registeredByKey = new Map(env.registeredSettings.map(entry => [entry.key, entry.config]));
       const expectedSettings = {
         "image-location": {scope: "world", config: false, default: "pasted_images", type: String},
         "image-location-source": {scope: "world", config: false, default: "data", type: String},
         "image-location-bucket": {scope: "world", config: false, default: "", type: String},
+        "known-upload-roots": {scope: "world", config: false, default: "[]", type: String},
         "verbose-logging": {scope: "client", config: true, default: false, type: Boolean},
         "minimum-role-canvas-media": {scope: "world", config: true, default: "PLAYER", type: String},
         "minimum-role-canvas-text": {scope: "world", config: true, default: "PLAYER", type: String},

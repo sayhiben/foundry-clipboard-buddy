@@ -18,6 +18,7 @@ The automated suite is intended to cover stable browser-driven workflows such as
 - Chat non-media URL fallback
 - Direct media URL creation and replacement
 - HTML media URL extraction, hidden-mode paste, scene-control fallbacks, and copied-object priority
+- GM-facing readiness and support flows, including support-bundle download and uploaded-media audit rendering
 
 Keep the manual checklist for:
 - Real `navigator.clipboard.read()` permission behavior
@@ -26,6 +27,7 @@ Keep the manual checklist for:
 - Forge or S3-compatible storage integrations
 - Remote-host CORS or download failures
 - Visual playback validation for animation and video
+- Human review of support-bundle contents when a real deployment uses unusual auth or reverse-proxy URL shapes
 
 ## Scene Isolation
 
@@ -73,6 +75,23 @@ These flows should stay true across the test matrix:
 6. New uploads should respect the configured upload destination.
 7. Failed clipboard or remote-download paths should fail clearly without leaving partial scene state behind.
 8. Settings and permission gates should disable features cleanly instead of rerouting paste into a different target unexpectedly.
+9. Readiness and audit tooling must stay read-only. They may summarize or export current state, but they must not mutate settings, storage, or world content except when the GM explicitly opens another existing settings tool from the panel.
+10. Support exports must never include secrets, signed URLs, or raw credential material.
+
+## Verification Commands
+
+Use these commands as the normal maintainer verification ladder:
+
+- `npm run lint`
+- `npm test`
+- `npm run typecheck`
+- `npm run build:runtime`
+- `npm run verify:bundle`
+- `npm run copy`
+- `npm run test:smoke`
+- `npm run verify:release`
+
+`npm run verify:release` is the umbrella local gate. It reruns lint, unit tests, typecheck, bundle parity, packaging, and smoke tests when a local Foundry instance is reachable.
 
 ## Release Checklist
 
@@ -229,6 +248,23 @@ Enable `Canvas text paste mode = Scene notes` before running this section.
    Expected: the module reports a clear upload error and does not create broken content.
 6. Review your storage retention plan after enabling organized upload paths.
    Expected: lifecycle or cleanup policy is handled by the backend or GM workflow, not by the module deleting files automatically.
+
+### 10B. Readiness, Support, And Audit
+
+1. Open `Readiness & Support` from the module settings.
+   Expected: the panel renders client capability, storage readiness, player upload readiness, and default-profile drift sections with only `Pass`, `Warn`, or `Fail` statuses.
+2. Use the panel action to open `Upload destination`.
+   Expected: the existing upload-destination config opens from the panel without changing settings automatically.
+3. Use the panel action to open `Apply recommended defaults`.
+   Expected: the existing recommended-defaults review opens from the panel without changes being applied automatically.
+4. Download a support bundle from the panel.
+   Expected: the file name matches `foundry-paste-eater-support-<timestamp>.json`, includes module/world/settings/readiness/log data, and omits secrets such as cookies, passwords, tokens, signed query strings, or raw AWS credential material.
+5. Change the upload destination, reopen the panel, and review the exported support bundle.
+   Expected: known upload roots include both the old and new configured roots without mutating storage content.
+6. Open `Uploaded Media Audit`.
+   Expected: the panel groups current references by upload root, upload context, and document type.
+7. Export the uploaded-media audit as JSON.
+   Expected: the export contains current references only and does not claim to be a storage inventory or an orphan-cleanup report.
 
 ### 11A. Error Reporting
 

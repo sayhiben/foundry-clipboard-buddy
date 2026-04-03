@@ -1141,12 +1141,12 @@ async function getSceneToolState(page, controlName, toolName) {
   }, {controlName, toolName});
 }
 
-async function openUploadDestinationConfig(page) {
-  await page.evaluate(async moduleId => {
-    const menu = game.settings.menus.get(`${moduleId}.upload-destination`);
-    if (!menu?.type) throw new Error("Could not find the Foundry Paste Eater upload-destination settings menu.");
+async function openModuleSettingsMenu(page, {menuKey, appId, errorMessage}) {
+  await page.evaluate(async ({moduleId, menuKey: resolvedMenuKey, appId: resolvedAppId, errorMessage: resolvedErrorMessage}) => {
+    const menu = game.settings.menus.get(`${moduleId}.${resolvedMenuKey}`);
+    if (!menu?.type) throw new Error(resolvedErrorMessage);
 
-    const existing = Object.values(ui.windows).find(windowApp => windowApp.id === "foundry-paste-eater-destination-config");
+    const existing = Object.values(ui.windows).find(windowApp => windowApp.id === resolvedAppId);
     if (existing) {
       existing.bringToFront?.();
       return;
@@ -1154,18 +1154,59 @@ async function openUploadDestinationConfig(page) {
 
     const app = new menu.type();
     await app.render(true);
-  }, MODULE_ID);
+  }, {
+    moduleId: MODULE_ID,
+    menuKey,
+    appId,
+    errorMessage,
+  });
 
-  await page.waitForSelector("#foundry-paste-eater-destination-config", {state: "visible", timeout: DEFAULT_TIMEOUT});
+  await page.waitForSelector(`#${appId}`, {state: "visible", timeout: DEFAULT_TIMEOUT});
+}
+
+async function openUploadDestinationConfig(page) {
+  await openModuleSettingsMenu(page, {
+    menuKey: "upload-destination",
+    appId: "foundry-paste-eater-destination-config",
+    errorMessage: "Could not find the Foundry Paste Eater upload-destination settings menu.",
+  });
+}
+
+async function closeModuleSettingsMenu(page, appId) {
+  await page.evaluate(resolvedAppId => {
+    const app = Object.values(ui.windows).find(windowApp => windowApp.id === resolvedAppId);
+    app?.close?.();
+  }, appId);
+
+  await page.waitForSelector(`#${appId}`, {state: "hidden", timeout: DEFAULT_TIMEOUT}).catch(() => {});
 }
 
 async function closeUploadDestinationConfig(page) {
-  await page.evaluate(() => {
-    const app = Object.values(ui.windows).find(windowApp => windowApp.id === "foundry-paste-eater-destination-config");
-    app?.close?.();
-  });
+  await closeModuleSettingsMenu(page, "foundry-paste-eater-destination-config");
+}
 
-  await page.waitForSelector("#foundry-paste-eater-destination-config", {state: "hidden", timeout: DEFAULT_TIMEOUT}).catch(() => {});
+async function openReadinessSupportConfig(page) {
+  await openModuleSettingsMenu(page, {
+    menuKey: "readiness-support",
+    appId: "foundry-paste-eater-readiness-support",
+    errorMessage: "Could not find the Foundry Paste Eater readiness-support settings menu.",
+  });
+}
+
+async function closeReadinessSupportConfig(page) {
+  await closeModuleSettingsMenu(page, "foundry-paste-eater-readiness-support");
+}
+
+async function openUploadedMediaAuditConfig(page) {
+  await openModuleSettingsMenu(page, {
+    menuKey: "uploaded-media-audit",
+    appId: "foundry-paste-eater-uploaded-media-audit",
+    errorMessage: "Could not find the Foundry Paste Eater uploaded-media-audit settings menu.",
+  });
+}
+
+async function closeUploadedMediaAuditConfig(page) {
+  await closeModuleSettingsMenu(page, "foundry-paste-eater-uploaded-media-audit");
 }
 
 async function getUploadDestinationSummary(page) {
@@ -1600,6 +1641,8 @@ module.exports = {
   clearActiveLayerClipboardObjects,
   clearCanvasMousePosition,
   cleanupClipboardRun,
+  closeReadinessSupportConfig,
+  closeUploadedMediaAuditConfig,
   closeOwnedContext,
   closeUploadDestinationConfig,
   controlPlaceable,
@@ -1631,6 +1674,8 @@ module.exports = {
   getSceneToolState,
   invokeSceneTool,
   loginToFoundry,
+  openReadinessSupportConfig,
+  openUploadedMediaAuditConfig,
   openUploadDestinationConfig,
   resolveFoundryCredentials,
   resetFoundrySessions,

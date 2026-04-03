@@ -1,0 +1,38 @@
+<form class="foundry-paste-eater-readiness-support flexcol" autocomplete="off">
+  <section class="form-group">
+    <label>Status Summary</label>
+    <div class="form-fields">
+      <input type="text" value="Pass: {{statusCounts.pass}} | Warn: {{statusCounts.warn}} | Fail: {{statusCounts.fail}}" disabled />
+    </div>
+    <p class="notes">This panel is read-only. Use the action buttons below to open the existing configuration flows or download a sanitized support bundle.</p>
+  </section>
+
+  {{#each sections}}
+  <section class="form-group">
+    <label>{{title}}</label>
+    <div class="form-fields" style="display: block;">
+      <div class="foundry-paste-eater-readiness-section">
+        {{#each items}}
+        <div class="foundry-paste-eater-readiness-item">
+          <p><strong>{{label}}</strong> <span>({{status}})</span></p>
+          <p>{{summary}}</p>
+          <p class="notes">{{remediation}}</p>
+        </div>
+        {{/each}}
+      </div>
+    </div>
+  </section>
+  {{/each}}
+
+  <footer class="sheet-footer flexrow">
+    <button type="button" data-action="open-upload-destination">
+      <i class="fas fa-folder-tree"></i> Open Upload destination
+    </button>
+    <button type="button" data-action="open-recommended-defaults">
+      <i class="fas fa-wand-magic-sparkles"></i> Open Apply recommended defaults
+    </button>
+    <button type="button" data-action="download-support-bundle">
+      <i class="fas fa-download"></i> Download Support bundle
+    </button>
+  </footer>
+</form>

@@ -13,10 +13,15 @@ const {
   _clipboardGetTargetFolder,
   _clipboardGetStoredBucket,
   _clipboardGetConfiguredS3Endpoint,
+  _clipboardGetConfiguredUploadRoot,
   _clipboardGetUploadDestination,
   _clipboardDescribeDestination,
   _clipboardGetSourceChoices,
 } = require("./storage");
+const {
+  _clipboardCreateUploadRootKey,
+  _clipboardRememberKnownUploadRoots,
+} = require("./support/known-roots");
 
 class FoundryPasteEaterDestinationConfig extends CLIPBOARD_IMAGE_FORM_APPLICATION {
   static get defaultOptions() {
@@ -142,6 +147,7 @@ class FoundryPasteEaterDestinationConfig extends CLIPBOARD_IMAGE_FORM_APPLICATIO
   }
 
   async _updateObject(_event, formData) {
+    const previousRoot = _clipboardGetConfiguredUploadRoot();
     const source = formData.source?.trim() || CLIPBOARD_IMAGE_SOURCE_AUTO;
     const target = formData.target?.trim() || CLIPBOARD_IMAGE_DEFAULT_FOLDER;
     const bucket = source === CLIPBOARD_IMAGE_SOURCE_S3 ? formData.bucket?.trim() || "" : "";
@@ -149,6 +155,12 @@ class FoundryPasteEaterDestinationConfig extends CLIPBOARD_IMAGE_FORM_APPLICATIO
     await game.settings.set(CLIPBOARD_IMAGE_MODULE_ID, "image-location-source", source);
     await game.settings.set(CLIPBOARD_IMAGE_MODULE_ID, "image-location", target);
     await game.settings.set(CLIPBOARD_IMAGE_MODULE_ID, "image-location-bucket", bucket);
+
+    const nextRoot = _clipboardGetConfiguredUploadRoot({storedSource: source, target, bucket});
+    const rootsToRemember = _clipboardCreateUploadRootKey(previousRoot) === _clipboardCreateUploadRootKey(nextRoot)
+      ? [nextRoot]
+      : [previousRoot, nextRoot];
+    await _clipboardRememberKnownUploadRoots(rootsToRemember);
   }
 }
 

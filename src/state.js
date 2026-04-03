@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 const CLIPBOARD_IMAGE_BOUND_CHAT_ROOTS = new WeakSet();
 
 let CLIPBOARD_IMAGE_LOCKED = false;

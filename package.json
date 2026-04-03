@@ -8,6 +8,9 @@
     "copy": "npm run build:runtime && rm -rf dist && mkdir -p dist && cp ./foundry-paste-eater.js dist/ && cp ./foundry-paste-eater.css dist/ && cp ./README.md dist/ && cp ./TESTING.md dist/ && cp ./CHANGELOG.md dist/ && cp ./LICENSE.md dist/ && cp ./module.json dist/ && cp -R ./templates dist/",
     "copyWin": "npm run build:runtime && if exist dist rmdir /S /Q dist && mkdir dist && copy module.json dist && copy foundry-paste-eater.js dist && copy foundry-paste-eater.css dist && copy README.md dist && copy TESTING.md dist && copy CHANGELOG.md dist && copy LICENSE.md dist && xcopy templates dist\\templates /E /I /Y",
     "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
+    "verify:bundle": "node scripts/verify-bundle.js",
+    "verify:release": "node scripts/verify-release.js",
     "zip": "npm run copy && rm -f foundry-paste-eater_${npm_package_version}.zip && npm-build-zip --source=dist --destination=.",
     "test": "npm run test:unit",
     "test:unit": "npm run test:unit:run && node scripts/check-coverage.js",
@@ -57,6 +60,7 @@
     "globals": "^16.0.0",
     "jsdom": "^26.0.0",
     "npm-build-zip": "^1.0.3",
+    "typescript": "^6.0.2",
     "vitest": "^3.2.4"
   }
 }

@@ -13,6 +13,10 @@ const {
   CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
 } = require("../constants");
 
+/**
+ * @typedef {import("../contracts").UploadDestination} UploadDestination
+ */
+
 function _clipboardUsingTheForge() {
   return typeof ForgeVTT != "undefined" && ForgeVTT.usingTheForge;
 }
@@ -135,18 +139,19 @@ function _clipboardBuildOrganizedUploadTarget(baseTarget, {
   ].join("/");
 }
 
-function _clipboardGetUploadDestination(overrides = {}) {
+/**
+ * @param {Partial<UploadDestination> & {source?: string, target?: string}} [overrides]
+ * @returns {UploadDestination}
+ */
+function _clipboardGetConfiguredUploadRoot(overrides = {}) {
   const storedSource = overrides.storedSource ?? overrides.source ?? _clipboardGetStoredSource();
   const resolvedSource = _clipboardResolveSource(storedSource);
-  const baseTarget = Object.hasOwn(overrides, "target")
-    ? overrides.target?.trim() || CLIPBOARD_IMAGE_DEFAULT_FOLDER
-    : _clipboardGetTargetFolder();
-  const target = _clipboardBuildOrganizedUploadTarget(baseTarget, {
-    organizationMode: overrides.organizationMode ?? _clipboardGetUploadPathOrganizationSetting(),
-    uploadContext: overrides.uploadContext ?? CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS,
-    userId: overrides.userId ?? game?.user?.id ?? "user",
-    date: overrides.date,
-  });
+  const target = _clipboardNormalizeUploadPathSegment(
+    Object.hasOwn(overrides, "target")
+      ? overrides.target?.trim() || CLIPBOARD_IMAGE_DEFAULT_FOLDER
+      : _clipboardGetTargetFolder(),
+    CLIPBOARD_IMAGE_DEFAULT_FOLDER
+  );
   const bucket = resolvedSource === CLIPBOARD_IMAGE_SOURCE_S3
     ? (Object.hasOwn(overrides, "bucket") ? overrides.bucket?.trim() || "" : _clipboardGetStoredBucket())
     : "";
@@ -157,6 +162,24 @@ function _clipboardGetUploadDestination(overrides = {}) {
     target,
     bucket,
     endpoint: resolvedSource === CLIPBOARD_IMAGE_SOURCE_S3 ? _clipboardGetConfiguredS3Endpoint() : "",
+  };
+}
+
+function _clipboardGetUploadDestination(overrides = {}) {
+  const configuredRoot = _clipboardGetConfiguredUploadRoot(overrides);
+  const target = _clipboardBuildOrganizedUploadTarget(configuredRoot.target, {
+    organizationMode: overrides.organizationMode ?? _clipboardGetUploadPathOrganizationSetting(),
+    uploadContext: overrides.uploadContext ?? CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS,
+    userId: overrides.userId ?? game?.user?.id ?? "user",
+    date: overrides.date,
+  });
+
+  return {
+    storedSource: configuredRoot.storedSource,
+    source: configuredRoot.source,
+    target,
+    bucket: configuredRoot.bucket,
+    endpoint: configuredRoot.endpoint,
   };
 }
 
@@ -195,6 +218,7 @@ module.exports = {
   _clipboardGetUploadContextSegment,
   _clipboardNormalizeUploadPathSegment,
   _clipboardBuildOrganizedUploadTarget,
+  _clipboardGetConfiguredUploadRoot,
   _clipboardGetUploadDestination,
   _clipboardGetFilePickerOptions,
   _clipboardDescribeDestination,

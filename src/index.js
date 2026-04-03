@@ -12,6 +12,7 @@ const workflows = require("./workflows");
 const uiHandlers = require("./ui");
 const {FoundryPasteEaterDestinationConfig} = require("./config-app");
 const settings = require("./settings");
+const support = require("./support");
 const state = require("./state");
 
 document.addEventListener("keydown", uiHandlers._clipboardOnKeydown);
@@ -30,6 +31,7 @@ Hooks.once("init", function() {
 Hooks.once("ready", async function() {
   await settings._clipboardMigrateLegacySettings();
   diagnostics._clipboardRegisterErrorReporting();
+  support._clipboardRegisterRuntimeApi();
   diagnostics._clipboardLog("info", "foundry-paste-eater module is ready.", {
     clipboardReadAvailable: Boolean(navigator.clipboard?.read),
     verboseLogging: diagnostics._clipboardVerboseLoggingEnabled(),
@@ -55,6 +57,7 @@ module.exports = {
     ...workflows,
     ...uiHandlers,
     ...settings,
+    ...support,
     ...state,
     constants: {
       CLIPBOARD_IMAGE_MODULE_ID: constants.CLIPBOARD_IMAGE_MODULE_ID,
@@ -91,6 +94,7 @@ module.exports = {
       CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING: constants.CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING,
       CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SETTING: constants.CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SETTING,
       CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING: constants.CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING,
+      CLIPBOARD_IMAGE_KNOWN_UPLOAD_ROOTS_SETTING: constants.CLIPBOARD_IMAGE_KNOWN_UPLOAD_ROOTS_SETTING,
       CLIPBOARD_IMAGE_ROLE_PLAYER: constants.CLIPBOARD_IMAGE_ROLE_PLAYER,
       CLIPBOARD_IMAGE_ROLE_TRUSTED: constants.CLIPBOARD_IMAGE_ROLE_TRUSTED,
       CLIPBOARD_IMAGE_ROLE_ASSISTANT: constants.CLIPBOARD_IMAGE_ROLE_ASSISTANT,

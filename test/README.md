@@ -29,6 +29,7 @@ The suite is designed to cover the browser-driven flows that can be validated ag
 - Behavior-setting flows in `test/playwright/config.spec.js`, including empty-canvas targeting, backing-actor creation, chat display modes, canvas text mode, scene-paste prompt mode, selected-token image modes, and upload-destination persistence
 - Permissions and feature-toggle flows in `test/playwright/permissions.spec.js`, including non-GM scene controls, minimum-role gates, and owned-token replacement
 - Error-reporting flows in `test/playwright/error-reporting.spec.js`, including player alerts, GM relay dialogs, and verbose logfile download behavior
+- Support flows in `test/playwright/support.spec.js`, including the GM-only readiness panel, support-bundle download, and uploaded-media audit rendering/export
 
 It intentionally does not try to replace all manual QA. Browser permission prompts, real `navigator.clipboard.read()` behavior, Safari/iOS/Android specifics, remote-host CORS failures, Forge integration, and visual animation/video playback still belong in manual testing.
 
@@ -112,6 +113,12 @@ npm run test:smoke:s3
   Run the Playwright smoke suite. This is headed by default in local development.
 - `npm run test:headed`
   Run the smoke suite in a headed browser explicitly.
+- `npm run typecheck`
+  Run the JS + JSDoc contract check for the support/report surface and shared test contracts.
+- `npm run verify:bundle`
+  Rebuild the runtime and fail if `foundry-paste-eater.js` differs from the committed artifact.
+- `npm run verify:release`
+  Run the local release gate: lint, unit tests, typecheck, bundle parity, packaging, and smoke tests when Foundry is reachable.
 - `npm run test:smoke:s3`
   Run the opt-in S3-compatible storage smoke spec. By default it refreshes the Foundry-side AWS session from `aws configure export-credentials --format process`, updates the configured Foundry AWS JSON file, and restarts the Foundry server when it can auto-detect a Dockerized `/data` mount or when you provide an explicit restart command.
 - `npm test`
@@ -136,6 +143,8 @@ npm run test:smoke:s3
 - Uploaded media files remain in the configured `playwright` upload subfolders. They are isolated by test run id but are not automatically deleted from disk.
 - The module now supports organized upload subfolders such as `canvas/<user-id>/<YYYY-MM>/`, `chat/<user-id>/<YYYY-MM>/`, and `document-art/<user-id>/<YYYY-MM>/`. Browser tests that assert uploaded paths should account for those context prefixes when the setting is enabled.
 - The module does not delete uploaded media or manage lifecycle expiration. Treat cleanup and retention as backend-admin policy, especially for S3-compatible storage.
+- The readiness panel and uploaded-media audit are intentionally read-only. Browser tests for those panels should assert summaries, exports, and launch actions, not side effects on world content or storage.
+- Support-bundle assertions should check for redaction of signed URLs and secret-shaped fields even when those URLs are embedded inside larger JSON-like strings.
 - Player media-upload smoke paths need an upload folder that already exists. The harness now pre-creates those folders as GM before player-upload tests run.
 - The optional S3-compatible storage smoke spec deletes the uploaded S3 prefix after it verifies the object landed in the configured bucket.
 - The S3-compatible storage smoke now checks browser render success as well as upload success. Your bucket needs CORS for media `GET` and `HEAD` requests or Foundry may create the tile document but fail to render the texture.

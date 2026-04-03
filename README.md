@@ -44,6 +44,7 @@ Repository:
 - [Access, Ownership, And Permission Rules](#access-ownership-and-permission-rules)
 - [Settings That Change Default Behavior](#settings-that-change-default-behavior)
 - [Settings Reference](#settings-reference)
+- [Readiness And Support](#readiness-and-support)
 - [Permissions And Storage](#permissions-and-storage)
 - [Troubleshooting By Symptom](#troubleshooting-by-symptom)
 - [Browser Notes](#browser-notes)
@@ -306,6 +307,10 @@ Open Foundry's Game Settings and look for the module settings and menu.
   GM-only review action for existing worlds that predate the current shipped defaults.
   It shows which configurable world behavior settings differ from the current recommended profile, then reapplies only those settings if you confirm.
   It does not touch the upload destination or client-only verbose logging.
+- `Readiness & Support`
+  GM-only read-only status panel for clipboard capability, storage readiness, player upload prerequisites, default-profile drift, and support-bundle download.
+- `Uploaded Media Audit`
+  GM-only read-only report for current world references under the module's known upload roots.
 - `Upload path organization`
   Keeps the configured base upload destination, then optionally appends context, user, and month subfolders such as `canvas/<user-id>/<YYYY-MM>/`, `chat/<user-id>/<YYYY-MM>/`, and `document-art/<user-id>/<YYYY-MM>/`.
 - `Verbose logging`
@@ -364,6 +369,102 @@ Open Foundry's Game Settings and look for the module settings and menu.
 - `Scene Paste Media prompt mode`
   Chooses whether the explicit scene-control paste button uses automatic browser behavior, always opens the manual paste prompt, or only uses direct clipboard reads.
 
+## Readiness And Support
+
+Foundry Paste Eater includes two GM-only read-only admin panels under:
+
+```text
+Game Settings -> Configure Settings -> Module Settings -> Foundry Paste Eater
+```
+
+### Readiness & Support
+
+`Readiness & Support` is a status panel, not a setup wizard. It does not create folders, upload probe files, or change world settings directly.
+
+It summarizes four areas:
+- `Client capability`
+  Whether the current browser exposes `navigator.clipboard.read`, whether the current context is secure, and what that means for explicit scene paste.
+- `Storage readiness`
+  The current upload source, base folder, bucket, visible S3 endpoint or base URL, and upload-path organization mode.
+- `Player upload readiness`
+  The module's role gates plus whether the required Foundry core permissions `Use File Browser` and `Upload Files` are present for the needed roles.
+- `Default-profile drift`
+  Whether the world still matches the shipped recommended defaults, with a summary of differences.
+
+Each readiness item reports:
+- `Pass`
+- `Warn`
+- `Fail`
+
+and includes both a short explanation and a fixed remediation string.
+
+The panel exposes these actions:
+- `Open Upload destination`
+- `Open Apply recommended defaults`
+- `Download Support bundle`
+
+### Support bundle
+
+The support bundle downloads a JSON file named like:
+
+```text
+foundry-paste-eater-support-<timestamp>.json
+```
+
+It includes:
+- module version
+- Foundry version
+- world id and title
+- browser and clipboard capability summary
+- current module settings and whether each differs from shipped defaults
+- storage destination summary and known upload roots
+- readiness results
+- recent module log history
+
+The bundle is sanitized before download:
+- no cookies
+- no passwords
+- no auth tokens
+- no storage-state payloads
+- no raw AWS credential material
+- signed URLs and URLs embedded inside longer strings are stripped down to safe URL forms
+
+### Uploaded Media Audit
+
+`Uploaded Media Audit` is a reference report, not a storage inventory and not a cleanup tool.
+
+It scans current world references beneath all known upload roots and groups them by:
+- upload root
+- upload context: `canvas`, `chat`, or `document-art`
+- document type
+
+The report includes references from:
+- Actor portraits
+- Actor prototype token art
+- placed token textures
+- placed tile textures
+- note icon textures
+- chat media messages created by the module
+
+Important limits:
+- it only reports current world references
+- it does not browse storage backends directly
+- it does not tell you whether an unreferenced file still exists on disk or in S3
+- it does not delete, expire, or clean up anything
+
+### Runtime API
+
+For GM-side automation or debugging, the module also exposes a read-only runtime API on:
+
+```js
+game.modules.get("foundry-paste-eater").api
+```
+
+Available methods:
+- `getReadinessReport()`
+- `collectSupportBundle()`
+- `collectMediaAuditReport()`
+
 ## Permissions And Storage
 
 ### Player upload fix
@@ -406,6 +507,8 @@ If you use S3-compatible storage and want lower retention costs, a sensible patt
 - Apply backend lifecycle rules only to clearly ephemeral prefixes such as `chat/` or temporary canvas scratch uploads.
 
 Foundry Paste Eater does not delete uploads or manage retention policies itself. Storage cleanup remains a GM or storage-backend responsibility.
+
+When the upload destination changes, the module records the old and new configured roots in a hidden world setting so the readiness panel, support bundle, and uploaded-media audit can continue reasoning across destination changes. That tracking is reference-only. It is not a retention or deletion feature.
 
 ## Troubleshooting By Symptom
 
@@ -531,12 +634,18 @@ These placeholder callouts are grouped by feature area so recorded media can be 
 ## Testing And Debugging
 
 - Unit suite: `npm test`
+- Contract typecheck: `npm run typecheck`
+- Bundle parity gate: `npm run verify:bundle`
+- Full local release gate: `npm run verify:release`
 - Manual QA guide: [TESTING.md](./TESTING.md)
 - Playwright smoke suite: [test/README.md](./test/README.md)
 - Pre-commit hooks: `pre-commit install`
 
 Contributor workflows:
 - `npm test` runs the jsdom/Vitest unit suite with coverage enforcement.
+- `npm run typecheck` checks the shared support/report contracts and JSDoc-typed support surface.
+- `npm run verify:bundle` rebuilds the runtime and fails if `foundry-paste-eater.js` does not match the committed artifact.
+- `npm run verify:release` runs lint, unit tests, typecheck, bundle parity, packaging, and smoke tests when a local Foundry instance is reachable.
 - `npm run test:smoke` runs the Playwright smoke suite against a live Foundry instance.
 - `npm run lint` runs ESLint across the runtime and tests.
 

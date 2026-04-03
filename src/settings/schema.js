@@ -23,6 +23,7 @@ const {
   CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING,
   CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SETTING,
   CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING,
+  CLIPBOARD_IMAGE_KNOWN_UPLOAD_ROOTS_SETTING,
   CLIPBOARD_IMAGE_ROLE_PLAYER,
   CLIPBOARD_IMAGE_ROLE_TRUSTED,
   CLIPBOARD_IMAGE_ROLE_ASSISTANT,
@@ -69,6 +70,7 @@ const CLIPBOARD_IMAGE_SHIPPED_DEFAULTS = Object.freeze({
   [CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING]: Object.freeze({scope: "world", config: true, value: CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO}),
   [CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SETTING]: Object.freeze({scope: "world", config: true, value: CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_PROMPT}),
   [CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING]: Object.freeze({scope: "world", config: true, value: CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_CONTEXT_USER_MONTH}),
+  [CLIPBOARD_IMAGE_KNOWN_UPLOAD_ROOTS_SETTING]: Object.freeze({scope: "world", config: false, value: "[]"}),
 });
 
 const CLIPBOARD_IMAGE_SETTINGS_MIGRATION_KEYS = Object.freeze([
@@ -95,6 +97,7 @@ const CLIPBOARD_IMAGE_SETTINGS_MIGRATION_KEYS = Object.freeze([
   CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING,
   CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SETTING,
   CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING,
+  CLIPBOARD_IMAGE_KNOWN_UPLOAD_ROOTS_SETTING,
 ]);
 
 function _clipboardGetRoleChoices() {
@@ -127,6 +130,14 @@ const CLIPBOARD_IMAGE_SETTINGS_SCHEMA = Object.freeze([
     key: "image-location-bucket",
     name: "Pasted media bucket",
     hint: "Bucket used when pasted media is saved to an S3-compatible provider configured in Foundry.",
+    scope: "world",
+    config: false,
+    type: String,
+  },
+  {
+    key: CLIPBOARD_IMAGE_KNOWN_UPLOAD_ROOTS_SETTING,
+    name: "Known upload roots",
+    hint: "Internal support setting that records every configured upload root used by this world.",
     scope: "world",
     config: false,
     type: String,

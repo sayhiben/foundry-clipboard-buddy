@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 const {CLIPBOARD_IMAGE_MODULE_ID} = require("../constants");
 const {
   _clipboardVerboseLoggingEnabled,
