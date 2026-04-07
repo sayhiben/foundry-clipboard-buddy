@@ -292,6 +292,48 @@ describe("paste and handler workflows", () => {
       restoreImage();
     });
 
+    it("rasterizes gif canvas pastes into static png textures", async () => {
+      env.settingsValues.set("foundry-paste-eater.create-backing-actors", false);
+      globalThis.canvas.activeLayer = globalThis.canvas.tokens;
+
+      const restoreImage = withMockImage({width: 64, height: 32});
+      const originalCreateObjectURL = globalThis.URL.createObjectURL;
+      const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+      globalThis.URL.createObjectURL = vi.fn(() => "blob:gif-preview");
+      globalThis.URL.revokeObjectURL = vi.fn();
+      const originalCreateElement = document.createElement.bind(document);
+      const drawImage = vi.fn();
+      document.createElement = vi.fn(tagName => {
+        if (tagName !== "canvas") return originalCreateElement(tagName);
+        return {
+          width: 0,
+          height: 0,
+          getContext: vi.fn(() => ({drawImage})),
+          toBlob: callback => callback(new Blob(["png"], {type: "image/png"})),
+        };
+      });
+
+      try {
+        await expect(api._clipboardHandleImageBlob(new File(["gif"], "test-animated.gif", {type: "image/gif"}), {
+          contextOptions: {fallbackToCenter: true},
+        })).resolves.toBe(true);
+      } finally {
+        restoreImage();
+        document.createElement = originalCreateElement;
+        globalThis.URL.createObjectURL = originalCreateObjectURL;
+        globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+      }
+
+      expect(drawImage).toHaveBeenCalled();
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("Token", [
+        expect.objectContaining({
+          texture: expect.objectContaining({
+            src: expect.stringMatching(/test-animated-\d+\.png\?foundry-paste-eater=\d+$/),
+          }),
+        }),
+      ]);
+    });
+
     it("updates actor portrait and linked token art when the selected-token mode is actor-art", async () => {
       env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "actor-art");
       globalThis.game.user.isGM = false;
@@ -576,6 +618,53 @@ describe("paste and handler workflows", () => {
       )).resolves.toBe(true);
 
       expect(field.value).toMatch(/^pasted_images\/token-art-\d+\.webm\?foundry-paste-eater=\d+$/);
+      expect(appRoot.querySelector('[data-edit="prototypeToken.texture.src"]').src).toContain("pasted_images/token-art-");
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
+    it("rasterizes gif uploads for focused token texture fields", async () => {
+      const restoreImage = withMockImage({width: 64, height: 32});
+      const originalCreateObjectURL = globalThis.URL.createObjectURL;
+      const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+      globalThis.URL.createObjectURL = vi.fn(() => "blob:gif-preview");
+      globalThis.URL.revokeObjectURL = vi.fn();
+      const originalCreateElement = document.createElement.bind(document);
+      document.createElement = vi.fn(tagName => {
+        if (tagName !== "canvas") return originalCreateElement(tagName);
+        return {
+          width: 0,
+          height: 0,
+          getContext: vi.fn(() => ({drawImage: vi.fn()})),
+          toBlob: callback => callback(new Blob(["png"], {type: "image/png"})),
+        };
+      });
+
+      const appRoot = document.createElement("section");
+      appRoot.dataset.appid = "token-app";
+      appRoot.innerHTML = `
+        <input type="text" name="prototypeToken.texture.src" value="">
+        <video data-edit="prototypeToken.texture.src" src=""></video>
+      `;
+      document.body.append(appRoot);
+      globalThis.ui.windows["token-app"] = {
+        object: {documentName: "Token"},
+      };
+      const field = appRoot.querySelector('input[name="prototypeToken.texture.src"]');
+      field.focus();
+
+      try {
+        await expect(api._clipboardHandleArtFieldImageInput(
+          {blob: new File(["gif"], "token-art.gif", {type: "image/gif"})},
+          field
+        )).resolves.toBe(true);
+      } finally {
+        restoreImage();
+        document.createElement = originalCreateElement;
+        globalThis.URL.createObjectURL = originalCreateObjectURL;
+        globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+      }
+
+      expect(field.value).toMatch(/^pasted_images\/token-art-\d+\.png\?foundry-paste-eater=\d+$/);
       expect(appRoot.querySelector('[data-edit="prototypeToken.texture.src"]').src).toContain("pasted_images/token-art-");
       expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
     });

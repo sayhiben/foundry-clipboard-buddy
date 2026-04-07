@@ -202,6 +202,53 @@ test("posts chat media on image paste without creating canvas content", async ({
   }
 });
 
+test("returns paste targeting to the canvas after clicking back into the board", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const chatSelector = await focusChatInput(page);
+    const beforeChat = await getStateSnapshot(page);
+
+    await dispatchFilePaste(page, {
+      targetSelector: chatSelector,
+      filename: "test-token.png",
+      mimeType: "image/png",
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).messages.length).toBe(beforeChat.messages.length + 1);
+
+    const mouse = await getSafeCanvasPoint(page, 5);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => canvas.tokens.activate());
+    await page.evaluate(() => {
+      const board = document.querySelector("#board");
+      if (!board) throw new Error("Could not find the Foundry board.");
+      board.dispatchEvent(new MouseEvent("mousedown", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      }));
+    });
+    await expect.poll(() => page.evaluate(() => document.activeElement === document.querySelector(".game"))).toBe(true);
+
+    const beforeTokenPaste = await getStateSnapshot(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-animated.gif",
+      mimeType: "",
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).tokens.length).toBe(beforeTokenPaste.tokens.length + 1);
+    const after = await getStateSnapshot(page);
+    const [token] = getNewDocuments(beforeTokenPaste, after, "tokens");
+
+    expect(token.textureSrc).toContain(run.uploadFolder);
+    expect(token.textureSrc).toContain(".png");
+    expect(after.messages.length).toBe(beforeTokenPaste.messages.length);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
 test("posts chat media on video paste without creating canvas content", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {

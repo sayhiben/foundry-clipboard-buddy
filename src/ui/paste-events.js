@@ -38,6 +38,36 @@ function _clipboardCanHandleCanvasPasteContext(context, rejectionMessage) {
   return false;
 }
 
+function _clipboardGetGameRoot() {
+  return document.querySelector(".game");
+}
+
+function _clipboardFocusGameRoot() {
+  const root = _clipboardGetGameRoot();
+  if (!root) return false;
+
+  if (!root.hasAttribute("tabindex")) {
+    root.tabIndex = 0;
+  }
+
+  document.activeElement?.blur?.();
+  root.focus({preventScroll: true});
+  return document.activeElement === root;
+}
+
+function _clipboardShouldRestoreGameFocus(target) {
+  if (!(target instanceof HTMLElement)) return false;
+  if (_clipboardGetChatRootFromTarget(target)) return false;
+  if (_clipboardIsEditableTarget(target)) return false;
+  if (_clipboardGetFocusedArtFieldTarget(target)) return false;
+  return Boolean(target.closest("#board, #scene-controls"));
+}
+
+function _clipboardOnMouseDown(event) {
+  if (!_clipboardShouldRestoreGameFocus(event.target)) return;
+  _clipboardFocusGameRoot();
+}
+
 function _clipboardResolveNativePasteRoute({
   hasMediaInput = false,
   hasTextInput = false,
@@ -169,6 +199,10 @@ function _clipboardOnKeydown(event) {
 module.exports = {
   _clipboardConsumePasteEvent,
   _clipboardCanHandleCanvasPasteContext,
+  _clipboardGetGameRoot,
+  _clipboardFocusGameRoot,
+  _clipboardShouldRestoreGameFocus,
+  _clipboardOnMouseDown,
   _clipboardResolveNativePasteRoute,
   _clipboardOnPaste,
   _clipboardOnKeydown,

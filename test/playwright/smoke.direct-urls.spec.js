@@ -390,8 +390,8 @@ test("prefers an animated media url over a rasterized pasted blob on the canvas"
     const after = await getStateSnapshot(page);
     const [tile] = getNewDocuments(before, after, "tiles");
 
-    expect(tile.textureSrc).toContain(".gif?foundry-paste-eater=");
-    expect(tile.textureSrc).not.toContain(".png?foundry-paste-eater=");
+    expect(tile.textureSrc).toContain(".png?foundry-paste-eater=");
+    expect(tile.textureSrc).not.toContain(".gif?foundry-paste-eater=");
     expect(after.tokens.length).toBe(before.tokens.length);
     expect(after.notes.length).toBe(before.notes.length);
     expect(after.messages.length).toBe(before.messages.length);

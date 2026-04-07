@@ -1,5 +1,8 @@
 /* eslint-disable no-unused-vars */
+const fs = require("fs");
 const http = require("http");
+const os = require("os");
+const path = require("path");
 const {execFileSync} = require("child_process");
 const {test: base, expect} = require("@playwright/test");
 const {
@@ -162,6 +165,52 @@ async function getTokenActorInfo(page, tokenId) {
       actorImg: tokenDocument.actor?.img || null,
     };
   }, tokenId);
+}
+
+async function getRenderedTokenInfo(page, tokenId) {
+  return page.evaluate(id => {
+    const placeable = canvas.tokens.placeables.find(entry => entry.document.id === id);
+    const texture = placeable?.texture || placeable?.mesh?.texture || null;
+    const baseTexture = texture?.baseTexture || texture?.source || null;
+    return {
+      src: placeable?.document?.texture?.src || null,
+      resourceUrl: baseTexture?.resource?.src || baseTexture?.resource?.url || null,
+      textureWidth: texture?.width ?? null,
+      textureHeight: texture?.height ?? null,
+      baseValid: baseTexture?.valid ?? null,
+    };
+  }, tokenId);
+}
+
+async function getRenderedTileInfo(page, tileId) {
+  return page.evaluate(id => {
+    const placeable = canvas.tiles.placeables.find(entry => entry.document.id === id);
+    const texture = placeable?.texture || placeable?.mesh?.texture || null;
+    const baseTexture = texture?.baseTexture || texture?.source || null;
+    return {
+      src: placeable?.document?.texture?.src || null,
+      resourceUrl: baseTexture?.resource?.src || baseTexture?.resource?.url || null,
+      textureWidth: texture?.width ?? null,
+      textureHeight: texture?.height ?? null,
+      baseValid: baseTexture?.valid ?? null,
+    };
+  }, tileId);
+}
+
+function getGeneratedJpegFixturePath() {
+  const targetPath = path.join(os.tmpdir(), "foundry-paste-eater-test-token.jpg");
+  execFileSync("sips", [
+    "-s",
+    "format",
+    "jpeg",
+    getFixturePath("test-token.png"),
+    "--out",
+    targetPath,
+  ], {stdio: "ignore"});
+  if (!fs.existsSync(targetPath)) {
+    throw new Error(`Failed to generate JPEG fixture at ${targetPath}`);
+  }
+  return targetPath;
 }
 
 test.describe.configure({mode: "serial"});
@@ -349,6 +398,98 @@ test("pastes a Finder-copied file through the native macOS paste event", async (
   }
 });
 
+test("pastes a Finder-copied animated gif as a token through the native macOS paste event", async ({foundryPage: page}, testInfo) => {
+  test.skip(process.platform !== "darwin", "Finder clipboard integration is only available on macOS.");
+  test.skip(process.env.PW_HEADLESS === "true", "Finder clipboard integration requires a headed macOS browser session.");
+
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    await setModuleSettings(page, {"create-backing-actors": false});
+    const mouse = await getSafeCanvasPoint(page, 0);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => canvas.tokens.activate());
+
+    execFileSync("osascript", [
+      "-e",
+      `set the clipboard to (POSIX file "${getFixturePath("test-animated.gif")}")`,
+    ]);
+
+    const before = await getStateSnapshot(page);
+    await pasteNativeClipboardWithRetry(page, {
+      prepare: async () => {
+        await focusCanvas(page);
+      },
+      verify: async () => {
+        await expect.poll(async () => (await getStateSnapshot(page)).tokens.length).toBe(before.tokens.length + 1);
+      },
+    });
+    const after = await getStateSnapshot(page);
+    const [token] = getNewDocuments(before, after, "tokens");
+    const renderInfo = await getRenderedTokenInfo(page, token.id);
+
+    expect(token.textureSrc).toContain(run.uploadFolder);
+    expect(token.textureSrc).toContain(".png");
+    expect(token.actorId).toBeNull();
+    expect(renderInfo.src).toContain(".png");
+    expect(renderInfo.resourceUrl).toContain(".png");
+    expect(renderInfo.resourceUrl).not.toContain("mystery-man");
+    expect(renderInfo.textureWidth).toBeGreaterThan(0);
+    expect(renderInfo.textureHeight).toBeGreaterThan(0);
+    expect(renderInfo.baseValid).toBe(true);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("pastes a Finder-copied jpeg as a tile through the native macOS paste event", async ({foundryPage: page}, testInfo) => {
+  test.skip(process.platform !== "darwin", "Finder clipboard integration is only available on macOS.");
+  test.skip(process.env.PW_HEADLESS === "true", "Finder clipboard integration requires a headed macOS browser session.");
+
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 0);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => canvas.tiles.activate());
+
+    execFileSync("osascript", [
+      "-e",
+      `set the clipboard to (POSIX file "${getGeneratedJpegFixturePath()}")`,
+    ]);
+
+    const before = await getStateSnapshot(page);
+    await pasteNativeClipboardWithRetry(page, {
+      prepare: async () => {
+        await focusCanvas(page);
+      },
+      verify: async () => {
+        await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+      },
+    });
+    const after = await getStateSnapshot(page);
+    const [tile] = getNewDocuments(before, after, "tiles");
+
+    await expect.poll(async () => getRenderedTileInfo(page, tile.id), {
+      timeout: 15_000,
+    }).toMatchObject({
+      baseValid: true,
+    });
+
+    const renderInfo = await getRenderedTileInfo(page, tile.id);
+    expect(tile.textureSrc).toContain(run.uploadFolder);
+    expect(tile.textureSrc).toContain(".jpg");
+    expect(renderInfo.src).toContain(".jpg");
+    expect(renderInfo.resourceUrl).toContain(".jpg");
+    expect(renderInfo.resourceUrl).not.toContain("hazard");
+    expect(renderInfo.textureWidth).toBeGreaterThan(0);
+    expect(renderInfo.textureHeight).toBeGreaterThan(0);
+    expect(renderInfo.baseValid).toBe(true);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
 test("pastes an image as a token on the Tokens layer", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
@@ -408,6 +549,71 @@ test("pastes an image as a token on the Tokens layer", async ({foundryPage: page
     await page.evaluate(actorId => Promise.all(Object.values(ui.windows)
       .filter(entry => (entry.document?.id || entry.object?.id) === actorId)
       .map(entry => entry.close())), token.actorId);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("pastes an animated gif as a token even when the pasted file has no mime type", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    await setModuleSettings(page, {"create-backing-actors": false});
+    const mouse = await getSafeCanvasPoint(page, 1);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => canvas.tokens.activate());
+
+    const before = await getStateSnapshot(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-animated.gif",
+      mimeType: "",
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).tokens.length).toBe(before.tokens.length + 1);
+    const after = await getStateSnapshot(page);
+    const [token] = getNewDocuments(before, after, "tokens");
+    const renderInfo = await getRenderedTokenInfo(page, token.id);
+
+    expect(token.textureSrc).toContain(run.uploadFolder);
+    expect(token.textureSrc).toContain(".png");
+    expect(token.name).toBe("test-animated");
+    expect(token.actorId).toBeNull();
+    expect(renderInfo.src).toContain(".png");
+    expect(renderInfo.resourceUrl).toContain(".png");
+    expect(renderInfo.resourceUrl).not.toContain("mystery-man");
+    expect(renderInfo.baseValid).toBe(true);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("pastes an animated gif as a tile by rasterizing it to a static png texture", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 1);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => canvas.tiles.activate());
+
+    const before = await getStateSnapshot(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      filename: "test-animated.gif",
+      mimeType: "image/gif",
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+    const after = await getStateSnapshot(page);
+    const [tile] = getNewDocuments(before, after, "tiles");
+    const renderInfo = await getRenderedTileInfo(page, tile.id);
+
+    expect(tile.textureSrc).toContain(run.uploadFolder);
+    expect(tile.textureSrc).toContain(".png");
+    expect(renderInfo.src).toContain(".png");
+    expect(renderInfo.resourceUrl).toContain(".png");
+    expect(renderInfo.resourceUrl).not.toContain("hazard");
+    expect(renderInfo.baseValid).toBe(true);
   } finally {
     await cleanupClipboardRun(page, run);
   }

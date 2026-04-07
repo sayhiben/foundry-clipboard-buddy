@@ -1,7 +1,7 @@
 import {beforeEach, describe, expect, it, vi} from "vitest";
 
 import {loadRuntime} from "./runtime-env.js";
-import {createClipboardItem, createDataTransfer, withMockVideo} from "./spec-helpers.js";
+import {createClipboardItem, createDataTransfer, withMockImage, withMockVideo} from "./spec-helpers.js";
 
 describe("media helpers", () => {
   let env;
@@ -82,6 +82,27 @@ describe("media helpers", () => {
       expect(api._clipboardIsSupportedMediaBlob(new File(["x"], "portrait.JPG", {type: "image/jpeg"}))).toBe(true);
       expect(api._clipboardIsSupportedMediaBlob(new File(["x"], "notes.txt", {type: "text/plain"}))).toBe(false);
     });
+
+    it("can coerce under-described media blobs into typed files", () => {
+      const gifBlob = new File(["gif"], "copied-image", {type: ""});
+      const typedGifFile = api._clipboardCoerceMediaFile(gifBlob, {mimeType: "image/gif"});
+
+      expect(typedGifFile).toBeInstanceOf(File);
+      expect(typedGifFile.name).toBe("copied-image.gif");
+      expect(typedGifFile.type).toBe("image/gif");
+      expect(api._clipboardGetMediaKind({blob: typedGifFile, filename: typedGifFile.name})).toBe("image");
+
+      expect(api._clipboardCoerceMediaFile(new File(["x"], "notes.txt", {type: ""}), {
+        mimeType: "text/plain",
+      })).toBeNull();
+    });
+
+    it("detects gif media from mime types and filenames", () => {
+      expect(api._clipboardIsGifMedia({mimeType: "image/gif"})).toBe(true);
+      expect(api._clipboardIsGifMedia({filename: "animated.GIF"})).toBe(true);
+      expect(api._clipboardIsGifMedia({src: "https://example.com/animated.gif?x=1"})).toBe(true);
+      expect(api._clipboardIsGifMedia({filename: "static.png"})).toBe(false);
+    });
   });
 
   describe("mime mapping and filenames", () => {
@@ -125,6 +146,101 @@ describe("media helpers", () => {
       expect(uploadFile.name).toBe("pasted_image-123.png");
     });
 
+    it("rasterizes gif blobs into static png files", async () => {
+      const originalCreateElement = document.createElement.bind(document);
+      const drawImage = vi.fn();
+      document.createElement = vi.fn(tagName => {
+        if (tagName !== "canvas") return originalCreateElement(tagName);
+        return {
+          width: 0,
+          height: 0,
+          getContext: vi.fn(() => ({drawImage})),
+          toBlob: callback => callback(new Blob(["png"], {type: "image/png"})),
+        };
+      });
+
+      const originalCreateObjectURL = globalThis.URL.createObjectURL;
+      const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+      const createObjectURL = vi.fn(() => "blob:gif-preview");
+      const revokeObjectURL = vi.fn();
+      globalThis.URL.createObjectURL = createObjectURL;
+      globalThis.URL.revokeObjectURL = revokeObjectURL;
+
+      const restoreImage = withMockImage({width: 64, height: 32});
+      try {
+        const rasterized = await api._clipboardConvertGifToStaticPng(
+          new File(["gif"], "animated.gif", {type: "image/gif"})
+        );
+
+        expect(rasterized).toBeInstanceOf(File);
+        expect(rasterized.name).toBe("animated.png");
+        expect(rasterized.type).toBe("image/png");
+        expect(drawImage).toHaveBeenCalled();
+        expect(createObjectURL).toHaveBeenCalled();
+        expect(revokeObjectURL).toHaveBeenCalledWith("blob:gif-preview");
+      } finally {
+        restoreImage();
+        document.createElement = originalCreateElement;
+        globalThis.URL.createObjectURL = originalCreateObjectURL;
+        globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+      }
+    });
+
+    it("continues rasterization when image decode rejects after a successful load", async () => {
+      const originalCreateElement = document.createElement.bind(document);
+      const drawImage = vi.fn();
+      document.createElement = vi.fn(tagName => {
+        if (tagName !== "canvas") return originalCreateElement(tagName);
+        return {
+          width: 0,
+          height: 0,
+          getContext: vi.fn(() => ({drawImage})),
+          toBlob: callback => callback(new Blob(["png"], {type: "image/png"})),
+        };
+      });
+
+      const originalCreateObjectURL = globalThis.URL.createObjectURL;
+      const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+      globalThis.URL.createObjectURL = vi.fn(() => "blob:gif-preview");
+      globalThis.URL.revokeObjectURL = vi.fn();
+
+      const OriginalImage = globalThis.Image;
+      globalThis.Image = class {
+        constructor() {
+          this.naturalWidth = 48;
+          this.naturalHeight = 24;
+        }
+
+        decode() {
+          return Promise.reject(new Error("decode failed"));
+        }
+
+        set src(value) {
+          this._src = value;
+          queueMicrotask(() => this.onload?.());
+        }
+      };
+
+      try {
+        const rasterized = await api._clipboardRasterizeImageBlob(
+          new File(["gif"], "animated.gif", {type: "image/gif"})
+        );
+        expect(rasterized).toBeInstanceOf(File);
+        expect(rasterized.name).toBe("animated.png");
+        expect(drawImage).toHaveBeenCalled();
+      } finally {
+        globalThis.Image = OriginalImage;
+        document.createElement = originalCreateElement;
+        globalThis.URL.createObjectURL = originalCreateObjectURL;
+        globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+      }
+    });
+
+    it("leaves non-gif blobs unchanged when converting to static png", async () => {
+      const pngFile = new File(["png"], "static.png", {type: "image/png"});
+      await expect(api._clipboardConvertGifToStaticPng(pngFile)).resolves.toBe(pngFile);
+    });
+
     it("versions existing File objects during upload creation", () => {
       const file = new File(["x"], "portrait.JPG", {type: "image/jpeg"});
       const uploadFile = api._clipboardCreateUploadFile(file, 456);
@@ -132,6 +248,15 @@ describe("media helpers", () => {
       expect(uploadFile).not.toBe(file);
       expect(uploadFile.name).toBe("portrait-456.JPG");
       expect(uploadFile.type).toBe("image/jpeg");
+    });
+
+    it("infers upload mime types for under-described media files", () => {
+      const file = new File(["gif"], "test-animated.gif", {type: ""});
+      const uploadFile = api._clipboardCreateUploadFile(file, 789);
+
+      expect(uploadFile).toBeInstanceOf(File);
+      expect(uploadFile.name).toBe("test-animated-789.gif");
+      expect(uploadFile.type).toBe("image/gif");
     });
 
     it("reads copied-object state from the active layer", () => {
@@ -631,6 +756,23 @@ describe("media helpers", () => {
         files: [new File(["x"], "fallback.png", {type: "image/png"})],
       });
       expect(api._clipboardExtractImageBlobFromDataTransfer(fallbackFileTransfer)).toBeInstanceOf(File);
+    });
+
+    it("uses dataTransfer item metadata to recover Finder-style gif files", () => {
+      const gifBlob = new File(["gif"], "test-animated", {type: ""});
+      const textTransfer = createDataTransfer({
+        items: [{
+          kind: "file",
+          type: "image/gif",
+          getAsFile: () => gifBlob,
+        }],
+        files: [gifBlob],
+      });
+
+      const result = api._clipboardExtractImageBlobFromDataTransfer(textTransfer);
+      expect(result).toBeInstanceOf(File);
+      expect(result.name).toBe("test-animated.gif");
+      expect(result.type).toBe("image/gif");
     });
 
     it("extracts text and image input from dataTransfer payloads", () => {

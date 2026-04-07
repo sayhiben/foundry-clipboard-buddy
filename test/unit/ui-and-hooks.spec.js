@@ -915,6 +915,26 @@ describe("ui and hook integration helpers", () => {
       }, "ignored")).toBe(false);
     });
 
+    it("restores game focus for board interactions but not chat or editable targets", () => {
+      document.body.innerHTML = `
+        <div class="game"></div>
+        <div id="board"><canvas id="board-canvas"></canvas></div>
+        <form data-foundry-paste-eater-chat-root="true"><textarea id="chat-box"></textarea></form>
+        <input id="sheet-field" name="img">
+      `;
+
+      const chatBox = document.getElementById("chat-box");
+      chatBox.focus();
+      expect(document.activeElement).toBe(chatBox);
+
+      expect(api._clipboardShouldRestoreGameFocus(document.getElementById("board-canvas"))).toBe(true);
+      expect(api._clipboardShouldRestoreGameFocus(chatBox)).toBe(false);
+      expect(api._clipboardShouldRestoreGameFocus(document.getElementById("sheet-field"))).toBe(false);
+
+      api._clipboardOnMouseDown({target: document.getElementById("board-canvas")});
+      expect(document.activeElement).toBe(document.querySelector(".game"));
+    });
+
     it("routes canvas media paste events through the media pipeline", async () => {
       document.body.innerHTML = '<div class="game" tabindex="0"></div>';
       document.querySelector(".game").focus();

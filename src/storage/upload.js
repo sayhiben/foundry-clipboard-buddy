@@ -9,8 +9,11 @@ const {
   _clipboardLog,
 } = require("../diagnostics");
 const {
+  _clipboardCoerceMediaFile,
   _clipboardEnsureFilenameExtension,
   _clipboardGetFileExtension,
+  _clipboardGetMimeTypeFromFilename,
+  _clipboardNormalizeMimeType,
   _clipboardNormalizeSvgBlobForUpload,
 } = require("../media");
 const {_clipboardGetFilePickerOptions} = require("./destination");
@@ -87,11 +90,15 @@ function _clipboardCreateUploadFile(blob, version = Date.now()) {
   const sourceName = blob instanceof File && blob.name
     ? blob.name
     : `pasted_image.${_clipboardGetFileExtension(blob)}`;
-  const filename = _clipboardCreateVersionedFilename(
-    _clipboardEnsureFilenameExtension(sourceName, blob),
-    version
-  );
-  return new File([blob], filename, {type: blob.type});
+  const normalizedFile = _clipboardCoerceMediaFile(blob, {
+    filename: sourceName,
+    mimeType: blob?.type,
+  });
+  const resolvedName = normalizedFile?.name || _clipboardEnsureFilenameExtension(sourceName, blob);
+  const resolvedType = _clipboardNormalizeMimeType(normalizedFile?.type || blob?.type)
+    || _clipboardGetMimeTypeFromFilename(resolvedName);
+  const filename = _clipboardCreateVersionedFilename(resolvedName, version);
+  return new File([normalizedFile || blob], filename, {type: resolvedType});
 }
 
 function _clipboardCreateFreshMediaPath(path, version = Date.now()) {

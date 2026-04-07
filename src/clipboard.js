@@ -7,6 +7,7 @@ const {
   _clipboardSerializeError,
 } = require("./diagnostics");
 const {
+  _clipboardCoerceMediaFile,
   _clipboardGetMediaKind,
   _clipboardIsSupportedMediaBlob,
   _clipboardParseSupportedUrl,
@@ -53,7 +54,9 @@ async function _clipboardExtractImageBlob(clipItems) {
   for (const clipItem of clipItems || []) {
     for (const fileType of clipItem.types) {
       if (_clipboardGetMediaKind({mimeType: fileType})) {
-        return clipItem.getType(fileType);
+        const blob = await clipItem.getType(fileType);
+        const file = _clipboardCoerceMediaFile(blob, {mimeType: fileType});
+        if (file) return file;
       }
     }
   }
@@ -260,13 +263,19 @@ function _clipboardExtractImageBlobFromDataTransfer(dataTransfer) {
     if (item.kind !== "file") continue;
 
     const file = item.getAsFile();
-    if (_clipboardIsSupportedMediaBlob(file)) {
-      return file;
-    }
+    const typedFile = _clipboardCoerceMediaFile(file, {
+      filename: file?.name,
+      mimeType: item.type,
+    });
+    if (typedFile && _clipboardIsSupportedMediaBlob(typedFile)) return typedFile;
   }
 
   for (const file of dataTransfer?.files || []) {
-    if (_clipboardIsSupportedMediaBlob(file)) return file;
+    const typedFile = _clipboardCoerceMediaFile(file, {
+      filename: file?.name,
+      mimeType: file?.type,
+    });
+    if (typedFile && _clipboardIsSupportedMediaBlob(typedFile)) return typedFile;
   }
 
   return null;

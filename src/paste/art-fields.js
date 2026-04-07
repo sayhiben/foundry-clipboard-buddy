@@ -8,6 +8,8 @@ const {
 } = require("../diagnostics");
 const {
   _clipboardGetMediaKind,
+  _clipboardIsGifMedia,
+  _clipboardConvertGifToStaticPng,
 } = require("../media");
 const {
   _clipboardGetUploadDestination,
@@ -27,6 +29,10 @@ const {
   _clipboardAnnotateWorkflowError,
 } = require("./helpers");
 
+function _clipboardFieldRequiresStaticTexture(fieldName = "") {
+  return /(?:^|[.])texture\.src$/i.test(String(fieldName || "").trim());
+}
+
 async function _clipboardHandleArtFieldImageInput(imageInput, target) {
   if (!_clipboardCanUseCanvasMedia()) return false;
 
@@ -40,12 +46,18 @@ async function _clipboardHandleArtFieldImageInput(imageInput, target) {
   let mediaKind = _clipboardGetMediaKind({src: imageInput?.url, filename: imageInput?.blob?.name, mimeType: imageInput?.blob?.type});
 
   try {
-    const blob = await _clipboardResolveImageInputBlob(imageInput);
+    let blob = await _clipboardResolveImageInputBlob(imageInput);
     if (!blob) return false;
 
     mediaKind = _clipboardGetMediaKind({blob, filename: blob.name}) || mediaKind;
     if (mediaKind && !artFieldTarget.mediaKinds.includes(mediaKind)) {
       throw new Error(`The focused ${artFieldTarget.fieldName} field does not support pasted ${mediaKind} media.`);
+    }
+
+    if (_clipboardFieldRequiresStaticTexture(artFieldTarget.fieldName) &&
+        _clipboardIsGifMedia({blob, filename: blob?.name, mimeType: blob?.type})) {
+      blob = await _clipboardConvertGifToStaticPng(blob);
+      mediaKind = _clipboardGetMediaKind({blob, filename: blob.name}) || mediaKind;
     }
 
     await _clipboardCreateFolderIfMissing(destination);

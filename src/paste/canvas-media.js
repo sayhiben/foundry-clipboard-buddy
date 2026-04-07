@@ -9,9 +9,11 @@ const {
 } = require("../diagnostics");
 const {
   _clipboardGetMediaKind,
+  _clipboardIsGifMedia,
   _clipboardNormalizePastedText,
   _clipboardLoadMediaDimensions,
   _clipboardGetPreferredMediaDimensions,
+  _clipboardConvertGifToStaticPng,
 } = {
   ...require("../media"),
   ...require("../text"),
@@ -44,6 +46,11 @@ function _clipboardReplacementTargetSupportsMediaKind(replacementTarget, mediaKi
   if (!replacementTarget?.documentName) return true;
   if (replacementTarget.documentName === "Note") return mediaKind !== "video";
   return true;
+}
+
+async function _clipboardNormalizeCanvasBlob(blob) {
+  if (!_clipboardIsGifMedia({blob, filename: blob?.name, mimeType: blob?.type})) return blob;
+  return _clipboardConvertGifToStaticPng(blob);
 }
 
 async function _clipboardApplyPasteResult(path, context, preferredDimensions = null, options = {}) {
@@ -144,8 +151,11 @@ async function _clipboardHandleImageBlob(blob, options = {}) {
     uploadContext: replacementBehavior.uploadContext,
   });
   try {
+    const normalizedBlob = mediaKind === "image"
+      ? await _clipboardNormalizeCanvasBlob(blob)
+      : blob;
     await _clipboardCreateFolderIfMissing(destination);
-    return await _clipboardPasteBlob(blob, destination, {
+    return await _clipboardPasteBlob(normalizedBlob, destination, {
       contextOptions: options.contextOptions,
       context,
       replacementBehavior,

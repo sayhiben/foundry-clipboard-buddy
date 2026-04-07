@@ -16,6 +16,7 @@ const support = require("./support");
 const state = require("./state");
 
 document.addEventListener("keydown", uiHandlers._clipboardOnKeydown);
+document.addEventListener("mousedown", uiHandlers._clipboardOnMouseDown, true);
 document.addEventListener("paste", uiHandlers._clipboardOnPaste);
 
 Hooks.once("init", function() {

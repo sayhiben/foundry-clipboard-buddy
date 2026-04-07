@@ -1195,6 +1195,33 @@ var FoundryPasteEaterRuntime = (() => {
       function _clipboardIsSupportedMediaBlob(blob) {
         return Boolean(blob && _clipboardGetMediaKind({ blob, filename: blob.name }));
       }
+      function _clipboardIsGifMedia({ blob, filename, mimeType, src } = {}) {
+        const normalizedMimeType = _clipboardNormalizeMimeType(mimeType || blob?.type);
+        if (normalizedMimeType === "image/gif") return true;
+        const candidate = filename || blob?.name || (src ? _clipboardGetFilenameFromUrl(src) || src : "");
+        return _clipboardGetFilenameExtension(candidate) === "gif";
+      }
+      function _clipboardCoerceMediaFile(blob, { filename = "", mimeType = "" } = {}) {
+        if (!blob) return null;
+        const candidateFilename = filename || (blob instanceof File ? blob.name : "") || "pasted_image";
+        const resolvedMediaKind = _clipboardGetMediaKind({
+          blob,
+          filename: candidateFilename,
+          mimeType
+        });
+        if (!resolvedMediaKind) return null;
+        const normalizedBlobType = _clipboardNormalizeMimeType(blob.type);
+        let resolvedMimeType = normalizedBlobType || _clipboardNormalizeMimeType(mimeType);
+        if (!_clipboardIsMediaMimeType(resolvedMimeType)) {
+          resolvedMimeType = _clipboardGetMimeTypeFromFilename(candidateFilename);
+        }
+        const typedBlob = normalizedBlobType === resolvedMimeType ? blob : new Blob([blob], { type: resolvedMimeType });
+        const resolvedFilename = _clipboardEnsureFilenameExtension(candidateFilename, typedBlob);
+        if (blob instanceof File && blob.name === resolvedFilename && normalizedBlobType === resolvedMimeType) {
+          return blob;
+        }
+        return new File([typedBlob], resolvedFilename, { type: resolvedMimeType });
+      }
       function _clipboardGetMimeTypeFromFilename(filename) {
         switch (_clipboardGetFilenameExtension(filename)) {
           case "apng":
@@ -1373,6 +1400,66 @@ var FoundryPasteEaterRuntime = (() => {
           { type: _clipboardNormalizeMimeType(blob?.type) || "image/svg+xml" }
         );
       }
+      async function _clipboardRasterizeImageBlob(blob, {
+        mimeType = "image/png",
+        filename = ""
+      } = {}) {
+        if (!blob) return null;
+        const objectUrl = URL.createObjectURL(blob);
+        try {
+          const image = new Image();
+          await new Promise((resolve, reject) => {
+            image.onload = resolve;
+            image.onerror = () => reject(new Error("Failed to rasterize pasted media"));
+            image.src = objectUrl;
+          });
+          if (typeof image.decode === "function") {
+            try {
+              await image.decode();
+            } catch (error) {
+            }
+          }
+          const width = image.naturalWidth || image.width;
+          const height = image.naturalHeight || image.height;
+          if (!width || !height) {
+            throw new Error("Failed to rasterize pasted media");
+          }
+          const canvasElement = document.createElement("canvas");
+          canvasElement.width = width;
+          canvasElement.height = height;
+          const context = canvasElement.getContext("2d");
+          if (!context) {
+            throw new Error("Canvas rasterization is unavailable");
+          }
+          context.drawImage(image, 0, 0, width, height);
+          const rasterizedBlob = await new Promise((resolve, reject) => {
+            canvasElement.toBlob((result) => {
+              if (result) resolve(result);
+              else reject(new Error("Failed to rasterize pasted media"));
+            }, mimeType);
+          });
+          const baseName = String(filename || blob?.name || "pasted_image").replace(/\.[^./]+$/, "") || "pasted_image";
+          const rasterizedFile = new File([rasterizedBlob], `${baseName}.png`, { type: mimeType });
+          _clipboardLog("info", "Rasterized pasted image for a canvas-compatible upload", {
+            originalName: blob?.name || null,
+            originalType: _clipboardNormalizeMimeType(blob?.type) || null,
+            rasterizedName: rasterizedFile.name,
+            rasterizedType: rasterizedFile.type,
+            width,
+            height
+          });
+          return rasterizedFile;
+        } finally {
+          URL.revokeObjectURL(objectUrl);
+        }
+      }
+      async function _clipboardConvertGifToStaticPng(blob) {
+        if (!_clipboardIsGifMedia({ blob, filename: blob?.name, mimeType: blob?.type })) return blob;
+        return _clipboardRasterizeImageBlob(blob, {
+          mimeType: "image/png",
+          filename: blob?.name
+        });
+      }
       async function _clipboardLoadImageDimensions(path) {
         const image = new Image();
         await new Promise((resolve, reject) => {
@@ -1438,6 +1525,8 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardIsMediaMimeType,
         _clipboardGetMediaKind,
         _clipboardIsSupportedMediaBlob,
+        _clipboardIsGifMedia,
+        _clipboardCoerceMediaFile,
         _clipboardGetMimeTypeFromFilename,
         _clipboardEnsureFilenameExtension,
         _clipboardGetTileVideoData,
@@ -1451,6 +1540,8 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardGetSvgIntrinsicDimensionsFromText,
         _clipboardGetPreferredMediaDimensions,
         _clipboardNormalizeSvgBlobForUpload,
+        _clipboardRasterizeImageBlob,
+        _clipboardConvertGifToStaticPng,
         _clipboardLoadImageDimensions,
         _clipboardLoadVideoDimensions,
         _clipboardLoadMediaDimensions
@@ -1472,8 +1563,11 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardLog
       } = require_diagnostics();
       var {
+        _clipboardCoerceMediaFile,
         _clipboardEnsureFilenameExtension,
         _clipboardGetFileExtension,
+        _clipboardGetMimeTypeFromFilename,
+        _clipboardNormalizeMimeType,
         _clipboardNormalizeSvgBlobForUpload
       } = require_media();
       var { _clipboardGetFilePickerOptions } = require_destination();
@@ -1538,11 +1632,14 @@ var FoundryPasteEaterRuntime = (() => {
       }
       function _clipboardCreateUploadFile(blob, version = Date.now()) {
         const sourceName = blob instanceof File && blob.name ? blob.name : `pasted_image.${_clipboardGetFileExtension(blob)}`;
-        const filename = _clipboardCreateVersionedFilename(
-          _clipboardEnsureFilenameExtension(sourceName, blob),
-          version
-        );
-        return new File([blob], filename, { type: blob.type });
+        const normalizedFile = _clipboardCoerceMediaFile(blob, {
+          filename: sourceName,
+          mimeType: blob?.type
+        });
+        const resolvedName = normalizedFile?.name || _clipboardEnsureFilenameExtension(sourceName, blob);
+        const resolvedType = _clipboardNormalizeMimeType(normalizedFile?.type || blob?.type) || _clipboardGetMimeTypeFromFilename(resolvedName);
+        const filename = _clipboardCreateVersionedFilename(resolvedName, version);
+        return new File([normalizedFile || blob], filename, { type: resolvedType });
       }
       function _clipboardCreateFreshMediaPath(path, version = Date.now()) {
         if (!path || /^(data:|blob:)/i.test(path)) return path;
@@ -3998,6 +4095,7 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardSerializeError
       } = require_diagnostics();
       var {
+        _clipboardCoerceMediaFile,
         _clipboardGetMediaKind,
         _clipboardIsSupportedMediaBlob,
         _clipboardParseSupportedUrl
@@ -4039,7 +4137,9 @@ var FoundryPasteEaterRuntime = (() => {
         for (const clipItem of clipItems || []) {
           for (const fileType of clipItem.types) {
             if (_clipboardGetMediaKind({ mimeType: fileType })) {
-              return clipItem.getType(fileType);
+              const blob = await clipItem.getType(fileType);
+              const file = _clipboardCoerceMediaFile(blob, { mimeType: fileType });
+              if (file) return file;
             }
           }
         }
@@ -4207,12 +4307,18 @@ var FoundryPasteEaterRuntime = (() => {
         for (const item of dataTransfer?.items || []) {
           if (item.kind !== "file") continue;
           const file = item.getAsFile();
-          if (_clipboardIsSupportedMediaBlob(file)) {
-            return file;
-          }
+          const typedFile = _clipboardCoerceMediaFile(file, {
+            filename: file?.name,
+            mimeType: item.type
+          });
+          if (typedFile && _clipboardIsSupportedMediaBlob(typedFile)) return typedFile;
         }
         for (const file of dataTransfer?.files || []) {
-          if (_clipboardIsSupportedMediaBlob(file)) return file;
+          const typedFile = _clipboardCoerceMediaFile(file, {
+            filename: file?.name,
+            mimeType: file?.type
+          });
+          if (typedFile && _clipboardIsSupportedMediaBlob(typedFile)) return typedFile;
         }
         return null;
       }
@@ -5099,9 +5205,11 @@ var FoundryPasteEaterRuntime = (() => {
       } = require_diagnostics();
       var {
         _clipboardGetMediaKind,
+        _clipboardIsGifMedia,
         _clipboardNormalizePastedText,
         _clipboardLoadMediaDimensions,
-        _clipboardGetPreferredMediaDimensions
+        _clipboardGetPreferredMediaDimensions,
+        _clipboardConvertGifToStaticPng
       } = {
         ...require_media(),
         ...require_text()
@@ -5133,6 +5241,10 @@ var FoundryPasteEaterRuntime = (() => {
         if (!replacementTarget?.documentName) return true;
         if (replacementTarget.documentName === "Note") return mediaKind !== "video";
         return true;
+      }
+      async function _clipboardNormalizeCanvasBlob(blob) {
+        if (!_clipboardIsGifMedia({ blob, filename: blob?.name, mimeType: blob?.type })) return blob;
+        return _clipboardConvertGifToStaticPng(blob);
       }
       async function _clipboardApplyPasteResult(path, context, preferredDimensions = null, options = {}) {
         const mediaKind = _clipboardGetMediaKind({ src: path }) || "image";
@@ -5219,8 +5331,9 @@ var FoundryPasteEaterRuntime = (() => {
           uploadContext: replacementBehavior.uploadContext
         });
         try {
+          const normalizedBlob = mediaKind === "image" ? await _clipboardNormalizeCanvasBlob(blob) : blob;
           await _clipboardCreateFolderIfMissing(destination);
-          return await _clipboardPasteBlob(blob, destination, {
+          return await _clipboardPasteBlob(normalizedBlob, destination, {
             contextOptions: options.contextOptions,
             context,
             replacementBehavior
@@ -5531,7 +5644,9 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardSerializeError
       } = require_diagnostics();
       var {
-        _clipboardGetMediaKind
+        _clipboardGetMediaKind,
+        _clipboardIsGifMedia,
+        _clipboardConvertGifToStaticPng
       } = require_media();
       var {
         _clipboardGetUploadDestination,
@@ -5550,6 +5665,9 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardDescribeAttemptedMediaContent,
         _clipboardAnnotateWorkflowError
       } = require_helpers();
+      function _clipboardFieldRequiresStaticTexture(fieldName = "") {
+        return /(?:^|[.])texture\.src$/i.test(String(fieldName || "").trim());
+      }
       async function _clipboardHandleArtFieldImageInput(imageInput, target) {
         if (!_clipboardCanUseCanvasMedia()) return false;
         const artFieldTarget = target?.field ? target : _clipboardGetFocusedArtFieldTarget(target);
@@ -5560,11 +5678,15 @@ var FoundryPasteEaterRuntime = (() => {
         let fieldValue = null;
         let mediaKind = _clipboardGetMediaKind({ src: imageInput?.url, filename: imageInput?.blob?.name, mimeType: imageInput?.blob?.type });
         try {
-          const blob = await _clipboardResolveImageInputBlob(imageInput);
+          let blob = await _clipboardResolveImageInputBlob(imageInput);
           if (!blob) return false;
           mediaKind = _clipboardGetMediaKind({ blob, filename: blob.name }) || mediaKind;
           if (mediaKind && !artFieldTarget.mediaKinds.includes(mediaKind)) {
             throw new Error(`The focused ${artFieldTarget.fieldName} field does not support pasted ${mediaKind} media.`);
+          }
+          if (_clipboardFieldRequiresStaticTexture(artFieldTarget.fieldName) && _clipboardIsGifMedia({ blob, filename: blob?.name, mimeType: blob?.type })) {
+            blob = await _clipboardConvertGifToStaticPng(blob);
+            mediaKind = _clipboardGetMediaKind({ blob, filename: blob.name }) || mediaKind;
           }
           await _clipboardCreateFolderIfMissing(destination);
           const uploadPath = await _clipboardUploadBlob(blob, destination);
@@ -5800,6 +5922,30 @@ var FoundryPasteEaterRuntime = (() => {
         });
         return false;
       }
+      function _clipboardGetGameRoot() {
+        return document.querySelector(".game");
+      }
+      function _clipboardFocusGameRoot() {
+        const root = _clipboardGetGameRoot();
+        if (!root) return false;
+        if (!root.hasAttribute("tabindex")) {
+          root.tabIndex = 0;
+        }
+        document.activeElement?.blur?.();
+        root.focus({ preventScroll: true });
+        return document.activeElement === root;
+      }
+      function _clipboardShouldRestoreGameFocus(target) {
+        if (!(target instanceof HTMLElement)) return false;
+        if (_clipboardGetChatRootFromTarget(target)) return false;
+        if (_clipboardIsEditableTarget(target)) return false;
+        if (_clipboardGetFocusedArtFieldTarget(target)) return false;
+        return Boolean(target.closest("#board, #scene-controls"));
+      }
+      function _clipboardOnMouseDown(event) {
+        if (!_clipboardShouldRestoreGameFocus(event.target)) return;
+        _clipboardFocusGameRoot();
+      }
       function _clipboardResolveNativePasteRoute({
         hasMediaInput = false,
         hasTextInput = false,
@@ -5912,6 +6058,10 @@ var FoundryPasteEaterRuntime = (() => {
       module.exports = {
         _clipboardConsumePasteEvent,
         _clipboardCanHandleCanvasPasteContext,
+        _clipboardGetGameRoot,
+        _clipboardFocusGameRoot,
+        _clipboardShouldRestoreGameFocus,
+        _clipboardOnMouseDown,
         _clipboardResolveNativePasteRoute,
         _clipboardOnPaste,
         _clipboardOnKeydown
@@ -6212,6 +6362,7 @@ var FoundryPasteEaterRuntime = (() => {
       var support = require_support();
       var state = require_state();
       document.addEventListener("keydown", uiHandlers._clipboardOnKeydown);
+      document.addEventListener("mousedown", uiHandlers._clipboardOnMouseDown, true);
       document.addEventListener("paste", uiHandlers._clipboardOnPaste);
       Hooks.once("init", function() {
         settings._clipboardRegisterSettings();

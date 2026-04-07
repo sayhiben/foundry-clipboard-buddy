@@ -96,6 +96,47 @@ function _clipboardIsSupportedMediaBlob(blob) {
   return Boolean(blob && _clipboardGetMediaKind({blob, filename: blob.name}));
 }
 
+function _clipboardIsGifMedia({blob, filename, mimeType, src} = {}) {
+  const normalizedMimeType = _clipboardNormalizeMimeType(mimeType || blob?.type);
+  if (normalizedMimeType === "image/gif") return true;
+
+  const candidate = filename
+    || blob?.name
+    || (src ? (_clipboardGetFilenameFromUrl(src) || src) : "");
+  return _clipboardGetFilenameExtension(candidate) === "gif";
+}
+
+function _clipboardCoerceMediaFile(blob, {filename = "", mimeType = ""} = {}) {
+  if (!blob) return null;
+
+  const candidateFilename = filename || (blob instanceof File ? blob.name : "") || "pasted_image";
+  const resolvedMediaKind = _clipboardGetMediaKind({
+    blob,
+    filename: candidateFilename,
+    mimeType,
+  });
+  if (!resolvedMediaKind) return null;
+
+  const normalizedBlobType = _clipboardNormalizeMimeType(blob.type);
+  let resolvedMimeType = normalizedBlobType || _clipboardNormalizeMimeType(mimeType);
+  if (!_clipboardIsMediaMimeType(resolvedMimeType)) {
+    resolvedMimeType = _clipboardGetMimeTypeFromFilename(candidateFilename);
+  }
+
+  const typedBlob = normalizedBlobType === resolvedMimeType
+    ? blob
+    : new Blob([blob], {type: resolvedMimeType});
+  const resolvedFilename = _clipboardEnsureFilenameExtension(candidateFilename, typedBlob);
+
+  if (blob instanceof File &&
+      blob.name === resolvedFilename &&
+      normalizedBlobType === resolvedMimeType) {
+    return blob;
+  }
+
+  return new File([typedBlob], resolvedFilename, {type: resolvedMimeType});
+}
+
 function _clipboardGetMimeTypeFromFilename(filename) {
   switch (_clipboardGetFilenameExtension(filename)) {
     case "apng":
@@ -312,6 +353,79 @@ async function _clipboardNormalizeSvgBlobForUpload(blob, svgDimensions = null) {
   );
 }
 
+async function _clipboardRasterizeImageBlob(blob, {
+  mimeType = "image/png",
+  filename = "",
+} = {}) {
+  if (!blob) return null;
+
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const image = new Image();
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error("Failed to rasterize pasted media"));
+      image.src = objectUrl;
+    });
+
+    if (typeof image.decode === "function") {
+      try {
+        await image.decode();
+      } catch (error) {
+        // Some browsers reject decode after a successful load.
+      }
+    }
+
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    if (!width || !height) {
+      throw new Error("Failed to rasterize pasted media");
+    }
+
+    const canvasElement = document.createElement("canvas");
+    canvasElement.width = width;
+    canvasElement.height = height;
+
+    const context = canvasElement.getContext("2d");
+    if (!context) {
+      throw new Error("Canvas rasterization is unavailable");
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+
+    const rasterizedBlob = await new Promise((resolve, reject) => {
+      canvasElement.toBlob(result => {
+        if (result) resolve(result);
+        else reject(new Error("Failed to rasterize pasted media"));
+      }, mimeType);
+    });
+
+    const baseName = String(filename || blob?.name || "pasted_image").replace(/\.[^./]+$/, "") || "pasted_image";
+    const rasterizedFile = new File([rasterizedBlob], `${baseName}.png`, {type: mimeType});
+
+    _clipboardLog("info", "Rasterized pasted image for a canvas-compatible upload", {
+      originalName: blob?.name || null,
+      originalType: _clipboardNormalizeMimeType(blob?.type) || null,
+      rasterizedName: rasterizedFile.name,
+      rasterizedType: rasterizedFile.type,
+      width,
+      height,
+    });
+
+    return rasterizedFile;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function _clipboardConvertGifToStaticPng(blob) {
+  if (!_clipboardIsGifMedia({blob, filename: blob?.name, mimeType: blob?.type})) return blob;
+  return _clipboardRasterizeImageBlob(blob, {
+    mimeType: "image/png",
+    filename: blob?.name,
+  });
+}
+
 async function _clipboardLoadImageDimensions(path) {
   const image = new Image();
   await new Promise((resolve, reject) => {
@@ -391,6 +505,8 @@ module.exports = {
   _clipboardIsMediaMimeType,
   _clipboardGetMediaKind,
   _clipboardIsSupportedMediaBlob,
+  _clipboardIsGifMedia,
+  _clipboardCoerceMediaFile,
   _clipboardGetMimeTypeFromFilename,
   _clipboardEnsureFilenameExtension,
   _clipboardGetTileVideoData,
@@ -404,6 +520,8 @@ module.exports = {
   _clipboardGetSvgIntrinsicDimensionsFromText,
   _clipboardGetPreferredMediaDimensions,
   _clipboardNormalizeSvgBlobForUpload,
+  _clipboardRasterizeImageBlob,
+  _clipboardConvertGifToStaticPng,
   _clipboardLoadImageDimensions,
   _clipboardLoadVideoDimensions,
   _clipboardLoadMediaDimensions,
