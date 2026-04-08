@@ -206,6 +206,13 @@ describe("settings and permission helpers", () => {
       expect(api._clipboardDescribeSettingValue("image-location", undefined)).toBe("(unset)");
     });
 
+    it("builds recommended-default dialog labels with and without icons safely", () => {
+      expect(api._clipboardCreateDialogButtonLabel("", "<Apply>")).toBe("&lt;Apply&gt;");
+      expect(
+        api._clipboardCreateDialogButtonLabel('fa-solid fa-check" onclick="bad()"', "<Close>")
+      ).toBe('<i class="fa-solid fa-check&quot; onclick=&quot;bad()&quot;"></i> &lt;Close&gt;');
+    });
+
     it("reapplies only configurable world defaults that differ", async () => {
       api._clipboardRegisterSettings();
       await globalThis.game.settings.set("foundry-paste-eater", "image-location-source", "s3");

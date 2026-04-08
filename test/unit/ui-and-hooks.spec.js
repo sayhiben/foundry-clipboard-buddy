@@ -1508,6 +1508,24 @@ describe("ui and hook integration helpers", () => {
       );
     });
 
+    it("opens a close-only recommended-defaults dialog when nothing differs", async () => {
+      api._clipboardRegisterSettings();
+      env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "prompt");
+      env.settingsValues.set("foundry-paste-eater.upload-path-organization", "context-user-month");
+
+      const app = new api.FoundryPasteEaterRecommendedDefaultsConfig();
+      await app.render(true);
+
+      expect(env.dialogInstances).toHaveLength(1);
+      const dialog = env.dialogInstances[0];
+      expect(dialog.data.content).toContain("already matches the current Foundry Paste Eater configurable behavior defaults");
+      expect(dialog.data.content).not.toContain("<ul>");
+      expect(dialog.data.buttons.close.label).toContain('<i class="fa-solid fa-check"></i>');
+      expect(dialog.data.buttons.apply).toBeUndefined();
+      expect(dialog.data.buttons.cancel).toBeUndefined();
+      expect(dialog.data.default).toBe("close");
+    });
+
     it("rerenders scene controls when scene-control visibility settings change", async () => {
       api._clipboardRegisterSettings();
 

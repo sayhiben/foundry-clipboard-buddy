@@ -165,6 +165,7 @@ describe("support and readiness helpers", () => {
     expect(api._clipboardGetKnownUploadRoots()).toEqual([]);
     expect(api._clipboardNormalizeUploadRoot(null)).toBeNull();
     expect(api._clipboardParseKnownUploadRoots("{}")).toEqual([]);
+    expect(api._clipboardCreateUploadRootKey({storedSource: "", source: "", bucket: "", target: ""})).toBe("data||");
     expect(api._clipboardSerializeKnownUploadRoots([null, {target: ""}])).toBe("[]");
     expect(api._clipboardMergeKnownUploadRoots([], [null, {target: ""}])).toEqual([]);
 
