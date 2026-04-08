@@ -21,6 +21,7 @@ const {
   dispatchTextPaste,
   focusCanvas,
   focusChatInput,
+  getChatInputText,
   getCanvasDimensions,
   getFixturePath,
   getFixtureUrl,
@@ -55,6 +56,9 @@ const SMOKE_BASELINE_SETTINGS = {
   "pasted-token-actor-type": "system-default",
   "canvas-text-paste-mode": "scene-notes",
   "selected-token-paste-mode": "scene-only",
+  "enable-chat-media": true,
+  "enable-chat-upload-button": true,
+  "minimum-role-chat-media": "PLAYER",
   "upload-path-organization": "flat",
 };
 
@@ -315,7 +319,7 @@ test("leaves a non-media URL as plain chat text", async ({foundryPage: page}, te
       mimeType: "text/plain",
     });
 
-    await expect.poll(async () => page.locator(chatSelector).inputValue()).toContain(url);
+    await expect.poll(async () => getChatInputText(page, chatSelector)).toContain(url);
 
     const after = await getStateSnapshot(page);
     expect(after.messages.length).toBe(before.messages.length);

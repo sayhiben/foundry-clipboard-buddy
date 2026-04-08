@@ -9,7 +9,6 @@ const {
   dispatchFilePaste,
   dispatchTextPaste,
   ensureUploadDirectory,
-  ensureFoundryUsers,
   focusCanvas,
   focusChatInput,
   getFixtureUrl,
@@ -50,14 +49,48 @@ async function captureClipboardNotifications(page) {
   });
 }
 
-async function ensureClipboardQaUsers() {
+async function ensureClipboardQaUsers(browser) {
   await resetFoundrySessions();
-  return ensureFoundryUsers([
-    {name: "Gamemaster", role: 4, pronouns: ""},
-    {name: "Clipboard QA 1", role: 4, pronouns: ""},
-    {name: "Clipboard QA 2", role: 1, pronouns: ""},
-    {name: "Clipboard QA 3", role: 1, pronouns: ""},
-  ]);
+  const session = await createAuthenticatedPage(browser, {
+    user: process.env.FOUNDRY_GM_USER || "Clipboard QA 1",
+    password: process.env.FOUNDRY_GM_PASSWORD ?? "",
+  }, {gm: true, reuseAuth: false});
+
+  try {
+    return session.page.evaluate(async users => {
+      const results = [];
+
+      for (const spec of users) {
+        const user = game.users.find(entry => entry.name === spec.name) || null;
+        if (!user) {
+          throw new Error(`Could not find Foundry user "${spec.name}" in the active world. Seed the QA users in the test world first.`);
+        }
+
+        const update = {};
+        if (typeof spec.role === "number" && user.role !== spec.role) update.role = spec.role;
+        if ((spec.pronouns ?? "") !== (user.pronouns ?? "")) update.pronouns = spec.pronouns ?? "";
+
+        if (Object.keys(update).length) {
+          await user.update(update);
+        }
+
+        results.push({
+          id: user.id,
+          name: user.name,
+          role: update.role ?? user.role,
+        });
+      }
+
+      return results;
+    }, [
+      {name: "Gamemaster", role: 4, pronouns: ""},
+      {name: "Clipboard QA 1", role: 4, pronouns: ""},
+      {name: "Clipboard QA 2", role: 1, pronouns: ""},
+      {name: "Clipboard QA 3", role: 1, pronouns: ""},
+    ]);
+  } finally {
+    await closeOwnedContext(session.context);
+  }
 }
 
 async function getHookedSceneToolState(page, controlName, toolName) {
@@ -101,7 +134,7 @@ async function invokeHookedSceneTool(page, controlName, toolName) {
 
 test("player role gates block canvas text, chat media, and owned-token replacement until settings permit them", async ({browser}, testInfo) => {
   testInfo.setTimeout(240_000);
-  await ensureClipboardQaUsers();
+  await ensureClipboardQaUsers(browser);
 
   let gmPage = null;
   let previousSettings = null;
@@ -120,6 +153,7 @@ test("player role gates block canvas text, chat media, and owned-token replaceme
       bucket: run.bucket,
     });
     previousSettings = await setModuleSettings(gmPage, {
+      "enable-chat-media": true,
       "minimum-role-canvas-media": "ASSISTANT",
       "minimum-role-canvas-text": "ASSISTANT",
       "minimum-role-chat-media": "ASSISTANT",
@@ -236,7 +270,7 @@ test("player role gates block canvas text, chat media, and owned-token replaceme
 
 test("players can replace tokens they own but not tokens owned by another user", async ({browser}, testInfo) => {
   testInfo.setTimeout(240_000);
-  await ensureClipboardQaUsers();
+  await ensureClipboardQaUsers(browser);
 
   let gmPage = null;
   let previousSettings = null;
@@ -346,7 +380,7 @@ test("players can replace tokens they own but not tokens owned by another user",
 
 test("non-gm scene controls require both the world toggle and canvas-media role eligibility", async ({browser}, testInfo) => {
   testInfo.setTimeout(240_000);
-  await ensureClipboardQaUsers();
+  await ensureClipboardQaUsers(browser);
 
   let gmPage = null;
   let previousSettings = null;

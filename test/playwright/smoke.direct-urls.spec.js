@@ -21,6 +21,7 @@ const {
   dispatchTextPaste,
   focusCanvas,
   focusChatInput,
+  getChatInputText,
   getCanvasDimensions,
   getFixturePath,
   getFixtureUrl,
@@ -641,7 +642,7 @@ test("leaves the original url text in chat when a direct media url download is b
       mimeType: "text/plain",
     });
 
-    await expect.poll(async () => page.locator(chatSelector).inputValue()).toBe(blockedServer.url);
+    await expect.poll(async () => getChatInputText(page, chatSelector)).toBe(blockedServer.url);
 
     const after = await getStateSnapshot(page);
     expect(after.messages.length).toBe(before.messages.length);

@@ -272,6 +272,8 @@ test("shipped default profile follows the active layer for empty-canvas media cr
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
     "default-empty-canvas-target": "active-layer",
+    "create-backing-actors": true,
+    "pasted-token-actor-type": "ask",
   });
 
   try {

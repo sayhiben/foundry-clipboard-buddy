@@ -1060,6 +1060,64 @@ describe("ui and hook integration helpers", () => {
       expect(editable.textContent).toBe("editable");
     });
 
+    it("inserts text into contenteditable descendants from a prose-mirror wrapper target", () => {
+      const wrapper = document.createElement("prose-mirror");
+      const editable = document.createElement("div");
+      editable.setAttribute("contenteditable", "true");
+      Object.defineProperty(editable, "isContentEditable", {configurable: true, value: true});
+      wrapper.append(editable);
+      document.body.append(wrapper);
+
+      expect(api._clipboardInsertTextAtTarget(wrapper, "wrapped")).toBe(true);
+      expect(editable.textContent).toBe("wrapped");
+    });
+
+    it("reanchors an existing selection before inserting into a different contenteditable target", () => {
+      const source = document.createElement("div");
+      source.setAttribute("contenteditable", "true");
+      Object.defineProperty(source, "isContentEditable", {configurable: true, value: true});
+      source.textContent = "source";
+
+      const wrapper = document.createElement("prose-mirror");
+      const editable = document.createElement("div");
+      editable.setAttribute("contenteditable", "true");
+      Object.defineProperty(editable, "isContentEditable", {configurable: true, value: true});
+      editable.textContent = "target";
+      wrapper.append(editable);
+      document.body.append(source, wrapper);
+
+      const sourceRange = document.createRange();
+      sourceRange.selectNodeContents(source);
+      sourceRange.collapse(false);
+      let activeRange = sourceRange;
+      const addedRanges = [];
+      const originalGetSelection = window.getSelection;
+      const selection = {
+        get rangeCount() {
+          return activeRange ? 1 : 0;
+        },
+        removeAllRanges: vi.fn(() => {
+          activeRange = null;
+        }),
+        addRange: vi.fn(range => {
+          addedRanges.push(range.cloneRange());
+          activeRange = range;
+        }),
+        getRangeAt: vi.fn(() => activeRange),
+      };
+      window.getSelection = vi.fn(() => selection);
+
+      expect(api._clipboardInsertTextAtTarget(wrapper, " text")).toBe(true);
+      expect(source.textContent).toBe("source");
+      expect(editable.textContent).toContain("target");
+      expect(editable.textContent).toContain(" text");
+      expect(addedRanges[0].startContainer).toBe(editable);
+      expect(addedRanges[0].startOffset).toBe(1);
+      expect(addedRanges[0].collapsed).toBe(true);
+
+      window.getSelection = originalGetSelection;
+    });
+
     it("creates a collapsed range when contenteditable has no selection", () => {
       const selection = {
         rangeCount: 0,

@@ -6,7 +6,6 @@ const {
   createAuthenticatedPage,
   dispatchFilePaste,
   ensureUploadDirectory,
-  ensureFoundryUsers,
   focusCanvas,
   getSafeCanvasPoint,
   getStateSnapshot,
@@ -20,14 +19,48 @@ const {
 test.describe.configure({mode: "serial"});
 test.setTimeout(300_000);
 
-async function ensureClipboardQaUsers() {
+async function ensureClipboardQaUsers(browser) {
   await resetFoundrySessions();
-  return ensureFoundryUsers([
-    {name: "Gamemaster", role: 4, pronouns: ""},
-    {name: "Clipboard QA 1", role: 4, pronouns: ""},
-    {name: "Clipboard QA 2", role: 1, pronouns: ""},
-    {name: "Clipboard QA 3", role: 1, pronouns: ""},
-  ]);
+  const session = await createAuthenticatedPage(browser, {
+    user: process.env.FOUNDRY_GM_USER || "Clipboard QA 1",
+    password: process.env.FOUNDRY_GM_PASSWORD ?? "",
+  }, {gm: true, reuseAuth: false});
+
+  try {
+    return session.page.evaluate(async users => {
+      const results = [];
+
+      for (const spec of users) {
+        const user = game.users.find(entry => entry.name === spec.name) || null;
+        if (!user) {
+          throw new Error(`Could not find Foundry user "${spec.name}" in the active world. Seed the QA users in the test world first.`);
+        }
+
+        const update = {};
+        if (typeof spec.role === "number" && user.role !== spec.role) update.role = spec.role;
+        if ((spec.pronouns ?? "") !== (user.pronouns ?? "")) update.pronouns = spec.pronouns ?? "";
+
+        if (Object.keys(update).length) {
+          await user.update(update);
+        }
+
+        results.push({
+          id: user.id,
+          name: user.name,
+          role: update.role ?? user.role,
+        });
+      }
+
+      return results;
+    }, [
+      {name: "Gamemaster", role: 4, pronouns: ""},
+      {name: "Clipboard QA 1", role: 4, pronouns: ""},
+      {name: "Clipboard QA 2", role: 1, pronouns: ""},
+      {name: "Clipboard QA 3", role: 1, pronouns: ""},
+    ]);
+  } finally {
+    await closeOwnedContext(session.context);
+  }
 }
 
 async function captureClipboardUi(page) {
@@ -126,7 +159,7 @@ async function stubUploadFailure(page, message) {
 }
 
 test("gm-local errors show a popup, a richer dialog, and a verbose logfile download", async ({browser}, testInfo) => {
-  await ensureClipboardQaUsers();
+  await ensureClipboardQaUsers(browser);
 
   let gmPage = null;
   let run = null;
@@ -174,7 +207,7 @@ test("gm-local errors show a popup, a richer dialog, and a verbose logfile downl
 });
 
 test("player-side errors alert the player and relay richer details to connected gms", async ({browser}, testInfo) => {
-  await ensureClipboardQaUsers();
+  await ensureClipboardQaUsers(browser);
 
   let gmPage = null;
   let playerPage = null;
@@ -238,7 +271,7 @@ test("player-side errors alert the player and relay richer details to connected 
 });
 
 test("player-side errors still alert the acting user when no gm client is connected", async ({browser}, testInfo) => {
-  await ensureClipboardQaUsers();
+  await ensureClipboardQaUsers(browser);
 
   let setupPage = null;
   let run = null;
@@ -303,7 +336,7 @@ test("player-side errors still alert the acting user when no gm client is connec
 });
 
 test("storage permission errors tell the gm to check Foundry core settings instead of module settings", async ({browser}, testInfo) => {
-  await ensureClipboardQaUsers();
+  await ensureClipboardQaUsers(browser);
 
   let gmPage = null;
   let playerPage = null;
@@ -375,7 +408,7 @@ test("storage permission errors tell the gm to check Foundry core settings inste
 });
 
 test("backend write-access errors tell the gm to verify storage access instead of re-enabling core permissions", async ({browser}, testInfo) => {
-  await ensureClipboardQaUsers();
+  await ensureClipboardQaUsers(browser);
 
   let gmPage = null;
   let playerPage = null;

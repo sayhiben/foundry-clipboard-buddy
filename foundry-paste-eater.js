@@ -4564,24 +4564,51 @@ var FoundryPasteEaterRuntime = (() => {
           target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target?.isContentEditable || target?.closest?.('[contenteditable="true"]')
         );
       }
-      function _clipboardInsertTextAtTarget(target, text) {
-        if (!text) return false;
+      function _clipboardResolveInsertionTarget(target) {
         if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) {
-          const start = Number.isInteger(target.selectionStart) ? target.selectionStart : target.value.length;
-          const end = Number.isInteger(target.selectionEnd) ? target.selectionEnd : start;
-          target.focus();
-          target.setRangeText(text, start, end, "end");
-          target.dispatchEvent(new Event("input", { bubbles: true }));
-          return true;
+          return target;
         }
         if (target?.isContentEditable) {
-          target.focus();
+          return target;
+        }
+        if (target?.querySelector) {
+          const editableDescendant = target.querySelector('[contenteditable="true"]');
+          if (editableDescendant) return editableDescendant;
+        }
+        if (target?.closest) {
+          return target.closest('[contenteditable="true"]');
+        }
+        return null;
+      }
+      function _clipboardSelectionBelongsToTarget(selection, target) {
+        if (!selection?.rangeCount) return false;
+        const range = selection.getRangeAt(0);
+        const container = range.commonAncestorContainer;
+        return container === target || target?.contains?.(container);
+      }
+      function _clipboardCreateCollapsedRangeAtTargetEnd(target) {
+        const range = document.createRange();
+        range.setStart(target, target.childNodes.length);
+        range.collapse(true);
+        return range;
+      }
+      function _clipboardInsertTextAtTarget(target, text) {
+        if (!text) return false;
+        const insertionTarget = _clipboardResolveInsertionTarget(target);
+        if (insertionTarget instanceof HTMLTextAreaElement || insertionTarget instanceof HTMLInputElement) {
+          const start = Number.isInteger(insertionTarget.selectionStart) ? insertionTarget.selectionStart : insertionTarget.value.length;
+          const end = Number.isInteger(insertionTarget.selectionEnd) ? insertionTarget.selectionEnd : start;
+          insertionTarget.focus();
+          insertionTarget.setRangeText(text, start, end, "end");
+          insertionTarget.dispatchEvent(new Event("input", { bubbles: true }));
+          return true;
+        }
+        if (insertionTarget?.isContentEditable) {
+          insertionTarget.focus();
           const selection = window.getSelection();
           if (!selection) return false;
-          if (!selection.rangeCount) {
-            const range2 = document.createRange();
-            range2.selectNodeContents(target);
-            range2.collapse(false);
+          if (!_clipboardSelectionBelongsToTarget(selection, insertionTarget)) {
+            const range2 = _clipboardCreateCollapsedRangeAtTargetEnd(insertionTarget);
             selection.removeAllRanges();
             selection.addRange(range2);
           }
@@ -4593,7 +4620,7 @@ var FoundryPasteEaterRuntime = (() => {
           range.collapse(true);
           selection.removeAllRanges();
           selection.addRange(range);
-          target.dispatchEvent(new Event("input", { bubbles: true }));
+          insertionTarget.dispatchEvent(new Event("input", { bubbles: true }));
           return true;
         }
         return false;

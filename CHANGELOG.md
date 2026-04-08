@@ -1,3 +1,8 @@
+### 1.3.1
+* Mark the module as verified through Foundry V14.359 after running the full local release gate and Playwright smoke suite against a real V14 world
+* Fix V14 chat fallback insertion so blocked direct-media downloads and other text fallbacks land back in the ProseMirror chat editor correctly, even when another editable control owns the current selection
+* Harden V14 browser coverage and helpers for ProseMirror chat inputs, GM-backed multi-user permission setup, and end-to-end smoke validation
+
 ### 1.3.0
 * Add GM-only `Readiness & Support` and `Uploaded Media Audit` panels, plus a sanitized support-bundle export and read-only runtime support API for diagnosing storage, permissions, defaults drift, and referenced uploaded media
 * Add release hardening with shared contracts, JSDoc typechecking, bundle parity checks, `verify:release`, and stronger CI/package verification so runtime, tests, and shipped artifacts stay aligned

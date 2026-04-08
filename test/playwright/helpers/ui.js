@@ -5,6 +5,7 @@ module.exports = {
   closeUploadedMediaAuditConfig: core.closeUploadedMediaAuditConfig,
   closeUploadDestinationConfig: core.closeUploadDestinationConfig,
   focusChatInput: core.focusChatInput,
+  getChatInputText: core.getChatInputText,
   getSceneToolState: core.getSceneToolState,
   getUploadDestinationSummary: core.getUploadDestinationSummary,
   invokeSceneTool: core.invokeSceneTool,

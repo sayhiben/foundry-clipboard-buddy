@@ -1,13 +1,21 @@
 const fs = require("fs");
 const path = require("path");
 const {execFileSync} = require("child_process");
-const {expect} = require("@playwright/test");
-const {getDefaultFoundryStorageStatePath} = require("./browser");
+const {chromium, expect} = require("@playwright/test");
+const {
+  getDefaultFoundryStorageStatePath,
+  getPlaywrightChromiumChannel,
+  getPlaywrightLaunchOptions,
+} = require("./browser");
 
 const MODULE_ID = "foundry-paste-eater";
 const DEFAULT_TIMEOUT = 120_000;
 const AUTH_STATE_CACHE = new Map();
 const CHAT_INPUT_SELECTORS = [
+  "#chat-message",
+  "prose-mirror#chat-message",
+  ".chat-form #chat-message",
+  ".chat-form prose-mirror",
   "form textarea[name='content']",
   "#chat-form textarea",
   ".chat-form textarea",
@@ -182,12 +190,43 @@ function _clipboardResolveDockerContainerByPort() {
   return "";
 }
 
+function _clipboardResolveWorldIdFromDataPath(dataPath, preferredWorldId = "") {
+  if (typeof preferredWorldId === "string" && preferredWorldId.trim()) {
+    return preferredWorldId.trim();
+  }
+
+  const worldsDir = path.join(dataPath, "Data", "worlds");
+  if (!fs.existsSync(worldsDir)) {
+    throw new Error(`Could not find Foundry worlds directory at ${worldsDir}.`);
+  }
+
+  const worldIds = fs.readdirSync(worldsDir, {withFileTypes: true})
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
+    .filter(worldId => fs.existsSync(path.join(worldsDir, worldId, "world.json")))
+    .sort();
+
+  if (worldIds.length === 1) {
+    return worldIds[0];
+  }
+
+  if (!worldIds.length) {
+    throw new Error(`Could not find any Foundry worlds with a world.json manifest under ${worldsDir}.`);
+  }
+
+  throw new Error(
+    `Could not resolve the active Foundry world from ${worldsDir}. ` +
+    `Set FOUNDRY_WORLD_ID explicitly when options.world is unset and multiple worlds are present.`
+  );
+}
+
 function _clipboardResolveFoundryTestEnvironment() {
   if (FOUNDRY_DATA_PATH && FOUNDRY_WORLD_ID) {
     const foundryRoot = path.dirname(path.resolve(FOUNDRY_DATA_PATH));
     const classicLevelPath = FOUNDRY_CLASSIC_LEVEL_PATH || path.join(foundryRoot, "resources", "app", "node_modules", "classic-level");
     return {
       containerName: FOUNDRY_DOCKER_CONTAINER,
+      containerDataPath: "/data",
       dataPath: path.resolve(FOUNDRY_DATA_PATH),
       worldId: FOUNDRY_WORLD_ID,
       classicLevelPath,
@@ -214,11 +253,13 @@ function _clipboardResolveFoundryTestEnvironment() {
   const options = JSON.parse(fs.readFileSync(optionsPath, "utf8"));
   const foundryRoot = path.dirname(dataPath);
   const classicLevelPath = FOUNDRY_CLASSIC_LEVEL_PATH || path.join(foundryRoot, "resources", "app", "node_modules", "classic-level");
+  const worldId = _clipboardResolveWorldIdFromDataPath(dataPath, options.world);
 
   return {
     containerName,
+    containerDataPath: dataMount.Destination || "/data",
     dataPath,
-    worldId: options.world,
+    worldId,
     classicLevelPath,
   };
 }
@@ -861,6 +902,34 @@ async function focusChatInput(page) {
   return selector;
 }
 
+async function getChatInputText(page, selector) {
+  return page.evaluate(targetSelector => {
+    const element = document.querySelector(targetSelector);
+    if (!element) {
+      throw new Error(`Could not find chat input ${targetSelector}.`);
+    }
+
+    let textTarget = null;
+    if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
+      textTarget = element;
+    } else if (element?.isContentEditable) {
+      textTarget = element;
+    } else {
+      textTarget = element.querySelector?.('[contenteditable="true"]') || element;
+    }
+
+    if (textTarget instanceof HTMLTextAreaElement || textTarget instanceof HTMLInputElement) {
+      return textTarget.value;
+    }
+
+    if (textTarget instanceof HTMLElement) {
+      return textTarget.textContent || textTarget.innerText || "";
+    }
+
+    return "";
+  }, selector);
+}
+
 async function setCanvasMousePosition(page, position) {
   await page.evaluate(({x, y}) => {
     const point = canvas.mousePosition;
@@ -1046,8 +1115,26 @@ async function clearChatInputs(page) {
   await page.evaluate(selectors => {
     for (const selector of selectors) {
       const element = document.querySelector(selector);
-      if (element) {
-        element.value = "";
+      if (!element) continue;
+
+      let textTarget = null;
+      if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
+        textTarget = element;
+      } else if (element?.isContentEditable) {
+        textTarget = element;
+      } else {
+        textTarget = element.querySelector?.('[contenteditable="true"]') || null;
+      }
+
+      if (textTarget instanceof HTMLTextAreaElement || textTarget instanceof HTMLInputElement) {
+        textTarget.value = "";
+        textTarget.dispatchEvent(new Event("input", {bubbles: true}));
+        continue;
+      }
+
+      if (textTarget instanceof HTMLElement) {
+        textTarget.textContent = "";
+        textTarget.dispatchEvent(new Event("input", {bubbles: true}));
       }
     }
   }, CHAT_INPUT_SELECTORS);
@@ -1213,61 +1300,127 @@ async function getUploadDestinationSummary(page) {
   return page.locator("#foundry-paste-eater-destination-config [data-role='destination-summary']").inputValue();
 }
 
+async function _clipboardEnsureFoundryUsersViaFoundryUi(users) {
+  const launchOptions = getPlaywrightLaunchOptions("chromium", true);
+  const credentials = resolveFoundryCredentials({}, {gm: true});
+  const browser = await chromium.launch({
+    headless: true,
+    channel: getPlaywrightChromiumChannel("chromium", true),
+    ...launchOptions,
+  });
+
+  let session = null;
+
+  try {
+    session = await createAuthenticatedPage(browser, credentials, {
+      gm: true,
+      reuseAuth: false,
+    });
+
+    return session.page.evaluate(async userSpecs => {
+      const results = [];
+      let didChange = false;
+
+      for (const spec of userSpecs) {
+        const user = game.users.find(entry => entry.name === spec.name) || null;
+        if (!user) {
+          throw new Error(`Could not find Foundry user "${spec.name}" in the active world. Seed the QA users in the test world first.`);
+        }
+
+        const update = {};
+        if ((spec.role ?? user.role) !== user.role) update.role = spec.role;
+        if ((spec.pronouns ?? user.pronouns ?? "") !== (user.pronouns ?? "")) update.pronouns = spec.pronouns ?? "";
+        if (typeof spec.color === "string") {
+          const currentColor = user.color?.toString?.() || user.color || "";
+          if (spec.color !== currentColor) update.color = spec.color;
+        }
+
+        if (Object.keys(update).length) {
+          await user.update(update);
+          didChange = true;
+        }
+
+        results.push({
+          id: user.id,
+          name: user.name,
+          role: update.role ?? user.role,
+        });
+      }
+
+      return {results, didChange};
+    }, users);
+  } finally {
+    await closeOwnedContext(session?.context);
+    await browser.close().catch(() => {});
+  }
+}
+
 async function ensureFoundryUsers(users) {
   const environment = _clipboardResolveFoundryTestEnvironment();
   const usersDbPath = path.join(environment.dataPath, "Data", "worlds", environment.worldId, "data", "users");
-  const {ClassicLevel} = require(environment.classicLevelPath);
-  const database = new ClassicLevel(usersDbPath, {valueEncoding: "json"});
-  const results = [];
+  let results = [];
   let didChange = false;
 
-  await database.open();
-
   try {
-    const keyedUsers = new Map();
-    for await (const [key, value] of database.iterator()) {
-      keyedUsers.set(value?.name || key, {key, value});
-    }
+    const {ClassicLevel} = require(environment.classicLevelPath);
+    const database = new ClassicLevel(usersDbPath, {valueEncoding: "json"});
 
-    for (const spec of users) {
-      const entry = keyedUsers.get(spec.name) || null;
-      if (!entry) {
-        throw new Error(`Could not find Foundry user "${spec.name}" in ${usersDbPath}. Seed the QA users in the test world first.`);
+    await database.open();
+
+    try {
+      const keyedUsers = new Map();
+      for await (const [key, value] of database.iterator()) {
+        keyedUsers.set(value?.name || key, {key, value});
       }
 
-      const next = {
-        ...entry.value,
-        name: spec.name,
-        role: spec.role ?? entry.value.role,
-        pronouns: spec.pronouns ?? entry.value.pronouns ?? "",
-      };
+      for (const spec of users) {
+        const entry = keyedUsers.get(spec.name) || null;
+        if (!entry) {
+          throw new Error(`Could not find Foundry user "${spec.name}" in ${usersDbPath}. Seed the QA users in the test world first.`);
+        }
 
-      if (typeof spec.color === "string") {
-        next.color = spec.color;
-      }
-
-      if (
-        next.name !== entry.value.name ||
-        next.role !== entry.value.role ||
-        next.pronouns !== entry.value.pronouns ||
-        next.color !== entry.value.color
-      ) {
-        next._stats = {
-          ...entry.value._stats,
-          modifiedTime: Date.now(),
+        const next = {
+          ...entry.value,
+          name: spec.name,
+          role: spec.role ?? entry.value.role,
+          pronouns: spec.pronouns ?? entry.value.pronouns ?? "",
         };
-        await database.put(entry.key, next);
-        didChange = true;
-      }
 
-      results.push({
-        id: next._id,
-        name: next.name,
-        role: next.role,
-      });
+        if (typeof spec.color === "string") {
+          next.color = spec.color;
+        }
+
+        if (
+          next.name !== entry.value.name ||
+          next.role !== entry.value.role ||
+          next.pronouns !== entry.value.pronouns ||
+          next.color !== entry.value.color
+        ) {
+          next._stats = {
+            ...entry.value._stats,
+            modifiedTime: Date.now(),
+          };
+          await database.put(entry.key, next);
+          didChange = true;
+        }
+
+        results.push({
+          id: next._id,
+          name: next.name,
+          role: next.role,
+        });
+      }
+    } finally {
+      await database.close();
     }
-  } finally {
-    await database.close();
+  } catch (error) {
+    if (!/classic-level|No native build was found|Database failed to open/i.test(String(error?.stack || error?.message || error))) {
+      throw error;
+    }
+
+    const uiResult = await _clipboardEnsureFoundryUsersViaFoundryUi(users);
+    results = uiResult.results;
+    didChange = uiResult.didChange;
   }
 
   if (didChange) {
@@ -1660,6 +1813,7 @@ module.exports = {
   ensureFoundryUsers,
   focusCanvas,
   focusChatInput,
+  getChatInputText,
   getCanvasDimensions,
   getFixturePath,
   getFixtureUrl,
