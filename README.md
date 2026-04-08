@@ -89,14 +89,14 @@ These are the first-run defaults the module ships with.
 | Allow tile art replacement | Enabled |
 | Enable scene `Paste Media` tool | Enabled |
 | Enable scene `Upload Media` tool | Enabled |
-| Default empty-canvas paste target | `Tile` |
-| Create backing Actors for pasted tokens | Disabled |
+| Default empty-canvas paste target | `Active layer` |
+| Create backing Actors for pasted tokens | Enabled |
 | Chat media display | `Thumbnail` |
-| Canvas text paste mode | `Disabled` |
+| Canvas text paste mode | `Scene notes` |
 | Scene `Paste Media` prompt mode | `Auto` |
 | Selected token image paste mode | `Ask each time` |
 
-In practice, that means a fresh install favors scene-local media actions, organized storage paths, visible scene tools for eligible players, and fewer accidental durable world changes.
+In practice, that means a fresh install favors active-layer canvas placement, Journal-backed scene notes for plain text, explicit token-image choices, organized storage paths, and reusable linked backing Actors for newly pasted tokens.
 
 Existing worlds keep whatever settings were already saved. If you want an older world to match the current recommended behavior profile, open `Game Settings -> Configure Settings -> Module Settings -> Foundry Paste Eater -> Apply recommended defaults` and review the changes before applying them. That review only touches configurable world behavior settings. It does not change the upload destination or client-only verbose logging.
 
@@ -130,7 +130,7 @@ Normal keyboard canvas paste respects Foundry's copied-object buffer before this
 | Select a tile and paste an image or video | Replace selected tile art | Size and position stay unchanged |
 | Select a scene note and paste an image | Replace the note icon | No new tile is created |
 | Select a token, tile, or note and paste plain text | No module action by default | Enable `Canvas text paste mode` for note workflows |
-| Paste image or video on an empty canvas | Create a tile | Change `Default empty-canvas paste target` if you prefer token or active-layer behavior |
+| Paste image or video on an empty canvas | Follow the active layer | Tokens create tokens; Tiles and Notes create tiles unless you override the setting |
 | Paste plain text on an empty canvas | No module action by default | Enable `Canvas text paste mode` for standalone notes |
 | Use scene `Paste Media` | Run an explicit scene media workflow | Media only, never text-note creation |
 | Use scene `Upload Media` | Pick a local file and apply normal scene media rules | Media only, never text-note creation |
@@ -158,12 +158,12 @@ On the canvas, replacement happens before creation.
 | One or more selected tokens | Replace selected token art | Eligible image pastes prompt by default; video is always scene-only |
 | One or more selected tiles | Replace selected tile art | Preserves size and position |
 | One or more selected scene notes | Replace selected note icon | Image only |
-| No selection on Tokens layer | Create a tile | Default empty-canvas targeting is `Tile` |
+| No selection on Tokens layer | Create a token | Shipped default empty-canvas targeting follows the active layer |
 | No selection on Tiles layer | Create a tile | Large images are scaled down for tiles |
 | No selection on Notes layer | Create a tile | Notes layer does not create notes from media |
 
 Additional canvas rules:
-- New pasted tokens remain actorless by default. Enable `Create backing Actors for pasted tokens` if you want world Actor documents created automatically.
+- New pasted tokens create linked backing world Actors by default. Disable `Create backing Actors for pasted tokens` if you want lightweight actorless scene tokens instead.
 - Large pasted images are scaled down for tile creation.
 - Video tiles are created muted, looping, and autoplaying.
 - `Caps Lock` hidden mode affects newly created canvas media, not replacement updates.
@@ -280,9 +280,9 @@ These are the settings most likely to change what your players expect.
 | Setting | Default | What it changes |
 | --- | --- | --- |
 | `Selected token image paste mode` | `Ask each time` | Whether selected-token image paste stays scene-local, becomes actor-wide for eligible linked tokens, or prompts each time |
-| `Default empty-canvas paste target` | `Tile` | Whether new canvas media follows the active layer, always creates tiles, or always creates tokens |
-| `Create backing Actors for pasted tokens` | Disabled | Whether new pasted tokens get world Actors or remain actorless scene tokens |
-| `Canvas text paste mode` | `Disabled` | Whether plain text on the canvas creates notes or is disabled |
+| `Default empty-canvas paste target` | `Active layer` | Whether new canvas media follows the active layer, always creates tiles, or always creates tokens |
+| `Create backing Actors for pasted tokens` | Enabled | Whether new pasted tokens get linked world Actors or remain actorless scene tokens |
+| `Canvas text paste mode` | `Scene notes` | Whether plain text on the canvas creates notes or is disabled |
 | `Scene Paste Media prompt mode` | `Auto` | Whether the explicit scene paste button uses direct read, always opens the prompt, or never opens the prompt |
 | `Chat media display` | `Thumbnail` | How uploaded chat media is rendered |
 | `Upload path organization` | `Context / user / month` | Whether uploads stay in one folder or are separated into `canvas`, `chat`, and `document-art` subfolders |
@@ -344,12 +344,12 @@ Open Foundry's Game Settings and look for the module settings and menu.
 - `Default empty-canvas paste target`
   Chooses whether new canvas media follows the active layer, always creates tiles, or always creates tokens.
 - `Create backing Actors for pasted tokens`
-  When enabled, newly pasted tokens also get world Actor documents. When disabled, pasted tokens remain actorless scene tokens.
+  When enabled, newly pasted tokens also get world Actor documents and start linked to them. When disabled, pasted tokens remain actorless scene tokens.
 
 ### Canvas text
 
 - `Canvas text paste mode`
-  Supports Journal-backed scene notes or fully disabling canvas text paste. The shipped default is `Disabled`.
+  Supports Journal-backed scene notes or fully disabling canvas text paste. The shipped default is `Scene notes`.
 
 ### Chat
 
@@ -522,7 +522,7 @@ When the upload destination changes, the module records the old and new configur
 | A direct media URL did not create canvas content | The remote host probably blocked browser-side download, so the module failed cleanly instead of creating broken scene content |
 | The scene `Paste Media` button opened a prompt | This is expected when the prompt mode is `Always show prompt` or when direct clipboard reads could not provide usable media in `Auto` mode |
 | Players can browse or upload nowhere | Check `Game Settings -> Configure Permissions` for `Use File Browser` and `Upload Files`, then check backend storage credentials or filesystem access |
-| New media became a token when you expected a tile | `Default empty-canvas paste target` is probably set to `Token` or `Active layer`. The shipped default is `Tile` |
+| New media became a token when you expected a tile | `Default empty-canvas paste target` is probably set to `Active layer` or `Token`. With the shipped default, empty-canvas paste on the Tokens layer creates tokens |
 
 ## Browser Notes
 
@@ -572,7 +572,7 @@ These placeholder callouts are grouped by feature area so recorded media can be 
 > Show an empty Tiles layer, paste a large panorama or animated image, and make the mouse-position placement plus automatic tile downscaling obvious.
 
 > INSERT `02-token-create-backed-actor.gif` HERE
-> Turn on `Create backing Actors for pasted tokens`, paste a portrait asset, then open the created token or actor sheet to prove the pasted token is grid-snapped and can optionally create a backing Actor.
+> Turn on `Create backing Actors for pasted tokens`, paste a portrait asset, then open the created token or actor sheet to prove the pasted token is grid-snapped and creates a linked backing Actor.
 
 > INSERT `03-video-on-canvas.gif` HERE
 > Show a `.webm` pasted onto the canvas, ideally first on Tiles and optionally then on Tokens, so autoplaying muted video support is visible.
@@ -671,9 +671,9 @@ When an actual module error is raised:
 
 ## Credits
 
-This fork builds on the original Foundry Paste Eater work and the people who helped shape it.
+This fork builds on the original upstream project, `foundryvtt-clipboard-image`, and the people who helped shape it.
 
-- Original upstream project and early Paste Eater work by JeansenVaars
+- Original upstream project, `foundryvtt-clipboard-image`, and early clipboard-media workflow work by JeansenVaars
 - Thanks to @theripper93 for early design guidance
 - Thanks to @vttom for help with Forge-related behavior
 - Thanks to the Foundry VTT Discord community for issue reports and feedback

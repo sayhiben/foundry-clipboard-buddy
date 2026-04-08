@@ -46,7 +46,7 @@
 ## Runtime Invariants
 - Chat-targeted media paste should create chat content only, never scene content.
 - Chat-targeted normal text should remain normal text.
-- Canvas-targeted plain text should only create or update Journal-backed scene notes when `canvas-text-paste-mode` is enabled. With the shipped defaults, canvas plain text is ignored.
+- Canvas-targeted plain text should create or update Journal-backed scene notes when `canvas-text-paste-mode` is enabled. With the shipped defaults, canvas plain text creates scene notes.
 - Selected scene notes should behave like first-class paste targets: media replaces the note icon in place, and plain text appends to the linked Journal page.
 - Normal keyboard/browser canvas paste respects Foundry's copied-object buffer before module behavior runs.
 - Explicit scene-control `Paste Media` and `Upload Media` actions are media-only tools and do not defer to Foundry's copied-object buffer.
@@ -57,8 +57,8 @@
 - `scene-only` selected-token replacement updates only `Token.texture.src` in place and never mutates actor data.
 - `actor-art` selected-token replacement is image-only, updates both `Actor.img` and `Actor.prototypeToken.texture.src`, and must fail closed unless every selected token is linked to a base Actor the current user can update.
 - Selected-token video paste always stays scene-local, even when `actor-art` or `prompt` is enabled.
-- Empty-canvas media targeting is now configurable. The shipped default is `tile`, but tests and docs must respect the `default-empty-canvas-target` setting.
-- New pasted tokens are actorless by default, but `create-backing-actors` can opt back into automatic world Actor creation. Tests should expect actorless tokens unless they explicitly enable backing Actors.
+- Empty-canvas media targeting is now configurable. The shipped default is `active-layer`, but tests and docs must respect the `default-empty-canvas-target` setting.
+- New pasted tokens create linked backing world Actors by default. Tests should expect linked backing Actors unless they explicitly disable `create-backing-actors`.
 - Scene-local token replacement is gated both by the module setting and by real ownership or update rights for non-GM users. Actor-wide replacement additionally requires actor update rights for every targeted Actor.
 - Non-media URLs pasted on canvas should fall back to contextual text-note behavior.
 - Non-media URLs pasted into chat should remain plain text.
@@ -80,7 +80,7 @@
 | `image-location-bucket` | `""` | Empty unless S3 is explicitly selected. |
 | `verbose-logging` | `false` | Debug logging stays opt-in. |
 | `minimum-role-canvas-media` | `PLAYER` | Canvas media is available to Players by default. |
-| `minimum-role-canvas-text` | `PLAYER` | Role gate stays permissive even though canvas text handling is disabled by default. |
+| `minimum-role-canvas-text` | `PLAYER` | Canvas text-note workflows are available to Players by default. |
 | `minimum-role-chat-media` | `PLAYER` | Chat media is available to Players by default. |
 | `allow-non-gm-scene-controls` | `true` | Eligible non-GMs see the explicit scene tools by default. |
 | `enable-chat-media` | `true` | Chat media workflows are on by default. |
@@ -91,10 +91,10 @@
 | `enable-tile-replacement` | `true` | Tile replacement remains available, subject to ownership. |
 | `enable-scene-paste-tool` | `true` | Scene `Paste Media` tool is enabled by default. |
 | `enable-scene-upload-tool` | `true` | Scene `Upload Media` tool is enabled by default. |
-| `default-empty-canvas-target` | `tile` | Empty-canvas media now creates tiles unless the GM changes the setting. |
-| `create-backing-actors` | `false` | New pasted tokens are actorless unless the GM opts in. |
+| `default-empty-canvas-target` | `active-layer` | Empty-canvas media follows the active layer by default; the Notes layer still creates tiles, not notes. |
+| `create-backing-actors` | `true` | New pasted tokens create linked backing world Actors unless the GM opts out. |
 | `chat-media-display` | `thumbnail` | Chat media uses thumbnail previews by default. |
-| `canvas-text-paste-mode` | `disabled` | Canvas text-note creation is opt-in. |
+| `canvas-text-paste-mode` | `scene-notes` | Canvas plain text creates Journal-backed scene notes by default. |
 | `scene-paste-prompt-mode` | `auto` | Scene paste tool uses direct read plus prompt fallback. |
 | `selected-token-paste-mode` | `prompt` | Eligible token image replacement now asks before actor-wide mutations. |
 | `upload-path-organization` | `context-user-month` | New uploads organize into `canvas`, `chat`, and `document-art` subpaths by default. |
@@ -194,7 +194,7 @@ Existing worlds keep their previously persisted settings. The GM-only `recommend
 ### Token and tile creation lookup
 | Create target | Content kind | Intended behavior | Implementation seam |
 | --- | --- | --- | --- |
-| New token | Image | Snap to grid, scale dimensions with token rules, apply hidden mode if active, and create a backing Actor when `create-backing-actors` is enabled. Created scene token remains `actorLink: false`. | `src/context.js` `CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES.Token`, `_clipboardCreatePastedTokenActor` |
+| New token | Image | Snap to grid, scale dimensions with token rules, apply hidden mode if active, and create a linked backing Actor when `create-backing-actors` is enabled. | `src/context.js` `CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES.Token`, `_clipboardCreatePastedTokenActor` |
 | New token | Video | Create a video-backed token. If a backing Actor is enabled, its portrait uses a safe default icon while the prototype token texture uses the uploaded video path. | `src/context.js` `_clipboardGetPastedTokenActorImage`, `_clipboardCreatePastedTokenActor` |
 | New tile | Image | Create a tile at the mouse position, scale large media down to the tile size policy, and apply hidden mode if active. | `src/context.js` `CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES.Tile` |
 | New tile | Video | Create a tile with `autoplay: true`, `loop: true`, and `volume: 0`. Hidden mode still applies on create. | `src/context.js` `CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES.Tile`; `src/media.js` `_clipboardGetTileVideoData` |
@@ -212,7 +212,7 @@ Existing worlds keep their previously persisted settings. The GM-only `recommend
 | `enable-token-replacement`, `enable-tile-replacement` | `true` or `false` | Disable only that replacement path. If controlled documents exist but are blocked, do not create fallback content. |
 | `enable-scene-paste-tool`, `enable-scene-upload-tool` | `true` or `false` | Control whether the matching scene-control buttons are shown to users who otherwise qualify to see scene controls. |
 | `default-empty-canvas-target` | `active-layer`, `tile`, `token` | Controls which placeable type is created when there is no replacement target. With `active-layer`, the Notes layer still resolves to tile creation. |
-| `create-backing-actors` | `true` or `false` | Controls whether newly created pasted tokens receive world Actor documents or remain actorless scene tokens. |
+| `create-backing-actors` | `true` or `false` | Controls whether newly created pasted tokens receive linked world Actor documents or remain actorless scene tokens. |
 | `selected-token-paste-mode` | `scene-only`, `actor-art`, `prompt` | Controls how eligible selected-token image replacement behaves. See the token image mode lookup. |
 | `canvas-text-paste-mode` | `scene-notes`, `disabled` | Enables Journal-backed canvas text behavior or disables module handling for canvas text entirely. |
 | `chat-media-display` | `full-preview`, `thumbnail`, `link-only` | Controls chat media rendering only; upload and message creation stay the same. |
@@ -378,6 +378,7 @@ Existing worlds keep their previously persisted settings. The GM-only `recommend
 ## Commit & Pull Request Guidelines
 - Match existing history style: short, imperative commit subjects.
 - Keep commits scoped to one concern where practical.
+- Run `git add`, `git commit`, and `git push` serially, never in parallel. Parallelizing those steps can race the commit and leave the new `HEAD` unpushed.
 - If behavior changes, include docs and tests in the same branch/PR when possible.
 - For PRs, include behavior summary, impacted Foundry version(s), and screenshots/GIFs for visible canvas/chat changes when relevant.
 - For README/demo GIF capture on this machine, Gifox works only after macOS Accessibility is granted and Chrome's `View > Developer > Allow JavaScript from Apple Events` is enabled. Window selection starts recording immediately here, so be ready to drive the demo as soon as the target window is clicked.

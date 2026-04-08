@@ -101,11 +101,11 @@ Use these commands as the normal maintainer verification ladder:
    Expected: a new tile appears at the mouse position.
 2. Set `Default empty-canvas paste target` to `Token`, clear selection, and paste a static image.
    Expected: a new token appears snapped to the grid, with its shortest side normalized to one grid square.
-3. Leave `Create backing Actors for pasted tokens` disabled and inspect a newly pasted token.
+3. Leave the default `Create backing Actors for pasted tokens` setting enabled and inspect a newly pasted token.
+   Expected: the token has a backing world Actor, is linked to it, and opens normally for editing.
+4. Disable `Create backing Actors for pasted tokens`, paste another token, and inspect it.
    Expected: the token is actorless and does not unexpectedly create a world Actor.
-4. Enable `Create backing Actors for pasted tokens`, paste another token, and double-click it.
-   Expected: it opens normally for editing and does not warn about a missing Actor.
-5. Return `Default empty-canvas paste target` to `Tile`, then paste a large image onto the Tiles layer.
+5. Set `Default empty-canvas paste target` to `Tile`, then paste a large image onto the Tiles layer.
    Expected: the created tile scales down to fit roughly one-third of the scene width while preserving aspect ratio.
 6. Hold `Caps Lock` during media paste on the canvas.
    Expected: the newly created tile or token is hidden.
@@ -159,7 +159,7 @@ Use these commands as the normal maintainer verification ladder:
 
 ### 5. Contextual Plain-Text Notes
 
-Enable `Canvas text paste mode = Scene notes` before running this section.
+Leave the default `Canvas text paste mode = Scene notes` setting enabled before running this section.
 
 1. Select one token and paste one line of plain text onto the canvas.
    Expected: a Journal-backed scene note is created or reused for that token.
@@ -314,7 +314,7 @@ Enable `Canvas text paste mode = Scene notes` before running this section.
 11. Toggle `Default empty-canvas paste target` between active layer, tile, and token.
    Expected: new pasted media follows the configured target consistently.
 12. Toggle `Create backing Actors for pasted tokens`.
-   Expected: when enabled, newly pasted tokens open normally for editing; when disabled, pasted tokens are actorless.
+   Expected: when enabled, newly pasted tokens open normally for editing and are linked to their backing Actor; when disabled, pasted tokens are actorless.
 13. Toggle `Selected token image paste mode` between `Scene token only`, `Actor portrait + linked token art`, and `Ask each time`.
    Expected: selected-token image pastes follow the configured behavior without affecting tile replacement or non-token canvas creation.
 13. Toggle `Chat media display`.

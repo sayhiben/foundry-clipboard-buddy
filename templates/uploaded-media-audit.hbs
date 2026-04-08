@@ -1,40 +1,61 @@
 <form class="foundry-paste-eater-uploaded-media-audit flexcol" autocomplete="off">
-  <section class="form-group">
-    <label>Audit Summary</label>
-    <div class="form-fields">
-      <input type="text" value="Roots: {{summary.rootCount}} | Groups: {{summary.groupCount}} | References: {{summary.referenceCount}}" disabled />
+  <section class="foundry-paste-eater-panel-card foundry-paste-eater-panel-summary">
+    <h2>Audit Summary</h2>
+    <div class="foundry-paste-eater-status-summary">
+      <span class="foundry-paste-eater-status-pill">Roots: {{summary.rootCount}}</span>
+      <span class="foundry-paste-eater-status-pill">Groups: {{summary.groupCount}}</span>
+      <span class="foundry-paste-eater-status-pill">References: {{summary.referenceCount}}</span>
     </div>
     <p class="notes">This audit is reference-based only. It reports current world references under known upload roots and does not inventory storage or delete anything.</p>
   </section>
 
   {{#if groups.length}}
     {{#each groups}}
-    <section class="form-group">
-      <label>{{uploadRootLabel}}</label>
-      <div class="form-fields" style="display: block;">
-        <p><strong>Context:</strong> {{context}} | <strong>Document type:</strong> {{documentType}} | <strong>References:</strong> {{references.length}}</p>
-        <ul>
+    <section class="foundry-paste-eater-panel-card">
+      <div class="foundry-paste-eater-audit-group-header">
+        <div>
+          <h2>{{uploadRootLabel}}</h2>
+          <p class="foundry-paste-eater-audit-group-meta">
+            <strong>Context:</strong> {{context}}
+            <span>|</span>
+            <strong>Document type:</strong> {{documentType}}
+            <span>|</span>
+            <strong>References:</strong> {{references.length}}
+          </p>
+        </div>
+      </div>
+      <div class="foundry-paste-eater-audit-table-wrap">
+        <table class="foundry-paste-eater-audit-table">
+          <thead>
+            <tr>
+              <th scope="col">Document</th>
+              <th scope="col">Field</th>
+              <th scope="col">Scene</th>
+              <th scope="col">Path</th>
+            </tr>
+          </thead>
+          <tbody>
           {{#each references}}
-          <li>
-            <strong>{{documentName}}</strong>
-            <span>({{field}})</span>
-            <span>{{normalizedPath}}</span>
-          </li>
+            <tr>
+              <td>{{documentName}}</td>
+              <td><code>{{field}}</code></td>
+              <td>{{#if sceneName}}{{sceneName}}{{else}}-{{/if}}</td>
+              <td><code>{{normalizedPath}}</code></td>
+            </tr>
           {{/each}}
-        </ul>
+          </tbody>
+        </table>
       </div>
     </section>
     {{/each}}
   {{else}}
-  <section class="form-group">
-    <label>Current references</label>
-    <div class="form-fields" style="display: block;">
-      <p>No current Actor, scene, note, or chat references were found under the known upload roots.</p>
-    </div>
+  <section class="foundry-paste-eater-panel-card">
+    <h2>Current references</h2>
+    <p>No current Actor, scene, note, or chat references were found under the known upload roots.</p>
   </section>
   {{/if}}
 
-  <footer class="sheet-footer flexrow">
+  <footer class="sheet-footer flexrow foundry-paste-eater-panel-actions">
     <button type="button" data-action="download-media-audit">
       <i class="fas fa-download"></i> Download Audit JSON
     </button>

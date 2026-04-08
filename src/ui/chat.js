@@ -68,6 +68,10 @@ function _clipboardSyncChatUploadButton(root) {
   const existingButtons = Array.from(root.querySelectorAll(`[data-action="${CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION}"]`));
   if (!_clipboardCanUseChatUploadButton()) {
     for (const button of existingButtons) button.remove();
+    const temporaryContainers = Array.from(root.querySelectorAll(".foundry-paste-eater-chat-buttons"));
+    for (const container of temporaryContainers) {
+      if (!container.childElementCount) container.remove();
+    }
     return;
   }
 
@@ -75,16 +79,26 @@ function _clipboardSyncChatUploadButton(root) {
 
   const form = root.matches("form") ? root : (root.querySelector("form") || root.closest("form"));
   if (!form) return;
+  const controls = form.querySelector("#chat-controls");
+  let mount = form;
+  if (controls) {
+    mount = controls.querySelector(".control-buttons");
+    if (!mount) {
+      mount = document.createElement("div");
+      mount.className = "control-buttons foundry-paste-eater-chat-buttons";
+      controls.append(mount);
+    }
+  }
 
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "foundry-paste-eater-chat-upload";
+  button.className = "ui-control icon fa-solid fa-file-image foundry-paste-eater-chat-upload";
   button.dataset.action = CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION;
+  button.dataset.tooltip = "";
   button.title = "Upload Chat Media";
   button.ariaLabel = "Upload Chat Media";
-  button.innerHTML = `<i class="fa-solid fa-file-image"></i>`;
   button.addEventListener("click", () => _clipboardHandleChatUploadAction());
-  form.append(button);
+  mount.append(button);
 }
 
 function _clipboardAttachChatUploadButton(root) {

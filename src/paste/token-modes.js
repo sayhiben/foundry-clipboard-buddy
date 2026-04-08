@@ -43,6 +43,9 @@ function _clipboardPromptSelectedTokenPasteMode() {
       },
       default: "sceneOnly",
       close: () => settle(CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SCENE_ONLY),
+    }, {
+      classes: ["foundry-paste-eater-token-mode-dialog"],
+      width: 760,
     });
     dialog.render(true);
   });

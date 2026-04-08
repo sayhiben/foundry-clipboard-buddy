@@ -178,7 +178,7 @@ const READINESS_STATUS_SCENARIOS = Object.freeze([
   {
     name: "world drift warns in the defaults section",
     customize(env) {
-      env.settingsValues.set("foundry-paste-eater.canvas-text-paste-mode", "scene-notes");
+      env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "scene-only");
     },
     expectedDefaultsStatus: "warn",
   },

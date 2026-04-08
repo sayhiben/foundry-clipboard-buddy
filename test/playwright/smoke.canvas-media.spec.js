@@ -541,8 +541,8 @@ test("pastes an image as a token on the Tokens layer", async ({foundryPage: page
     await expect.poll(async () => page.evaluate(actorId => {
       const app = Object.values(ui.windows).find(entry => (entry.document?.id || entry.object?.id) === actorId);
       return app ? {title: app.title || "", actorId} : null;
-    }, token.actorId)).toEqual({
-      title: "[Token] test-token",
+    }, token.actorId)).toMatchObject({
+      title: expect.stringContaining("test-token"),
       actorId: token.actorId,
     });
 

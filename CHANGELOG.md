@@ -1,3 +1,12 @@
+### 1.3.0
+* Add GM-only `Readiness & Support` and `Uploaded Media Audit` panels, plus a sanitized support-bundle export and read-only runtime support API for diagnosing storage, permissions, defaults drift, and referenced uploaded media
+* Add release hardening with shared contracts, JSDoc typechecking, bundle parity checks, `verify:release`, and stronger CI/package verification so runtime, tests, and shipped artifacts stay aligned
+* Finish the runtime and test architecture refactor into domain modules, split the Playwright and unit harnesses by behavior, and harden smoke isolation so stale scene artifacts do not leak between browser tests
+* Improve native Finder/Explorer media handling by normalizing under-described pasted files earlier, restoring canvas targeting after chat paste, and rasterizing canvas-bound GIFs to reliable PNG uploads while keeping chat GIF behavior intact
+* Polish GM-facing UX with improved recommended-defaults buttons, tighter selected-token `Ask` dialog layout, inline chat upload controls, and redesigned readiness/audit panels with clearer sections and scrollable audit tables
+* Update shipped defaults and token creation behavior so empty-canvas media follows the active layer, canvas text creates scene notes, pasted tokens create backing Actors by default, and actor-backed pasted tokens link to their backing Actor by default
+* Expand regression coverage for support flows, defaults drift, Finder-native PNG/JPG/GIF paste cases, GIF rasterization edge cases, linked backing-Actor token creation, and live release verification
+
 ### 1.2.0
 * Add explicit selected-token image paste modes with `Scene token only`, `Actor portrait + linked token art`, and `Ask each time`; actor-wide updates now apply both portrait and linked-token defaults while video stays scene-local
 * Improve storage-permission diagnostics so player upload failures tell GMs exactly where to fix Foundry core permissions: `Game Settings -> Configure Permissions`, including `Use File Browser` and `Upload Files`

@@ -218,10 +218,10 @@ var FoundryPasteEaterRuntime = (() => {
         [CLIPBOARD_IMAGE_ENABLE_TILE_REPLACEMENT_SETTING]: Object.freeze({ scope: "world", config: true, value: true }),
         [CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING]: Object.freeze({ scope: "world", config: true, value: true }),
         [CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING]: Object.freeze({ scope: "world", config: true, value: true }),
-        [CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING]: Object.freeze({ scope: "world", config: true, value: CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE }),
-        [CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING]: Object.freeze({ scope: "world", config: true, value: false }),
+        [CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING]: Object.freeze({ scope: "world", config: true, value: CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER }),
+        [CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING]: Object.freeze({ scope: "world", config: true, value: true }),
         [CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING]: Object.freeze({ scope: "world", config: true, value: CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL }),
-        [CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING]: Object.freeze({ scope: "world", config: true, value: CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_DISABLED }),
+        [CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING]: Object.freeze({ scope: "world", config: true, value: CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SCENE_NOTES }),
         [CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING]: Object.freeze({ scope: "world", config: true, value: CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_AUTO }),
         [CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SETTING]: Object.freeze({ scope: "world", config: true, value: CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_PROMPT }),
         [CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING]: Object.freeze({ scope: "world", config: true, value: CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_CONTEXT_USER_MONTH }),
@@ -589,6 +589,11 @@ var FoundryPasteEaterRuntime = (() => {
           return differences;
         }, []).sort((left, right) => left.displayName.localeCompare(right.displayName));
       }
+      function _clipboardCreateDialogButtonLabel(iconClassName, label) {
+        const safeLabel = foundry.utils.escapeHTML(label || "");
+        const safeIconClassName = foundry.utils.escapeHTML(iconClassName || "");
+        return safeIconClassName ? `<i class="${safeIconClassName}"></i> ${safeLabel}` : safeLabel;
+      }
       async function _clipboardApplyShippedDefaults({ scope = "world", config = true } = {}) {
         const differences = _clipboardGetSettingsThatDifferFromDefaults({ scope, config });
         for (const difference of differences) {
@@ -607,8 +612,10 @@ var FoundryPasteEaterRuntime = (() => {
             content: `${summary}${scopeNote}${details}`,
             buttons: differences.length ? {
               apply: {
-                icon: "fa-solid fa-wand-magic-sparkles",
-                label: `Apply ${differences.length} Change${differences.length === 1 ? "" : "s"}`,
+                label: _clipboardCreateDialogButtonLabel(
+                  "fa-solid fa-wand-magic-sparkles",
+                  `Apply ${differences.length} Change${differences.length === 1 ? "" : "s"}`
+                ),
                 callback: async () => {
                   const updatedKeys = await _clipboardApplyShippedDefaults();
                   if (!updatedKeys.length) return;
@@ -616,13 +623,11 @@ var FoundryPasteEaterRuntime = (() => {
                 }
               },
               cancel: {
-                icon: "fa-solid fa-xmark",
-                label: "Cancel"
+                label: _clipboardCreateDialogButtonLabel("fa-solid fa-xmark", "Cancel")
               }
             } : {
               close: {
-                icon: "fa-solid fa-check",
-                label: "Close"
+                label: _clipboardCreateDialogButtonLabel("fa-solid fa-check", "Close")
               }
             },
             default: differences.length ? "apply" : "close"
@@ -632,6 +637,7 @@ var FoundryPasteEaterRuntime = (() => {
       };
       module.exports = {
         FoundryPasteEaterRecommendedDefaultsConfig,
+        _clipboardCreateDialogButtonLabel,
         _clipboardGetSettingsThatDifferFromDefaults,
         _clipboardApplyShippedDefaults
       };
@@ -3229,7 +3235,7 @@ var FoundryPasteEaterRuntime = (() => {
             };
             if (actor?.id) {
               tokenData.actorId = actor.id;
-              tokenData.actorLink = false;
+              tokenData.actorLink = true;
             }
             return [tokenData];
           }
@@ -5007,6 +5013,9 @@ var FoundryPasteEaterRuntime = (() => {
             },
             default: "sceneOnly",
             close: () => settle(CLIPBOARD_IMAGE_SELECTED_TOKEN_PASTE_MODE_SCENE_ONLY)
+          }, {
+            classes: ["foundry-paste-eater-token-mode-dialog"],
+            width: 760
           });
           dialog.render(true);
         });
@@ -5821,20 +5830,34 @@ var FoundryPasteEaterRuntime = (() => {
         const existingButtons = Array.from(root.querySelectorAll(`[data-action="${CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION}"]`));
         if (!_clipboardCanUseChatUploadButton()) {
           for (const button2 of existingButtons) button2.remove();
+          const temporaryContainers = Array.from(root.querySelectorAll(".foundry-paste-eater-chat-buttons"));
+          for (const container of temporaryContainers) {
+            if (!container.childElementCount) container.remove();
+          }
           return;
         }
         if (existingButtons.length) return;
         const form = root.matches("form") ? root : root.querySelector("form") || root.closest("form");
         if (!form) return;
+        const controls = form.querySelector("#chat-controls");
+        let mount = form;
+        if (controls) {
+          mount = controls.querySelector(".control-buttons");
+          if (!mount) {
+            mount = document.createElement("div");
+            mount.className = "control-buttons foundry-paste-eater-chat-buttons";
+            controls.append(mount);
+          }
+        }
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "foundry-paste-eater-chat-upload";
+        button.className = "ui-control icon fa-solid fa-file-image foundry-paste-eater-chat-upload";
         button.dataset.action = CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION;
+        button.dataset.tooltip = "";
         button.title = "Upload Chat Media";
         button.ariaLabel = "Upload Chat Media";
-        button.innerHTML = `<i class="fa-solid fa-file-image"></i>`;
         button.addEventListener("click", () => _clipboardHandleChatUploadAction());
-        form.append(button);
+        mount.append(button);
       }
       function _clipboardAttachChatUploadButton(root) {
         _clipboardSyncChatUploadButton(root);

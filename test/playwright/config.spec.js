@@ -47,6 +47,7 @@ async function getTokenActorInfo(page, tokenId) {
     const token = canvas.scene.tokens.get(id);
     return {
       actorId: token?.actorId || null,
+      actorLink: Boolean(token?.actorLink),
       actorExists: Boolean(token?.actor),
     };
   }, tokenId);
@@ -254,19 +255,19 @@ test("registers the intended first-run defaults for key behavior settings", asyn
   expect(defaults).toEqual({
     "image-location-source": "data",
     "allow-non-gm-scene-controls": true,
-    "default-empty-canvas-target": "tile",
-    "create-backing-actors": false,
-    "canvas-text-paste-mode": "disabled",
+    "default-empty-canvas-target": "active-layer",
+    "create-backing-actors": true,
+    "canvas-text-paste-mode": "scene-notes",
     "scene-paste-prompt-mode": "auto",
     "selected-token-paste-mode": "prompt",
     "upload-path-organization": "context-user-month",
   });
 });
 
-test("shipped default profile creates tiles on an empty canvas even from the Tokens layer", async ({foundryPage: page}, testInfo) => {
+test("shipped default profile follows the active layer for empty-canvas media creation", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
-    "default-empty-canvas-target": "tile",
+    "default-empty-canvas-target": "active-layer",
   });
 
   try {
@@ -281,9 +282,9 @@ test("shipped default profile creates tiles on an empty canvas even from the Tok
       mimeType: "image/png",
     });
 
-    await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+    await expect.poll(async () => (await getStateSnapshot(page)).tokens.length).toBe(before.tokens.length + 1);
     const after = await getStateSnapshot(page);
-    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.tiles.length).toBe(before.tiles.length);
   } finally {
     await restoreModuleSettings(page, previousSettings);
     await cleanupClipboardRun(page, run);
@@ -328,25 +329,24 @@ test("shipped default profile prompts before eligible selected-token image chang
   }
 });
 
-test("shipped default profile ignores plain text on the canvas", async ({foundryPage: page}, testInfo) => {
+test("shipped default profile creates scene notes from plain text on the canvas", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
-    "canvas-text-paste-mode": "disabled",
+    "canvas-text-paste-mode": "scene-notes",
   });
 
   try {
     await focusCanvas(page);
+    await page.evaluate(() => canvas.tiles.activate());
+    await setCanvasMousePosition(page, await getSafeCanvasPoint(page, 44));
     const before = await getStateSnapshot(page);
 
     await dispatchTextPaste(page, {
       targetSelector: ".game",
-      text: `${run.prefix} untouched default text`,
+      text: `${run.prefix} default canvas note`,
     });
-    await page.waitForTimeout(250);
-
-    const after = await getStateSnapshot(page);
-    expect(after.notes.length).toBe(before.notes.length);
-    expect(after.journals.length).toBe(before.journals.length);
+    await expect.poll(async () => (await getStateSnapshot(page)).notes.length).toBe(before.notes.length + 1);
+    await expect.poll(async () => (await getStateSnapshot(page)).journals.length).toBe(before.journals.length + 1);
   } finally {
     await restoreModuleSettings(page, previousSettings);
     await cleanupClipboardRun(page, run);
@@ -428,6 +428,7 @@ test("create-backing-actors controls whether new pasted tokens get backing actor
     const [actorlessToken] = getNewDocuments(beforeActorless, afterActorless, "tokens");
     expect(await getTokenActorInfo(page, actorlessToken.id)).toEqual({
       actorId: null,
+      actorLink: false,
       actorExists: false,
     });
 
@@ -443,6 +444,7 @@ test("create-backing-actors controls whether new pasted tokens get backing actor
     const afterBacked = await getStateSnapshot(page);
     const [backedToken] = getNewDocuments(beforeBacked, afterBacked, "tokens");
     await expect.poll(() => getTokenActorInfo(page, backedToken.id)).toMatchObject({
+      actorLink: true,
       actorExists: true,
     });
   } finally {

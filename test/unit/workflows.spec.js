@@ -41,7 +41,7 @@ describe("paste and handler workflows", () => {
       expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("Token", [
         expect.objectContaining({
           actorId: expect.any(String),
-          actorLink: false,
+          actorLink: true,
           texture: {src: "path.png"},
           width: 2,
           height: 1,
@@ -147,6 +147,18 @@ describe("paste and handler workflows", () => {
 
       await expect(prompt).resolves.toBe("actor-art");
       expect(document.activeElement).toBe(document.querySelector(".game"));
+    });
+
+    it("renders the selected-token prompt with a dedicated layout class and wider dialog width", async () => {
+      const prompt = api._clipboardPromptSelectedTokenPasteMode();
+      expect(env.dialogInstances).toHaveLength(1);
+      const dialog = env.dialogInstances.at(-1);
+
+      expect(dialog.options.classes).toContain("foundry-paste-eater-token-mode-dialog");
+      expect(dialog.options.width).toBe(760);
+
+      dialog.data.close();
+      await expect(prompt).resolves.toBe("scene-only");
     });
   });
 

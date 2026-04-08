@@ -201,10 +201,10 @@ function loadRuntime(options = {}) {
     ["foundry-paste-eater.enable-tile-replacement", true],
     ["foundry-paste-eater.enable-scene-paste-tool", true],
     ["foundry-paste-eater.enable-scene-upload-tool", true],
-    ["foundry-paste-eater.default-empty-canvas-target", "tile"],
-    ["foundry-paste-eater.create-backing-actors", false],
+    ["foundry-paste-eater.default-empty-canvas-target", "active-layer"],
+    ["foundry-paste-eater.create-backing-actors", true],
     ["foundry-paste-eater.chat-media-display", "thumbnail"],
-    ["foundry-paste-eater.canvas-text-paste-mode", "disabled"],
+    ["foundry-paste-eater.canvas-text-paste-mode", "scene-notes"],
     ["foundry-paste-eater.scene-paste-prompt-mode", "auto"],
     ["foundry-paste-eater.selected-token-paste-mode", "prompt"],
     ["foundry-paste-eater.upload-path-organization", "context-user-month"],
@@ -609,8 +609,9 @@ function loadRuntime(options = {}) {
   };
   globalThis.ForgeVTT = undefined;
   globalThis.Dialog = class MockDialog {
-    constructor(data) {
+    constructor(data, options = {}) {
       this.data = data;
+      this.options = options;
       this.render = vi.fn(() => this);
       dialogInstances.push(this);
     }

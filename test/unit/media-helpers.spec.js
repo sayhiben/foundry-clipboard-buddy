@@ -236,6 +236,125 @@ describe("media helpers", () => {
       }
     });
 
+    it("fails rasterization cleanly when the image never loads", async () => {
+      const originalCreateObjectURL = globalThis.URL.createObjectURL;
+      const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+      globalThis.URL.createObjectURL = vi.fn(() => "blob:gif-preview");
+      globalThis.URL.revokeObjectURL = vi.fn();
+
+      const OriginalImage = globalThis.Image;
+      globalThis.Image = class {
+        set src(value) {
+          this._src = value;
+          queueMicrotask(() => this.onerror?.(new Error("load failed")));
+        }
+      };
+
+      try {
+        await expect(
+          api._clipboardRasterizeImageBlob(new File(["gif"], "animated.gif", {type: "image/gif"}))
+        ).rejects.toThrow("Failed to rasterize pasted media");
+        expect(globalThis.URL.revokeObjectURL).toHaveBeenCalledWith("blob:gif-preview");
+      } finally {
+        globalThis.Image = OriginalImage;
+        globalThis.URL.createObjectURL = originalCreateObjectURL;
+        globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+      }
+    });
+
+    it("fails rasterization when the loaded image has no usable dimensions", async () => {
+      const originalCreateObjectURL = globalThis.URL.createObjectURL;
+      const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+      globalThis.URL.createObjectURL = vi.fn(() => "blob:gif-preview");
+      globalThis.URL.revokeObjectURL = vi.fn();
+
+      const OriginalImage = globalThis.Image;
+      globalThis.Image = class {
+        constructor() {
+          this.naturalWidth = 0;
+          this.naturalHeight = 0;
+          this.width = 0;
+          this.height = 0;
+        }
+
+        set src(value) {
+          this._src = value;
+          queueMicrotask(() => this.onload?.());
+        }
+      };
+
+      try {
+        await expect(
+          api._clipboardRasterizeImageBlob(new File(["gif"], "animated.gif", {type: "image/gif"}))
+        ).rejects.toThrow("Failed to rasterize pasted media");
+      } finally {
+        globalThis.Image = OriginalImage;
+        globalThis.URL.createObjectURL = originalCreateObjectURL;
+        globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+      }
+    });
+
+    it("fails rasterization when canvas 2d rendering is unavailable", async () => {
+      const originalCreateElement = document.createElement.bind(document);
+      document.createElement = vi.fn(tagName => {
+        if (tagName !== "canvas") return originalCreateElement(tagName);
+        return {
+          width: 0,
+          height: 0,
+          getContext: vi.fn(() => null),
+        };
+      });
+
+      const originalCreateObjectURL = globalThis.URL.createObjectURL;
+      const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+      globalThis.URL.createObjectURL = vi.fn(() => "blob:gif-preview");
+      globalThis.URL.revokeObjectURL = vi.fn();
+
+      const restoreImage = withMockImage({width: 64, height: 32});
+      try {
+        await expect(
+          api._clipboardRasterizeImageBlob(new File(["gif"], "animated.gif", {type: "image/gif"}))
+        ).rejects.toThrow("Canvas rasterization is unavailable");
+      } finally {
+        restoreImage();
+        document.createElement = originalCreateElement;
+        globalThis.URL.createObjectURL = originalCreateObjectURL;
+        globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+      }
+    });
+
+    it("fails rasterization when canvas export does not produce a blob", async () => {
+      const originalCreateElement = document.createElement.bind(document);
+      const drawImage = vi.fn();
+      document.createElement = vi.fn(tagName => {
+        if (tagName !== "canvas") return originalCreateElement(tagName);
+        return {
+          width: 0,
+          height: 0,
+          getContext: vi.fn(() => ({drawImage})),
+          toBlob: callback => callback(null),
+        };
+      });
+
+      const originalCreateObjectURL = globalThis.URL.createObjectURL;
+      const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+      globalThis.URL.createObjectURL = vi.fn(() => "blob:gif-preview");
+      globalThis.URL.revokeObjectURL = vi.fn();
+
+      const restoreImage = withMockImage({width: 64, height: 32});
+      try {
+        await expect(
+          api._clipboardRasterizeImageBlob(new File(["gif"], "animated.gif", {type: "image/gif"}))
+        ).rejects.toThrow("Failed to rasterize pasted media");
+        expect(drawImage).toHaveBeenCalled();
+      } finally {
+        restoreImage();
+        document.createElement = originalCreateElement;
+        globalThis.URL.createObjectURL = originalCreateObjectURL;
+        globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+      }
+    });
+
     it("leaves non-gif blobs unchanged when converting to static png", async () => {
       const pngFile = new File(["png"], "static.png", {type: "image/png"});
       await expect(api._clipboardConvertGifToStaticPng(pngFile)).resolves.toBe(pngFile);

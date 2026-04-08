@@ -367,6 +367,7 @@ test("uses the chat upload button to post media", async ({foundryPage: page}, te
   try {
     await focusChatInput(page);
     const before = await getStateSnapshot(page);
+    await expect(page.locator("#chat-controls .foundry-paste-eater-chat-upload")).toHaveCount(1);
 
     const chooserPromise = page.waitForEvent("filechooser");
     await page.locator(".foundry-paste-eater-chat-upload").click();

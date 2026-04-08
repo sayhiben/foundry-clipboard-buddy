@@ -1,30 +1,33 @@
 <form class="foundry-paste-eater-readiness-support flexcol" autocomplete="off">
-  <section class="form-group">
-    <label>Status Summary</label>
-    <div class="form-fields">
-      <input type="text" value="Pass: {{statusCounts.pass}} | Warn: {{statusCounts.warn}} | Fail: {{statusCounts.fail}}" disabled />
+  <section class="foundry-paste-eater-panel-card foundry-paste-eater-panel-summary">
+    <h2>Status Summary</h2>
+    <div class="foundry-paste-eater-status-summary">
+      <span class="foundry-paste-eater-status-pill foundry-paste-eater-status-pass">Pass: {{statusCounts.pass}}</span>
+      <span class="foundry-paste-eater-status-pill foundry-paste-eater-status-warn">Warn: {{statusCounts.warn}}</span>
+      <span class="foundry-paste-eater-status-pill foundry-paste-eater-status-fail">Fail: {{statusCounts.fail}}</span>
     </div>
     <p class="notes">This panel is read-only. Use the action buttons below to open the existing configuration flows or download a sanitized support bundle.</p>
   </section>
 
   {{#each sections}}
-  <section class="form-group">
-    <label>{{title}}</label>
-    <div class="form-fields" style="display: block;">
-      <div class="foundry-paste-eater-readiness-section">
-        {{#each items}}
-        <div class="foundry-paste-eater-readiness-item">
-          <p><strong>{{label}}</strong> <span>({{status}})</span></p>
-          <p>{{summary}}</p>
-          <p class="notes">{{remediation}}</p>
+  <section class="foundry-paste-eater-panel-card">
+    <h2>{{title}}</h2>
+    <div class="foundry-paste-eater-readiness-section">
+      {{#each items}}
+      <article class="foundry-paste-eater-readiness-item foundry-paste-eater-status-{{status}}">
+        <div class="foundry-paste-eater-readiness-item-header">
+          <h3>{{label}}</h3>
+          <span class="foundry-paste-eater-status-pill foundry-paste-eater-status-{{status}}">{{status}}</span>
         </div>
-        {{/each}}
-      </div>
+        <p class="foundry-paste-eater-readiness-summary">{{summary}}</p>
+        <p class="notes">{{remediation}}</p>
+      </article>
+      {{/each}}
     </div>
   </section>
   {{/each}}
 
-  <footer class="sheet-footer flexrow">
+  <footer class="sheet-footer flexrow foundry-paste-eater-panel-actions">
     <button type="button" data-action="open-upload-destination">
       <i class="fas fa-folder-tree"></i> Open Upload destination
     </button>

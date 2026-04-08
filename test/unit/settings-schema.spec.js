@@ -29,7 +29,7 @@ describe("settings schema contract", () => {
 
   it("keeps recommended-default differences aligned with the shared labels", () => {
     api._clipboardRegisterSettings();
-    env.settingsValues.set("foundry-paste-eater.default-empty-canvas-target", "active-layer");
+    env.settingsValues.set("foundry-paste-eater.default-empty-canvas-target", "token");
     env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "scene-only");
 
     expect(api._clipboardGetSettingsThatDifferFromDefaults()).toEqual([

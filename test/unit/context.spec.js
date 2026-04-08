@@ -66,7 +66,7 @@ describe("canvas context helpers", () => {
         mediaKind: "image",
       })).resolves.toEqual([{
         actorId: "actor-1",
-        actorLink: false,
+        actorLink: true,
         name: "image",
         texture: {src: "image.png"},
         width: 2,

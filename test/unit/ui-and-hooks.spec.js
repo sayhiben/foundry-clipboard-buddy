@@ -753,12 +753,17 @@ describe("ui and hook integration helpers", () => {
 
     it("adds and binds the chat upload button once", () => {
       const root = document.createElement("form");
+      const controls = document.createElement("div");
+      controls.id = "chat-controls";
+      const buttons = document.createElement("div");
+      buttons.className = "control-buttons";
+      controls.append(buttons);
       const input = document.createElement("textarea");
-      root.append(input);
+      root.append(controls, input);
       document.body.append(root);
 
       api._clipboardAttachChatUploadButton(root);
-      expect(root.querySelector('[data-action="foundry-paste-eater-chat-upload"]')).toBeTruthy();
+      expect(buttons.querySelector('[data-action="foundry-paste-eater-chat-upload"]')).toBeTruthy();
       api._clipboardBindChatRoot(root);
       api._clipboardBindChatRoot(root);
       expect(root.getAttribute("data-foundry-paste-eater-chat-root")).toBe("true");
@@ -771,6 +776,20 @@ describe("ui and hook integration helpers", () => {
 
       api._clipboardAttachChatUploadButton(root);
       expect(root.querySelector('[data-action="foundry-paste-eater-chat-upload"]')).toBeNull();
+    });
+
+    it("creates a compact chat action row when chat controls lack a button group", () => {
+      const root = document.createElement("form");
+      const controls = document.createElement("div");
+      controls.id = "chat-controls";
+      root.append(controls, document.createElement("textarea"));
+      document.body.append(root);
+
+      api._clipboardAttachChatUploadButton(root);
+
+      const buttons = controls.querySelector(".foundry-paste-eater-chat-buttons");
+      expect(buttons).toBeTruthy();
+      expect(buttons?.querySelector('[data-action="foundry-paste-eater-chat-upload"]')).toBeTruthy();
     });
 
     it("binds chat roots from rendered chat input elements", () => {
@@ -1420,10 +1439,10 @@ describe("ui and hook integration helpers", () => {
         "enable-tile-replacement": {scope: "world", config: true, default: true, type: Boolean},
         "enable-scene-paste-tool": {scope: "world", config: true, default: true, type: Boolean},
         "enable-scene-upload-tool": {scope: "world", config: true, default: true, type: Boolean},
-        "default-empty-canvas-target": {scope: "world", config: true, default: "tile", type: String},
-        "create-backing-actors": {scope: "world", config: true, default: false, type: Boolean},
+        "default-empty-canvas-target": {scope: "world", config: true, default: "active-layer", type: String},
+        "create-backing-actors": {scope: "world", config: true, default: true, type: Boolean},
         "chat-media-display": {scope: "world", config: true, default: "thumbnail", type: String},
-        "canvas-text-paste-mode": {scope: "world", config: true, default: "disabled", type: String},
+        "canvas-text-paste-mode": {scope: "world", config: true, default: "scene-notes", type: String},
         "scene-paste-prompt-mode": {scope: "world", config: true, default: "auto", type: String},
         "selected-token-paste-mode": {scope: "world", config: true, default: "prompt", type: String},
         "upload-path-organization": {scope: "world", config: true, default: "context-user-month", type: String},
@@ -1459,8 +1478,8 @@ describe("ui and hook integration helpers", () => {
 
       await globalThis.game.settings.set("foundry-paste-eater", "image-location-source", "s3");
       await globalThis.game.settings.set("foundry-paste-eater", "verbose-logging", true);
-      await globalThis.game.settings.set("foundry-paste-eater", "default-empty-canvas-target", "active-layer");
-      await globalThis.game.settings.set("foundry-paste-eater", "canvas-text-paste-mode", "scene-notes");
+      await globalThis.game.settings.set("foundry-paste-eater", "default-empty-canvas-target", "token");
+      await globalThis.game.settings.set("foundry-paste-eater", "canvas-text-paste-mode", "disabled");
       await globalThis.game.settings.set("foundry-paste-eater", "selected-token-paste-mode", "scene-only");
 
       const app = new api.FoundryPasteEaterRecommendedDefaultsConfig();
@@ -1472,18 +1491,20 @@ describe("ui and hook integration helpers", () => {
       expect(dialog.data.content).toContain("Only configurable world behavior settings are changed here.");
       expect(dialog.data.content).toContain("Default empty-canvas paste target");
       expect(dialog.data.content).not.toContain("Pasted media source");
+      expect(dialog.data.buttons.apply.label).toContain('<i class="fa-solid fa-wand-magic-sparkles"></i>');
+      expect(dialog.data.buttons.cancel.label).toContain('<i class="fa-solid fa-xmark"></i>');
 
       await dialog.data.buttons.apply.callback();
 
-      expect(env.settingsValues.get("foundry-paste-eater.default-empty-canvas-target")).toBe("tile");
-      expect(env.settingsValues.get("foundry-paste-eater.create-backing-actors")).toBe(false);
-      expect(env.settingsValues.get("foundry-paste-eater.canvas-text-paste-mode")).toBe("disabled");
+      expect(env.settingsValues.get("foundry-paste-eater.default-empty-canvas-target")).toBe("active-layer");
+      expect(env.settingsValues.get("foundry-paste-eater.create-backing-actors")).toBe(true);
+      expect(env.settingsValues.get("foundry-paste-eater.canvas-text-paste-mode")).toBe("scene-notes");
       expect(env.settingsValues.get("foundry-paste-eater.selected-token-paste-mode")).toBe("prompt");
       expect(env.settingsValues.get("foundry-paste-eater.upload-path-organization")).toBe("context-user-month");
       expect(env.settingsValues.get("foundry-paste-eater.image-location-source")).toBe("s3");
       expect(env.settingsValues.get("foundry-paste-eater.verbose-logging")).toBe(true);
       expect(globalThis.ui.notifications.info).toHaveBeenCalledWith(
-        "Foundry Paste Eater: Applied 5 recommended world settings."
+        "Foundry Paste Eater: Applied 4 recommended world settings."
       );
     });
 

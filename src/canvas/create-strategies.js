@@ -153,7 +153,7 @@ const CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES = {
       };
       if (actor?.id) {
         tokenData.actorId = actor.id;
-        tokenData.actorLink = false;
+        tokenData.actorLink = true;
       }
 
       return [tokenData];

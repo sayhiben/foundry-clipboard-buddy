@@ -30,6 +30,14 @@ function _clipboardGetSettingsThatDifferFromDefaults({scope = "world", config = 
     .sort((left, right) => left.displayName.localeCompare(right.displayName));
 }
 
+function _clipboardCreateDialogButtonLabel(iconClassName, label) {
+  const safeLabel = foundry.utils.escapeHTML(label || "");
+  const safeIconClassName = foundry.utils.escapeHTML(iconClassName || "");
+  return safeIconClassName
+    ? `<i class="${safeIconClassName}"></i> ${safeLabel}`
+    : safeLabel;
+}
+
 async function _clipboardApplyShippedDefaults({scope = "world", config = true} = {}) {
   const differences = _clipboardGetSettingsThatDifferFromDefaults({scope, config});
   for (const difference of differences) {
@@ -55,8 +63,10 @@ class FoundryPasteEaterRecommendedDefaultsConfig extends CLIPBOARD_IMAGE_FORM_AP
       buttons: differences.length
         ? {
           apply: {
-            icon: "fa-solid fa-wand-magic-sparkles",
-            label: `Apply ${differences.length} Change${differences.length === 1 ? "" : "s"}`,
+            label: _clipboardCreateDialogButtonLabel(
+              "fa-solid fa-wand-magic-sparkles",
+              `Apply ${differences.length} Change${differences.length === 1 ? "" : "s"}`
+            ),
             callback: async () => {
               const updatedKeys = await _clipboardApplyShippedDefaults();
               if (!updatedKeys.length) return;
@@ -64,14 +74,12 @@ class FoundryPasteEaterRecommendedDefaultsConfig extends CLIPBOARD_IMAGE_FORM_AP
             },
           },
           cancel: {
-            icon: "fa-solid fa-xmark",
-            label: "Cancel",
+            label: _clipboardCreateDialogButtonLabel("fa-solid fa-xmark", "Cancel"),
           },
         }
         : {
           close: {
-            icon: "fa-solid fa-check",
-            label: "Close",
+            label: _clipboardCreateDialogButtonLabel("fa-solid fa-check", "Close"),
           },
         },
       default: differences.length ? "apply" : "close",
@@ -83,6 +91,7 @@ class FoundryPasteEaterRecommendedDefaultsConfig extends CLIPBOARD_IMAGE_FORM_AP
 
 module.exports = {
   FoundryPasteEaterRecommendedDefaultsConfig,
+  _clipboardCreateDialogButtonLabel,
   _clipboardGetSettingsThatDifferFromDefaults,
   _clipboardApplyShippedDefaults,
 };
