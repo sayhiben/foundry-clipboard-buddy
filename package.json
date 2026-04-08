@@ -8,6 +8,7 @@
     "copy": "npm run build:runtime && rm -rf dist && mkdir -p dist && cp ./foundry-paste-eater.js dist/ && cp ./foundry-paste-eater.css dist/ && cp ./README.md dist/ && cp ./TESTING.md dist/ && cp ./CHANGELOG.md dist/ && cp ./LICENSE.md dist/ && cp ./module.json dist/ && cp -R ./templates dist/",
     "copyWin": "npm run build:runtime && if exist dist rmdir /S /Q dist && mkdir dist && copy module.json dist && copy foundry-paste-eater.js dist && copy foundry-paste-eater.css dist && copy README.md dist && copy TESTING.md dist && copy CHANGELOG.md dist && copy LICENSE.md dist && xcopy templates dist\\templates /E /I /Y",
     "lint": "eslint .",
+    "handoff:validate": "node scripts/validate-handoff.js",
     "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
     "verify:bundle": "node scripts/verify-bundle.js",
     "verify:release": "node scripts/verify-release.js",

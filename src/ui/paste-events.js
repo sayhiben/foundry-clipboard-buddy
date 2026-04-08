@@ -1,4 +1,7 @@
-const {_clipboardSetHiddenMode} = require("../state");
+const {
+  CLIPBOARD_IMAGE_BOUND_EVENT_DOCUMENTS,
+  _clipboardSetHiddenMode,
+} = require("../state");
 const {
   _clipboardDescribeDataTransfer,
   _clipboardDescribePasteContext,
@@ -68,6 +71,16 @@ function _clipboardOnMouseDown(event) {
   _clipboardFocusGameRoot();
 }
 
+function _clipboardBindEventDocument(eventDocument = document) {
+  if (!eventDocument?.addEventListener) return;
+  if (CLIPBOARD_IMAGE_BOUND_EVENT_DOCUMENTS.has(eventDocument)) return;
+
+  eventDocument.addEventListener("keydown", _clipboardOnKeydown);
+  eventDocument.addEventListener("mousedown", _clipboardOnMouseDown, true);
+  eventDocument.addEventListener("paste", _clipboardOnPaste);
+  CLIPBOARD_IMAGE_BOUND_EVENT_DOCUMENTS.add(eventDocument);
+}
+
 function _clipboardResolveNativePasteRoute({
   hasMediaInput = false,
   hasTextInput = false,
@@ -96,6 +109,8 @@ function _clipboardResolveNativePasteRoute({
 }
 
 function _clipboardOnPaste(event) {
+  if (event.defaultPrevented) return;
+
   _clipboardLog("debug", "Received paste event.", {
     targetTagName: event.target?.tagName || null,
     isChatTarget: Boolean(_clipboardGetChatRootFromTarget(event.target)),
@@ -202,6 +217,7 @@ module.exports = {
   _clipboardGetGameRoot,
   _clipboardFocusGameRoot,
   _clipboardShouldRestoreGameFocus,
+  _clipboardBindEventDocument,
   _clipboardOnMouseDown,
   _clipboardResolveNativePasteRoute,
   _clipboardOnPaste,

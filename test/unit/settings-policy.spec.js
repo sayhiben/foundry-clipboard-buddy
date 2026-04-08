@@ -233,6 +233,8 @@ describe("settings and permission helpers", () => {
 
     it("reads behavior defaults and alternate modes", () => {
       expect(api._clipboardGetDefaultEmptyCanvasTarget()).toBe("active-layer");
+      expect(api._clipboardGetConfiguredPastedTokenActorType()).toBe("ask");
+      expect(api._clipboardShouldLockPastedTokenRotation()).toBe(true);
       expect(api._clipboardGetChatMediaDisplayMode()).toBe("thumbnail");
       expect(api._clipboardGetCanvasTextPasteMode()).toBe("scene-notes");
       expect(api._clipboardGetScenePastePromptMode()).toBe("auto");
@@ -241,6 +243,8 @@ describe("settings and permission helpers", () => {
       expect(api._clipboardShouldCreateBackingActors()).toBe(true);
 
       env.settingsValues.set("foundry-paste-eater.default-empty-canvas-target", "token");
+      env.settingsValues.set("foundry-paste-eater.pasted-token-actor-type", "npc");
+      env.settingsValues.set("foundry-paste-eater.lock-pasted-token-rotation", false);
       env.settingsValues.set("foundry-paste-eater.chat-media-display", "link-only");
       env.settingsValues.set("foundry-paste-eater.canvas-text-paste-mode", "scene-notes");
       env.settingsValues.set("foundry-paste-eater.scene-paste-prompt-mode", "always");
@@ -249,6 +253,8 @@ describe("settings and permission helpers", () => {
       env.settingsValues.set("foundry-paste-eater.create-backing-actors", true);
 
       expect(api._clipboardGetDefaultEmptyCanvasTarget()).toBe("token");
+      expect(api._clipboardGetConfiguredPastedTokenActorType()).toBe("npc");
+      expect(api._clipboardShouldLockPastedTokenRotation()).toBe(false);
       expect(api._clipboardGetChatMediaDisplayMode()).toBe("link-only");
       expect(api._clipboardGetCanvasTextPasteMode()).toBe("scene-notes");
       expect(api._clipboardGetScenePastePromptMode()).toBe("always");
@@ -262,8 +268,12 @@ describe("settings and permission helpers", () => {
       env.settingsValues.set("foundry-paste-eater.chat-media-display", "full-preview");
       env.settingsValues.set("foundry-paste-eater.scene-paste-prompt-mode", "never");
       env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "scene-only");
+      env.settingsValues.set("foundry-paste-eater.pasted-token-actor-type", "ask");
+      env.settingsValues.set("foundry-paste-eater.lock-pasted-token-rotation", true);
 
       expect(api._clipboardGetDefaultEmptyCanvasTarget()).toBe("active-layer");
+      expect(api._clipboardGetConfiguredPastedTokenActorType()).toBe("ask");
+      expect(api._clipboardShouldLockPastedTokenRotation()).toBe(true);
       expect(api._clipboardGetChatMediaDisplayMode()).toBe("full-preview");
       expect(api._clipboardGetScenePastePromptMode()).toBe("never");
       expect(api._clipboardGetSelectedTokenPasteMode()).toBe("scene-only");
@@ -271,6 +281,8 @@ describe("settings and permission helpers", () => {
 
     it("falls back to safe defaults for unsupported behavior values", () => {
       env.settingsValues.set("foundry-paste-eater.default-empty-canvas-target", "weird");
+      env.settingsValues.set("foundry-paste-eater.pasted-token-actor-type", "weird");
+      env.settingsValues.set("foundry-paste-eater.lock-pasted-token-rotation", "weird");
       env.settingsValues.set("foundry-paste-eater.chat-media-display", "weird");
       env.settingsValues.set("foundry-paste-eater.canvas-text-paste-mode", "weird");
       env.settingsValues.set("foundry-paste-eater.scene-paste-prompt-mode", "weird");
@@ -278,6 +290,8 @@ describe("settings and permission helpers", () => {
       env.settingsValues.set("foundry-paste-eater.upload-path-organization", "weird");
 
       expect(api._clipboardGetDefaultEmptyCanvasTarget()).toBe("tile");
+      expect(api._clipboardGetConfiguredPastedTokenActorType()).toBe("ask");
+      expect(api._clipboardShouldLockPastedTokenRotation()).toBe(true);
       expect(api._clipboardGetChatMediaDisplayMode()).toBe("thumbnail");
       expect(api._clipboardGetCanvasTextPasteMode()).toBe("disabled");
       expect(api._clipboardGetScenePastePromptMode()).toBe("auto");

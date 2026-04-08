@@ -52,7 +52,7 @@
 * Support Foundry V13
 * Replace private canvas clipboard and pointer access with public APIs
 * Replace deprecated global `KeyboardManager` and `FilePicker` access with V13 namespaces
-* Clean up the manifest for V13-only compatibility
+* Clean up the manifest for Foundry V13 compatibility
 
 ### 0.4.0
 * Support Foundry V12

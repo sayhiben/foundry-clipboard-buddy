@@ -15,10 +15,10 @@ The Foundry manifest title is `Foundry Paste Eater`.
 
 ## Compatibility
 
-- Foundry VTT `13.x`
-- Verified on `13.351`
+- Foundry VTT `v13+`
+- Currently verified through `14.359`
 
-This fork uses Foundry V13 public clipboard, canvas, `KeyboardManager`, and `FilePicker` APIs. It is not intended for V12 or earlier.
+This fork uses the public clipboard, canvas, `KeyboardManager`, and `FilePicker` APIs introduced in Foundry V13 and kept compatible with current v14 releases. It is not intended for V12 or earlier.
 
 ## Installation
 
@@ -91,12 +91,14 @@ These are the first-run defaults the module ships with.
 | Enable scene `Upload Media` tool | Enabled |
 | Default empty-canvas paste target | `Active layer` |
 | Create backing Actors for pasted tokens | Enabled |
+| Backing Actor type for pasted tokens | `Ask each time` |
+| Lock pasted token rotation by default | Enabled |
 | Chat media display | `Thumbnail` |
 | Canvas text paste mode | `Scene notes` |
 | Scene `Paste Media` prompt mode | `Auto` |
 | Selected token image paste mode | `Ask each time` |
 
-In practice, that means a fresh install favors active-layer canvas placement, Journal-backed scene notes for plain text, explicit token-image choices, organized storage paths, and reusable linked backing Actors for newly pasted tokens.
+In practice, that means a fresh install favors active-layer canvas placement, Journal-backed scene notes for plain text, explicit token-image choices, rotation-locked token defaults, organized storage paths, and a short prompt when new tokens are created so the user can choose between a scene-only token and a sensible backing-Actor option.
 
 Existing worlds keep whatever settings were already saved. If you want an older world to match the current recommended behavior profile, open `Game Settings -> Configure Settings -> Module Settings -> Foundry Paste Eater -> Apply recommended defaults` and review the changes before applying them. That review only touches configurable world behavior settings. It does not change the upload destination or client-only verbose logging.
 
@@ -163,7 +165,7 @@ On the canvas, replacement happens before creation.
 | No selection on Notes layer | Create a tile | Notes layer does not create notes from media |
 
 Additional canvas rules:
-- New pasted tokens create linked backing world Actors by default. Disable `Create backing Actors for pasted tokens` if you want lightweight actorless scene tokens instead.
+- New pasted tokens can create linked backing world Actors. When `Backing Actor type for pasted tokens` is set to `Ask each time`, users get a prompt with `Scene token only`, `System default`, and any additional system Actor types.
 - Large pasted images are scaled down for tile creation.
 - Video tiles are created muted, looping, and autoplaying.
 - `Caps Lock` hidden mode affects newly created canvas media, not replacement updates.
@@ -282,6 +284,8 @@ These are the settings most likely to change what your players expect.
 | `Selected token image paste mode` | `Ask each time` | Whether selected-token image paste stays scene-local, becomes actor-wide for eligible linked tokens, or prompts each time |
 | `Default empty-canvas paste target` | `Active layer` | Whether new canvas media follows the active layer, always creates tiles, or always creates tokens |
 | `Create backing Actors for pasted tokens` | Enabled | Whether new pasted tokens get linked world Actors or remain actorless scene tokens |
+| `Backing Actor type for pasted tokens` | `Ask each time` | Whether new pasted tokens prompt for `Scene token only` vs backing-Actor creation, or use a fixed Actor type |
+| `Lock pasted token rotation by default` | Enabled | Whether newly created pasted tokens start with `lockRotation` enabled on the scene token and any generated prototype token |
 | `Canvas text paste mode` | `Scene notes` | Whether plain text on the canvas creates notes or is disabled |
 | `Scene Paste Media prompt mode` | `Auto` | Whether the explicit scene paste button uses direct read, always opens the prompt, or never opens the prompt |
 | `Chat media display` | `Thumbnail` | How uploaded chat media is rendered |
@@ -345,6 +349,11 @@ Open Foundry's Game Settings and look for the module settings and menu.
   Chooses whether new canvas media follows the active layer, always creates tiles, or always creates tokens.
 - `Create backing Actors for pasted tokens`
   When enabled, newly pasted tokens also get world Actor documents and start linked to them. When disabled, pasted tokens remain actorless scene tokens.
+- `Backing Actor type for pasted tokens`
+  Chooses how the module handles backing Actors for new pasted tokens when backing Actors are enabled.
+  `Ask each time` opens a prompt with `Scene token only`, `System default`, and any additional system Actor types. `System default` follows the current game system's configured default Actor type.
+- `Lock pasted token rotation by default`
+  When enabled, newly pasted scene tokens start with `lockRotation` enabled, and any generated backing Actor prototype token keeps that same default.
 
 ### Canvas text
 

@@ -37,7 +37,9 @@ Many workflows choose between replacement and creation based on the current scen
 
 ## Test Environment
 
-Validate on Foundry VTT `13.351` as a GM with the module enabled.
+Validate on a supported Foundry VTT `v13+` build as a GM with the module enabled.
+
+For release validation, run this checklist against the newest supported build or builds you care about. At the time of writing, the manifest floor is v13 and the current verified build is `14.359`.
 
 Prepare a world with:
 - One scene with a visible grid
@@ -102,14 +104,20 @@ Use these commands as the normal maintainer verification ladder:
 2. Set `Default empty-canvas paste target` to `Token`, clear selection, and paste a static image.
    Expected: a new token appears snapped to the grid, with its shortest side normalized to one grid square.
 3. Leave the default `Create backing Actors for pasted tokens` setting enabled and inspect a newly pasted token.
-   Expected: the token has a backing world Actor, is linked to it, and opens normally for editing.
-4. Disable `Create backing Actors for pasted tokens`, paste another token, and inspect it.
-   Expected: the token is actorless and does not unexpectedly create a world Actor.
-5. Set `Default empty-canvas paste target` to `Tile`, then paste a large image onto the Tiles layer.
+   Expected: the token-creation prompt appears with `Scene token only` and `System default`, plus any additional Actor types exposed by the current system.
+4. Choose `Scene token only` from that prompt and inspect the created token.
+   Expected: the token is actorless, does not unexpectedly create a world Actor, and has rotation locked by default.
+5. Repeat the same paste and choose `System default` from the prompt.
+   Expected: the token has a backing world Actor, is linked to it, opens normally for editing, and keeps rotation locked by default.
+6. If your game system exposes multiple Actor types, choose a non-default Actor type from the prompt and inspect the created Actor.
+   Expected: the backing Actor uses the selected Actor type instead of the system default, and its prototype token keeps rotation locked when that setting is enabled.
+7. Disable `Create backing Actors for pasted tokens`, paste another token, and inspect it.
+   Expected: the token is created immediately as an actorless scene token without the prompt.
+8. Set `Default empty-canvas paste target` to `Tile`, then paste a large image onto the Tiles layer.
    Expected: the created tile scales down to fit roughly one-third of the scene width while preserving aspect ratio.
-6. Hold `Caps Lock` during media paste on the canvas.
+9. Hold `Caps Lock` during media paste on the canvas.
    Expected: the newly created tile or token is hidden.
-7. Copy a Foundry placeable, then paste media on the canvas with the normal keyboard or browser paste path.
+10. Copy a Foundry placeable, then paste media on the canvas with the normal keyboard or browser paste path.
    Expected: Foundry's copied-object buffer takes priority and the module does not create media.
 
 ### 2. Media Replacement
@@ -315,15 +323,19 @@ Leave the default `Canvas text paste mode = Scene notes` setting enabled before 
    Expected: new pasted media follows the configured target consistently.
 12. Toggle `Create backing Actors for pasted tokens`.
    Expected: when enabled, newly pasted tokens open normally for editing and are linked to their backing Actor; when disabled, pasted tokens are actorless.
-13. Toggle `Selected token image paste mode` between `Scene token only`, `Actor portrait + linked token art`, and `Ask each time`.
+13. Toggle `Backing Actor type for pasted tokens` between `Ask each time`, `System default`, and another Actor type while `Create backing Actors for pasted tokens` is enabled.
+   Expected: `Ask each time` opens the creation prompt, `System default` creates a backing Actor without prompting, and an explicit Actor type creates that type without prompting.
+14. Toggle `Lock pasted token rotation by default`.
+   Expected: when enabled, newly pasted tokens and generated prototype tokens keep `lockRotation`; when disabled, newly pasted tokens can rotate normally.
+15. Toggle `Selected token image paste mode` between `Scene token only`, `Actor portrait + linked token art`, and `Ask each time`.
    Expected: selected-token image pastes follow the configured behavior without affecting tile replacement or non-token canvas creation.
-13. Toggle `Chat media display`.
+16. Toggle `Chat media display`.
    Expected: chat posts switch between full preview, thumbnail preview, and link-only output.
-14. Toggle `Canvas text paste mode` to `Disabled`.
+17. Toggle `Canvas text paste mode` to `Disabled`.
    Expected: plain text canvas paste no longer creates scene notes.
-15. Toggle `Scene Paste Media prompt mode` between `Auto`, `Always show prompt`, and `Never show prompt`.
+18. Toggle `Scene Paste Media prompt mode` between `Auto`, `Always show prompt`, and `Never show prompt`.
    Expected: the explicit scene-control paste button follows the configured behavior.
-16. Open `Apply recommended defaults` from the module settings menu on a world that already has custom behavior settings.
+19. Open `Apply recommended defaults` from the module settings menu on a world that already has custom behavior settings.
    Expected: the review dialog lists only configurable world-setting diffs, applying it resets those behavior settings to the shipped defaults, and it does not change the upload destination or client-only `Verbose logging`.
 
 ### 13. Regression Watchlist

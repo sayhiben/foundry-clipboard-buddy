@@ -5,8 +5,24 @@ const {
   _clipboardScaleTokenDimensions,
 } = require("../media");
 const {_clipboardGetHiddenMode} = require("../state");
-const {_clipboardShouldCreateBackingActors} = require("../settings");
+const {
+  _clipboardShouldCreateBackingActors,
+  _clipboardGetConfiguredPastedTokenActorType,
+  _clipboardShouldLockPastedTokenRotation,
+} = require("../settings");
+const {
+  CLIPBOARD_IMAGE_PASTED_TOKEN_ACTOR_TYPE_ASK,
+} = require("../constants");
 const {_clipboardGetControlledPlaceables} = require("./selection");
+const {
+  _clipboardGetActorDocumentClass,
+  _clipboardPromptPastedTokenActorType,
+  _clipboardResolvePastedTokenActorType,
+} = require("./actor-types");
+
+function _clipboardGetDefaultActorType() {
+  return _clipboardResolvePastedTokenActorType(_clipboardGetConfiguredPastedTokenActorType());
+}
 
 function _clipboardGetTokenPosition(mousePos) {
   return canvas?.grid?.getTopLeftPoint?.(mousePos) || mousePos;
@@ -28,37 +44,6 @@ function _clipboardGetPastedDocumentName(path) {
   return normalizedName || trimmedName || "Pasted Media";
 }
 
-function _clipboardGetAvailableActorTypes() {
-  const candidates = [
-    game?.system?.documentTypes?.Actor,
-    game?.documentTypes?.Actor,
-    _clipboardGetActorDocumentClass()?.TYPES,
-  ];
-  const baseDocumentType = CONST?.BASE_DOCUMENT_TYPE;
-
-  for (const candidate of candidates) {
-    if (!Array.isArray(candidate) || !candidate.length) continue;
-    return candidate.filter(type => type && type !== baseDocumentType);
-  }
-
-  return [];
-}
-
-function _clipboardGetActorDocumentClass() {
-  return foundry?.documents?.Actor || globalThis.Actor || null;
-}
-
-function _clipboardGetDefaultActorType() {
-  const defaultType = CONFIG?.Actor?.defaultType || null;
-  const availableTypes = _clipboardGetAvailableActorTypes();
-
-  if (defaultType && (!availableTypes.length || availableTypes.includes(defaultType))) {
-    return defaultType;
-  }
-
-  return availableTypes[0] || defaultType || null;
-}
-
 function _clipboardGetPastedTokenActorImage(path, mediaKind) {
   if (mediaKind !== "video") return path;
 
@@ -68,14 +53,24 @@ function _clipboardGetPastedTokenActorImage(path, mediaKind) {
 }
 
 async function _clipboardCreatePastedTokenActor({path, mediaKind, width, height}) {
+  return _clipboardCreatePastedTokenActorWithType({
+    path,
+    mediaKind,
+    width,
+    height,
+    actorType: _clipboardGetDefaultActorType(),
+  });
+}
+
+async function _clipboardCreatePastedTokenActorWithType({path, mediaKind, width, height, actorType = null}) {
   const ActorDocument = _clipboardGetActorDocumentClass();
   if (!ActorDocument?.create) {
     throw new Error("Actor creation is unavailable for pasted tokens.");
   }
 
   const name = _clipboardGetPastedDocumentName(path);
-  const actorType = _clipboardGetDefaultActorType();
   const actorImage = _clipboardGetPastedTokenActorImage(path, mediaKind);
+  const lockRotation = _clipboardShouldLockPastedTokenRotation();
   const actorData = {
     name,
     img: actorImage,
@@ -86,6 +81,7 @@ async function _clipboardCreatePastedTokenActor({path, mediaKind, width, height}
       },
       width,
       height,
+      lockRotation,
     },
   };
 
@@ -120,6 +116,18 @@ async function _clipboardCreatePastedTokenActor({path, mediaKind, width, height}
   return actor;
 }
 
+async function _clipboardResolvePastedTokenCreationChoice() {
+  const configuredType = _clipboardGetConfiguredPastedTokenActorType();
+  if (configuredType === CLIPBOARD_IMAGE_PASTED_TOKEN_ACTOR_TYPE_ASK) {
+    return _clipboardPromptPastedTokenActorType();
+  }
+
+  return {
+    createBackingActor: true,
+    actorType: _clipboardResolvePastedTokenActorType(configuredType),
+  };
+}
+
 const CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES = {
   Token: {
     documentName: "Token",
@@ -129,14 +137,19 @@ const CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES = {
       const snappedPosition = _clipboardGetTokenPosition(mousePos);
       const dimensions = _clipboardScaleTokenDimensions(imgWidth, imgHeight);
       const createBackingActors = _clipboardShouldCreateBackingActors();
+      const lockRotation = _clipboardShouldLockPastedTokenRotation();
       let actor = null;
       if (createBackingActors) {
-        actor = await _clipboardCreatePastedTokenActor({
-          path,
-          mediaKind,
-          width: dimensions.width,
-          height: dimensions.height,
-        });
+        const tokenCreationChoice = await _clipboardResolvePastedTokenCreationChoice();
+        if (tokenCreationChoice?.createBackingActor) {
+          actor = await _clipboardCreatePastedTokenActorWithType({
+            path,
+            mediaKind,
+            width: dimensions.width,
+            height: dimensions.height,
+            actorType: tokenCreationChoice.actorType,
+          });
+        }
       }
 
       const tokenData = {
@@ -150,6 +163,7 @@ const CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES = {
         y: snappedPosition.y,
         hidden: _clipboardGetHiddenMode(),
         locked: false,
+        lockRotation,
       };
       if (actor?.id) {
         tokenData.actorId = actor.id;
@@ -201,10 +215,11 @@ module.exports = {
   CLIPBOARD_IMAGE_PLACEABLE_STRATEGIES,
   _clipboardGetTokenPosition,
   _clipboardGetPastedDocumentName,
-  _clipboardGetAvailableActorTypes,
   _clipboardGetActorDocumentClass,
   _clipboardGetDefaultActorType,
   _clipboardGetPastedTokenActorImage,
   _clipboardCreatePastedTokenActor,
+  _clipboardCreatePastedTokenActorWithType,
+  _clipboardResolvePastedTokenCreationChoice,
   _clipboardGetPlaceableStrategy,
 };

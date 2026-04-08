@@ -240,6 +240,8 @@ test("registers the intended first-run defaults for key behavior settings", asyn
       "allow-non-gm-scene-controls",
       "default-empty-canvas-target",
       "create-backing-actors",
+      "pasted-token-actor-type",
+      "lock-pasted-token-rotation",
       "canvas-text-paste-mode",
       "scene-paste-prompt-mode",
       "selected-token-paste-mode",
@@ -257,6 +259,8 @@ test("registers the intended first-run defaults for key behavior settings", asyn
     "allow-non-gm-scene-controls": true,
     "default-empty-canvas-target": "active-layer",
     "create-backing-actors": true,
+    "pasted-token-actor-type": "ask",
+    "lock-pasted-token-rotation": true,
     "canvas-text-paste-mode": "scene-notes",
     "scene-paste-prompt-mode": "auto",
     "selected-token-paste-mode": "prompt",
@@ -282,6 +286,9 @@ test("shipped default profile follows the active layer for empty-canvas media cr
       mimeType: "image/png",
     });
 
+    await expect(page.locator("button:has-text('Scene token only')")).toBeVisible();
+    await expect(page.locator("button:has-text('System default')")).toBeVisible();
+    await page.locator("button:has-text('System default')").click();
     await expect.poll(async () => (await getStateSnapshot(page)).tokens.length).toBe(before.tokens.length + 1);
     const after = await getStateSnapshot(page);
     expect(after.tiles.length).toBe(before.tiles.length);
@@ -357,6 +364,7 @@ test("default empty-canvas target steers new media creation across all configure
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {
     "default-empty-canvas-target": "active-layer",
+    "pasted-token-actor-type": "system-default",
   });
 
   try {
@@ -410,6 +418,7 @@ test("create-backing-actors controls whether new pasted tokens get backing actor
   const previousSettings = await setModuleSettings(page, {
     "default-empty-canvas-target": "token",
     "create-backing-actors": false,
+    "pasted-token-actor-type": "system-default",
   });
 
   try {
@@ -432,7 +441,10 @@ test("create-backing-actors controls whether new pasted tokens get backing actor
       actorExists: false,
     });
 
-    await setModuleSettings(page, {"create-backing-actors": true});
+    await setModuleSettings(page, {
+      "create-backing-actors": true,
+      "pasted-token-actor-type": "system-default",
+    });
     await setCanvasMousePosition(page, await getSafeCanvasPoint(page, 44));
     const beforeBacked = await getStateSnapshot(page);
     await dispatchFilePaste(page, {

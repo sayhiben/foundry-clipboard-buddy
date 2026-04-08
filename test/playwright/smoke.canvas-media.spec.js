@@ -55,6 +55,7 @@ const GM_CREDENTIALS = {
 const SMOKE_BASELINE_SETTINGS = {
   "default-empty-canvas-target": "active-layer",
   "create-backing-actors": true,
+  "pasted-token-actor-type": "system-default",
   "canvas-text-paste-mode": "scene-notes",
   "selected-token-paste-mode": "scene-only",
   "upload-path-organization": "flat",

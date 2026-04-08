@@ -13,6 +13,8 @@ const {
   CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING,
   CLIPBOARD_IMAGE_DEFAULT_EMPTY_CANVAS_TARGET_SETTING,
   CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING,
+  CLIPBOARD_IMAGE_PASTED_TOKEN_ACTOR_TYPE_SETTING,
+  CLIPBOARD_IMAGE_LOCK_PASTED_TOKEN_ROTATION_SETTING,
   CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_SETTING,
   CLIPBOARD_IMAGE_CANVAS_TEXT_PASTE_MODE_SETTING,
   CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING,
@@ -23,6 +25,7 @@ const {
   CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_ACTIVE_LAYER,
   CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TILE,
   CLIPBOARD_IMAGE_EMPTY_CANVAS_TARGET_TOKEN,
+  CLIPBOARD_IMAGE_PASTED_TOKEN_ACTOR_TYPE_ASK,
   CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW,
   CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_THUMBNAIL,
   CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY,
@@ -38,6 +41,7 @@ const {
   CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_CONTEXT_USER_MONTH,
 } = require("../constants");
 const {_clipboardGetRoleChoices, _clipboardGetSetting} = require("./schema");
+const {_clipboardGetPastedTokenActorTypeChoices} = require("../canvas/actor-types");
 
 function _clipboardGetRoleValue(roleKey) {
   return CONST?.USER_ROLES?.[roleKey] ?? CONST?.USER_ROLES?.PLAYER ?? 1;
@@ -123,6 +127,23 @@ function _clipboardGetDefaultEmptyCanvasTarget() {
 
 function _clipboardShouldCreateBackingActors() {
   return _clipboardSettingEnabled(CLIPBOARD_IMAGE_CREATE_BACKING_ACTORS_SETTING);
+}
+
+function _clipboardGetConfiguredPastedTokenActorType() {
+  const configuredType = _clipboardGetSetting(CLIPBOARD_IMAGE_PASTED_TOKEN_ACTOR_TYPE_SETTING);
+  const choices = _clipboardGetPastedTokenActorTypeChoices();
+
+  if (typeof configuredType === "string" && Object.hasOwn(choices, configuredType)) {
+    return configuredType;
+  }
+
+  return CLIPBOARD_IMAGE_PASTED_TOKEN_ACTOR_TYPE_ASK;
+}
+
+function _clipboardShouldLockPastedTokenRotation() {
+  const configuredValue = _clipboardGetSetting(CLIPBOARD_IMAGE_LOCK_PASTED_TOKEN_ROTATION_SETTING);
+  if (typeof configuredValue === "boolean") return configuredValue;
+  return true;
 }
 
 function _clipboardGetChatMediaDisplayMode() {
@@ -224,6 +245,8 @@ module.exports = {
   _clipboardCanUseSceneUploadTool,
   _clipboardGetDefaultEmptyCanvasTarget,
   _clipboardShouldCreateBackingActors,
+  _clipboardGetConfiguredPastedTokenActorType,
+  _clipboardShouldLockPastedTokenRotation,
   _clipboardGetChatMediaDisplayMode,
   _clipboardGetCanvasTextPasteMode,
   _clipboardGetScenePastePromptMode,

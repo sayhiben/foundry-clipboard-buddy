@@ -1,6 +1,7 @@
 // @ts-nocheck
 
 const CLIPBOARD_IMAGE_BOUND_CHAT_ROOTS = new WeakSet();
+const CLIPBOARD_IMAGE_BOUND_EVENT_DOCUMENTS = new WeakSet();
 
 let CLIPBOARD_IMAGE_LOCKED = false;
 let CLIPBOARD_HIDDEN_MODE = false;
@@ -35,6 +36,7 @@ function _clipboardSetHiddenMode(hiddenMode) {
 
 module.exports = {
   CLIPBOARD_IMAGE_BOUND_CHAT_ROOTS,
+  CLIPBOARD_IMAGE_BOUND_EVENT_DOCUMENTS,
   _clipboardGetRuntimeState,
   _clipboardSetRuntimeState,
   _clipboardGetLocked,

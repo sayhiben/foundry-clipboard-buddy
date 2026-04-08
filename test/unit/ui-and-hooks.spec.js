@@ -12,6 +12,7 @@ describe("ui and hook integration helpers", () => {
     api = env.api;
     env.settingsValues.set("foundry-paste-eater.default-empty-canvas-target", "active-layer");
     env.settingsValues.set("foundry-paste-eater.create-backing-actors", true);
+    env.settingsValues.set("foundry-paste-eater.pasted-token-actor-type", "system-default");
     env.settingsValues.set("foundry-paste-eater.canvas-text-paste-mode", "scene-notes");
     env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "scene-only");
     env.settingsValues.set("foundry-paste-eater.upload-path-organization", "flat");
@@ -527,12 +528,78 @@ describe("ui and hook integration helpers", () => {
     it("creates chat messages directly", async () => {
       env.settingsRegistry.set("foundry-paste-eater.verbose-logging", {});
       env.settingsValues.set("foundry-paste-eater.verbose-logging", true);
+      env.settingsValues.set("core.rollMode", "gmroll");
+      await api._clipboardCreateChatMessage("folder/file.png");
+      expect(globalThis.foundry.documents.ChatMessage.create).toHaveBeenCalledWith(
+        {
+          content: expect.stringContaining("folder/file.png"),
+          speaker: {alias: "GM"},
+          user: "user-1",
+        },
+        {rollMode: "gmroll"}
+      );
+    });
+
+    it("uses v14 message visibility modes for chat media messages", async () => {
+      globalThis.game.version = "14.359";
+      globalThis.game.release.version = "14.359";
+      env.settingsValues.set("core.messageMode", "ic");
+
+      await api._clipboardCreateChatMessage("folder/file.png");
+
+      expect(globalThis.foundry.documents.ChatMessage.create).toHaveBeenCalledWith(
+        {
+          content: expect.stringContaining("folder/file.png"),
+          speaker: {alias: "GM"},
+          user: "user-1",
+        },
+        {messageMode: "ic"}
+      );
+    });
+
+    it("falls back to legacy rollMode on v14 and omits visibility options when none are configured", async () => {
+      globalThis.game.version = "14.359";
+      globalThis.game.release.version = "14.359";
+      env.settingsValues.set("core.messageMode", "   ");
+      env.settingsValues.set("core.rollMode", "gmroll");
+
+      await api._clipboardCreateChatMessage("folder/file.png");
+
+      expect(globalThis.foundry.documents.ChatMessage.create).toHaveBeenCalledWith(
+        {
+          content: expect.stringContaining("folder/file.png"),
+          speaker: {alias: "GM"},
+          user: "user-1",
+        },
+        {rollMode: "gmroll"}
+      );
+
+      globalThis.foundry.documents.ChatMessage.create.mockClear();
+      env.settingsValues.set("core.rollMode", "   ");
       await api._clipboardCreateChatMessage("folder/file.png");
       expect(globalThis.foundry.documents.ChatMessage.create).toHaveBeenCalledWith({
         content: expect.stringContaining("folder/file.png"),
         speaker: {alias: "GM"},
         user: "user-1",
       });
+    });
+
+    it("defaults unknown chat media to image output when no visibility mode is configured", async () => {
+      const originalRelease = globalThis.game.release;
+      globalThis.game.release = null;
+      globalThis.game.version = "";
+      env.settingsValues.set("core.rollMode", "");
+
+      expect(api._clipboardCreateChatMediaContent("folder/file")).toContain("<img");
+      await api._clipboardCreateChatMessage("folder/file");
+      expect(globalThis.foundry.documents.ChatMessage.create).toHaveBeenCalledWith({
+        content: expect.stringContaining("folder/file"),
+        speaker: {alias: "GM"},
+        user: "user-1",
+      });
+
+      globalThis.game.release = originalRelease;
+      globalThis.game.version = "13.0.0";
     });
 
     it("rejects chat messages without a usable media path", async () => {
@@ -725,10 +792,50 @@ describe("ui and hook integration helpers", () => {
       expect(event.preventDefault).toHaveBeenCalled();
     });
 
+    it("ignores dragover when chat media is disabled or no media is present", () => {
+      env.settingsValues.set("foundry-paste-eater.enable-chat-media", false);
+      const root = document.createElement("form");
+      const disabledEvent = {
+        currentTarget: root,
+        dataTransfer: createDataTransfer({
+          items: [{
+            kind: "file",
+            getAsFile: () => new File(["x"], "drag.png", {type: "image/png"}),
+          }],
+        }),
+        preventDefault: vi.fn(),
+      };
+
+      api._clipboardOnChatDragOver(disabledEvent);
+      expect(disabledEvent.preventDefault).not.toHaveBeenCalled();
+
+      env.settingsValues.set("foundry-paste-eater.enable-chat-media", true);
+      const emptyEvent = {
+        currentTarget: root,
+        dataTransfer: createDataTransfer({
+          data: {"text/plain": "no file"},
+        }),
+        preventDefault: vi.fn(),
+      };
+
+      api._clipboardOnChatDragOver(emptyEvent);
+      expect(emptyEvent.preventDefault).not.toHaveBeenCalled();
+    });
+
     it("clears dragover styling when leaving the chat root", () => {
       const root = document.createElement("form");
       api._clipboardOnChatDragLeave({currentTarget: root, relatedTarget: null});
       expect(root.classList.contains("foundry-paste-eater-chat-drop-target")).toBe(false);
+    });
+
+    it("keeps dragover styling while the pointer stays inside the chat root", () => {
+      const root = document.createElement("form");
+      const child = document.createElement("div");
+      root.append(child);
+      api._clipboardToggleChatDropTarget(root, true);
+
+      api._clipboardOnChatDragLeave({currentTarget: root, relatedTarget: child});
+      expect(root.classList.contains("foundry-paste-eater-chat-drop-target")).toBe(true);
     });
 
     it("handles dropped chat media", async () => {
@@ -749,6 +856,40 @@ describe("ui and hook integration helpers", () => {
       api._clipboardOnChatDrop(event);
       await flush();
       expect(event.preventDefault).toHaveBeenCalled();
+    });
+
+    it("ignores dropped chat media when disabled or unsupported", () => {
+      const root = document.createElement("form");
+      env.settingsValues.set("foundry-paste-eater.enable-chat-media", false);
+      const disabledEvent = {
+        currentTarget: root,
+        target: root,
+        dataTransfer: createDataTransfer({
+          items: [{
+            kind: "file",
+            getAsFile: () => new File(["x"], "drag.png", {type: "image/png"}),
+          }],
+        }),
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+
+      api._clipboardOnChatDrop(disabledEvent);
+      expect(disabledEvent.preventDefault).not.toHaveBeenCalled();
+
+      env.settingsValues.set("foundry-paste-eater.enable-chat-media", true);
+      const unsupportedEvent = {
+        currentTarget: root,
+        target: root,
+        dataTransfer: createDataTransfer({
+          data: {"text/plain": "no file"},
+        }),
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+
+      api._clipboardOnChatDrop(unsupportedEvent);
+      expect(unsupportedEvent.preventDefault).not.toHaveBeenCalled();
     });
 
     it("adds and binds the chat upload button once", () => {
@@ -778,6 +919,35 @@ describe("ui and hook integration helpers", () => {
       expect(root.querySelector('[data-action="foundry-paste-eater-chat-upload"]')).toBeNull();
     });
 
+    it("removes orphaned chat upload buttons and temporary rows when the feature is disabled", () => {
+      const root = document.createElement("form");
+      const controls = document.createElement("div");
+      controls.id = "chat-controls";
+      const temporaryButtons = document.createElement("div");
+      temporaryButtons.className = "control-buttons foundry-paste-eater-chat-buttons";
+      const button = document.createElement("button");
+      button.dataset.action = "foundry-paste-eater-chat-upload";
+      temporaryButtons.append(button);
+      controls.append(temporaryButtons);
+      document.body.append(root, controls);
+
+      env.settingsValues.set("foundry-paste-eater.enable-chat-upload-button", false);
+      api._clipboardAttachChatUploadButton(root);
+
+      expect(document.querySelector('[data-action="foundry-paste-eater-chat-upload"]')).toBeNull();
+      expect(document.querySelector(".foundry-paste-eater-chat-buttons")).toBeNull();
+    });
+
+    it("does not add duplicate chat upload buttons when one already exists", () => {
+      const root = document.createElement("form");
+      const existingButton = document.createElement("button");
+      existingButton.dataset.action = "foundry-paste-eater-chat-upload";
+      root.append(existingButton);
+
+      api._clipboardAttachChatUploadButton(root);
+      expect(root.querySelectorAll('[data-action="foundry-paste-eater-chat-upload"]')).toHaveLength(1);
+    });
+
     it("creates a compact chat action row when chat controls lack a button group", () => {
       const root = document.createElement("form");
       const controls = document.createElement("div");
@@ -792,6 +962,25 @@ describe("ui and hook integration helpers", () => {
       expect(buttons?.querySelector('[data-action="foundry-paste-eater-chat-upload"]')).toBeTruthy();
     });
 
+    it("mounts the chat upload button into v14 chat controls without relying on a form root", () => {
+      const chatMessage = document.createElement("prose-mirror");
+      chatMessage.id = "chat-message";
+      const controls = document.createElement("div");
+      controls.id = "chat-controls";
+      const hiddenButtons = document.createElement("div");
+      hiddenButtons.className = "control-buttons";
+      hiddenButtons.hidden = true;
+      controls.append(hiddenButtons);
+      document.body.append(chatMessage, controls);
+
+      api._clipboardAttachChatUploadButton(chatMessage);
+
+      const button = controls.querySelector('[data-action="foundry-paste-eater-chat-upload"]');
+      expect(button).toBeTruthy();
+      expect(button?.parentElement?.classList.contains("foundry-paste-eater-chat-buttons")).toBe(true);
+      expect(button?.parentElement?.hidden).toBe(false);
+    });
+
     it("binds chat roots from rendered chat input elements", () => {
       const root = document.createElement("form");
       const input = document.createElement("textarea");
@@ -804,6 +993,49 @@ describe("ui and hook integration helpers", () => {
         text: "not-element",
       });
       expect(root.querySelector('[data-action="foundry-paste-eater-chat-upload"]')).toBeTruthy();
+    });
+
+    it("binds the v14 chat input and controls from rendered chat input elements", () => {
+      const chatMessage = document.createElement("prose-mirror");
+      chatMessage.id = "chat-message";
+      const controls = document.createElement("div");
+      controls.id = "chat-controls";
+      const messageModes = document.createElement("div");
+      messageModes.id = "message-modes";
+      controls.append(messageModes);
+      document.body.append(chatMessage, controls);
+
+      api._clipboardOnRenderChatInput(null, {
+        "#chat-message": chatMessage,
+        "#chat-controls": controls,
+        "#message-modes": messageModes,
+      });
+
+      expect(chatMessage.getAttribute("data-foundry-paste-eater-chat-root")).toBe("true");
+      expect(controls.getAttribute("data-foundry-paste-eater-chat-root")).toBe("true");
+      expect(messageModes.getAttribute("data-foundry-paste-eater-chat-root")).toBe("true");
+      expect(controls.querySelector('[data-action="foundry-paste-eater-chat-upload"]')).toBeTruthy();
+    });
+  });
+
+  describe("_clipboardBindEventDocument", () => {
+    it("binds document listeners only once per document", () => {
+      const detachedDocument = {
+        addEventListener: vi.fn(),
+      };
+
+      api._clipboardBindEventDocument(detachedDocument);
+      api._clipboardBindEventDocument(detachedDocument);
+
+      expect(detachedDocument.addEventListener).toHaveBeenCalledTimes(3);
+      expect(detachedDocument.addEventListener).toHaveBeenCalledWith("keydown", api._clipboardOnKeydown);
+      expect(detachedDocument.addEventListener).toHaveBeenCalledWith("mousedown", api._clipboardOnMouseDown, true);
+      expect(detachedDocument.addEventListener).toHaveBeenCalledWith("paste", api._clipboardOnPaste);
+    });
+
+    it("ignores documents that cannot register listeners", () => {
+      expect(() => api._clipboardBindEventDocument(null)).not.toThrow();
+      expect(() => api._clipboardBindEventDocument({})).not.toThrow();
     });
   });
 
@@ -977,6 +1209,64 @@ describe("ui and hook integration helpers", () => {
       expect(event.preventDefault).toHaveBeenCalled();
     });
 
+    it("classifies native paste routes across all supported outcomes", () => {
+      expect(api._clipboardResolveNativePasteRoute({
+        hasMediaInput: true,
+        hasArtFieldTarget: true,
+      })).toEqual({route: "art-field-media"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasMediaInput: true,
+        isChatTarget: true,
+        canUseChatMedia: true,
+      })).toEqual({route: "chat-media"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasMediaInput: true,
+        isChatTarget: true,
+        canUseChatMedia: false,
+      })).toEqual({route: "ignore-chat-media-disabled"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasMediaInput: true,
+        isEditableTarget: true,
+      })).toEqual({route: "ignore-editable-media"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasMediaInput: true,
+        canvasContextEligible: true,
+      })).toEqual({route: "canvas-media"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasMediaInput: true,
+        canvasContextEligible: false,
+      })).toEqual({route: "ignore-media-ineligible"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasTextInput: true,
+        isChatTarget: true,
+      })).toEqual({route: "ignore-chat-text"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasTextInput: true,
+        isEditableTarget: true,
+      })).toEqual({route: "ignore-editable-text"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasTextInput: true,
+        canvasContextEligible: true,
+      })).toEqual({route: "canvas-text"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasTextInput: true,
+        canvasContextEligible: false,
+      })).toEqual({route: "ignore-text-ineligible"});
+      expect(api._clipboardResolveNativePasteRoute()).toEqual({route: "ignore-empty"});
+    });
+
+    it("returns null game roots cleanly and restores focus by adding tabindex when needed", () => {
+      document.body.innerHTML = "";
+      expect(api._clipboardGetGameRoot()).toBeNull();
+      expect(api._clipboardFocusGameRoot()).toBe(false);
+
+      document.body.innerHTML = '<div class="game"></div>';
+      const root = document.querySelector(".game");
+      expect(root.hasAttribute("tabindex")).toBe(false);
+      expect(api._clipboardFocusGameRoot()).toBe(true);
+      expect(root.getAttribute("tabindex")).toBe("0");
+    });
+
     it("routes chat media paste events through the chat pipeline", async () => {
       const root = document.createElement("form");
       root.setAttribute("data-foundry-paste-eater-chat-root", "true");
@@ -998,6 +1288,148 @@ describe("ui and hook integration helpers", () => {
       api._clipboardOnPaste(event);
       await flush();
       expect(event.preventDefault).toHaveBeenCalled();
+    });
+
+    it("ignores already-handled, empty, disabled-chat, and unsupported-editable paste events", () => {
+      const chatRoot = document.createElement("form");
+      chatRoot.setAttribute("data-foundry-paste-eater-chat-root", "true");
+      const chatInput = document.createElement("textarea");
+      chatRoot.append(chatInput);
+      document.body.append(chatRoot);
+
+      api._clipboardOnPaste({defaultPrevented: true});
+
+      const emptyEvent = {
+        target: document.createElement("div"),
+        clipboardData: createDataTransfer({}),
+        preventDefault: vi.fn(),
+      };
+      api._clipboardOnPaste(emptyEvent);
+      expect(emptyEvent.preventDefault).not.toHaveBeenCalled();
+
+      env.settingsValues.set("foundry-paste-eater.enable-chat-media", false);
+      const disabledChatEvent = {
+        target: chatInput,
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            getAsFile: () => new File(["x"], "chat.png", {type: "image/png"}),
+          }],
+        }),
+        preventDefault: vi.fn(),
+      };
+      api._clipboardOnPaste(disabledChatEvent);
+      expect(disabledChatEvent.preventDefault).not.toHaveBeenCalled();
+
+      env.settingsValues.set("foundry-paste-eater.enable-chat-media", true);
+      const unsupportedEditable = document.createElement("textarea");
+      unsupportedEditable.name = "notes";
+      const editableMediaEvent = {
+        target: unsupportedEditable,
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            getAsFile: () => new File(["x"], "sheet.png", {type: "image/png"}),
+          }],
+        }),
+        preventDefault: vi.fn(),
+      };
+      api._clipboardOnPaste(editableMediaEvent);
+      expect(editableMediaEvent.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it("stops paste handling early when conflicts block art-field, chat, canvas-media, and canvas-text routes", () => {
+      api._clipboardSetRuntimeState({locked: true});
+
+      document.body.innerHTML = `
+        <div class="game" tabindex="0"></div>
+        <section data-appid="actor-app"><input id="art-field" name="img"></section>
+        <form data-foundry-paste-eater-chat-root="true"><textarea id="chat-input"></textarea></form>
+      `;
+      globalThis.ui.windows["actor-app"] = {
+        object: {documentName: "Actor"},
+      };
+
+      const artFieldEvent = {
+        target: document.getElementById("art-field"),
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            getAsFile: () => new File(["x"], "art.png", {type: "image/png"}),
+          }],
+        }),
+        preventDefault: vi.fn(),
+      };
+      api._clipboardOnPaste(artFieldEvent);
+      expect(artFieldEvent.preventDefault).not.toHaveBeenCalled();
+
+      const chatEvent = {
+        target: document.getElementById("chat-input"),
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            getAsFile: () => new File(["x"], "chat.png", {type: "image/png"}),
+          }],
+        }),
+        preventDefault: vi.fn(),
+      };
+      api._clipboardOnPaste(chatEvent);
+      expect(chatEvent.preventDefault).not.toHaveBeenCalled();
+
+      document.querySelector(".game").focus();
+      const canvasMediaEvent = {
+        target: document.querySelector(".game"),
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            getAsFile: () => new File(["x"], "scene.png", {type: "image/png"}),
+          }],
+        }),
+        preventDefault: vi.fn(),
+      };
+      api._clipboardOnPaste(canvasMediaEvent);
+      expect(canvasMediaEvent.preventDefault).not.toHaveBeenCalled();
+
+      const canvasTextEvent = {
+        target: document.querySelector(".game"),
+        clipboardData: createDataTransfer({
+          data: {"text/plain": "blocked text"},
+        }),
+        preventDefault: vi.fn(),
+      };
+      api._clipboardOnPaste(canvasTextEvent);
+      expect(canvasTextEvent.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it("ignores ineligible image routes and logs unsupported editable targets with dataset names", () => {
+      document.body.innerHTML = '<div class="game" tabindex="0"></div><div id="target"></div>';
+      const imageEvent = {
+        target: document.getElementById("target"),
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            getAsFile: () => new File(["x"], "scene.png", {type: "image/png"}),
+          }],
+        }),
+        preventDefault: vi.fn(),
+      };
+      api._clipboardOnPaste(imageEvent);
+      expect(imageEvent.preventDefault).not.toHaveBeenCalled();
+
+      const editable = document.createElement("textarea");
+      editable.dataset.edit = "texture.src";
+      const editableMediaEvent = {
+        target: editable,
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            getAsFile: () => new File(["x"], "sheet.png", {type: "image/png"}),
+          }],
+        }),
+        preventDefault: vi.fn(),
+      };
+      api._clipboardOnPaste(editableMediaEvent);
+      expect(editableMediaEvent.preventDefault).not.toHaveBeenCalled();
     });
 
     it("routes canvas text paste events through the note pipeline", async () => {
@@ -1030,6 +1462,34 @@ describe("ui and hook integration helpers", () => {
       api._clipboardOnPaste(event);
       expect(event.preventDefault).not.toHaveBeenCalled();
     });
+
+    it("leaves ineligible canvas text paste alone and ignores art-field focus restoration", () => {
+      document.body.innerHTML = `
+        <div class="game" tabindex="0"></div>
+        <div id="board"><canvas id="board-canvas"></canvas></div>
+        <input id="art-field" name="img">
+      `;
+      const artField = document.getElementById("art-field");
+      artField.focus();
+
+      expect(api._clipboardShouldRestoreGameFocus(artField)).toBe(false);
+
+      const event = {
+        target: document.querySelector(".game"),
+        clipboardData: createDataTransfer({
+          data: {"text/plain": "No canvas focus"},
+        }),
+        preventDefault: vi.fn(),
+      };
+      artField.focus();
+      api._clipboardOnPaste(event);
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it("returns false for non-element focus-restore targets and ignores those mousedown events", () => {
+      expect(api._clipboardShouldRestoreGameFocus({})).toBe(false);
+      expect(() => api._clipboardOnMouseDown({target: {}})).not.toThrow();
+    });
   });
 
   describe("keydown handling and config ui", () => {
@@ -1052,6 +1512,19 @@ describe("ui and hook integration helpers", () => {
       expect(api._clipboardGetRuntimeState().hiddenMode).toBe(true);
       expect(event.preventDefault).not.toHaveBeenCalled();
       expect(window.navigator.clipboard.read).not.toHaveBeenCalled();
+    });
+
+    it("clears hidden paste mode when modifier state is no longer active", () => {
+      api._clipboardSetRuntimeState({hiddenMode: true});
+
+      api._clipboardOnKeydown({
+        ctrlKey: false,
+        metaKey: false,
+        code: "KeyV",
+        getModifierState: () => false,
+      });
+
+      expect(api._clipboardGetRuntimeState().hiddenMode).toBe(false);
     });
 
     it("ignores keydowns that should not trigger clipboard handling", () => {
@@ -1374,6 +1847,88 @@ describe("ui and hook integration helpers", () => {
       expect(globalThis.game.settings.set).toHaveBeenCalledWith("foundry-paste-eater", "image-location", "final-folder");
       expect(globalThis.game.settings.set).toHaveBeenCalledWith("foundry-paste-eater", "image-location-bucket", "");
     });
+
+    it("defaults blank destination form values and preserves picker fallbacks", async () => {
+      const {FoundryPasteEaterDestinationConfig} = env.runtime;
+      const app = new FoundryPasteEaterDestinationConfig();
+      const summaryField = {value: ""};
+      const endpointField = {value: ""};
+      const bucketGroup = {toggleClass: vi.fn()};
+      const endpointGroup = {toggleClass: vi.fn()};
+
+      app.form = {
+        elements: {
+          source: {
+            value: "",
+            options: [{value: "auto"}],
+            add: vi.fn(function add(option) {
+              this.options.push(option);
+            }),
+          },
+          target: {value: "   "},
+          bucket: {value: "   "},
+        },
+        querySelector: vi.fn(selector => {
+          if (selector === '[data-role="destination-summary"]') return summaryField;
+          if (selector === '[data-role="s3-endpoint"]') return endpointField;
+          return null;
+        }),
+      };
+      app.element = {
+        find: vi.fn(selector => selector.includes("endpoint") ? endpointGroup : bucketGroup),
+      };
+
+      app._refreshFormState();
+      expect(summaryField.value).toContain("Automatic");
+      expect(endpointField.value).toBe("");
+
+      app._applyPickerSelection("", {
+        activeSource: "",
+        target: "picker-folder",
+        sources: {},
+      }, "auto");
+      expect(app.form.elements.source.value).toBe("auto");
+      expect(app.form.elements.target.value).toBe("picker-folder");
+
+      await app._updateObject(null, {
+        source: "   ",
+        target: "   ",
+        bucket: "bucket-z",
+      });
+      expect(globalThis.game.settings.set).toHaveBeenCalledWith("foundry-paste-eater", "image-location-source", "auto");
+      expect(globalThis.game.settings.set).toHaveBeenCalledWith("foundry-paste-eater", "image-location", "pasted_images");
+      expect(globalThis.game.settings.set).toHaveBeenCalledWith("foundry-paste-eater", "image-location-bucket", "");
+      expect(JSON.parse(globalThis.game.settings.set.mock.calls.at(-1)[2])).toEqual(expect.arrayContaining([
+        expect.objectContaining({storedSource: "data", target: "pasted_images"}),
+        expect.objectContaining({storedSource: "auto", target: "pasted_images"}),
+      ]));
+    });
+
+    it("uses default browse values and initializes missing s3 picker state", () => {
+      const {FoundryPasteEaterDestinationConfig} = env.runtime;
+      const app = new FoundryPasteEaterDestinationConfig();
+      app.form = {
+        elements: {
+          source: {value: ""},
+          target: {value: "   "},
+          bucket: {value: "   "},
+        },
+      };
+
+      app._onBrowseDestination({
+        preventDefault: vi.fn(),
+        currentTarget: document.createElement("button"),
+      });
+      expect(env.MockFilePicker.instances.at(-1).current).toBe("pasted_images");
+
+      app.form.elements.source.value = "s3";
+      app._onBrowseDestination({
+        preventDefault: vi.fn(),
+        currentTarget: document.createElement("button"),
+      });
+      expect(env.MockFilePicker.instances.at(-1).sources.s3.bucket).toBe("");
+      expect(env.MockFilePicker.instances.at(-1).sources.s3.target).toBe("pasted_images");
+    });
   });
 
   describe("settings registration and hook wiring", () => {
@@ -1441,6 +1996,8 @@ describe("ui and hook integration helpers", () => {
         "enable-scene-upload-tool": {scope: "world", config: true, default: true, type: Boolean},
         "default-empty-canvas-target": {scope: "world", config: true, default: "active-layer", type: String},
         "create-backing-actors": {scope: "world", config: true, default: true, type: Boolean},
+        "pasted-token-actor-type": {scope: "world", config: true, default: "ask", type: String},
+        "lock-pasted-token-rotation": {scope: "world", config: true, default: true, type: Boolean},
         "chat-media-display": {scope: "world", config: true, default: "thumbnail", type: String},
         "canvas-text-paste-mode": {scope: "world", config: true, default: "scene-notes", type: String},
         "scene-paste-prompt-mode": {scope: "world", config: true, default: "auto", type: String},
@@ -1458,6 +2015,12 @@ describe("ui and hook integration helpers", () => {
         TRUSTED: "Trusted Player",
         ASSISTANT: "Assistant GM",
         GAMEMASTER: "Gamemaster",
+      });
+      expect(registeredByKey.get("pasted-token-actor-type").choices).toMatchObject({
+        ask: "Ask each time",
+        "system-default": "System default",
+        character: "Character",
+        npc: "NPC",
       });
       for (const key of [
         "minimum-role-canvas-media",
@@ -1479,6 +2042,8 @@ describe("ui and hook integration helpers", () => {
       await globalThis.game.settings.set("foundry-paste-eater", "image-location-source", "s3");
       await globalThis.game.settings.set("foundry-paste-eater", "verbose-logging", true);
       await globalThis.game.settings.set("foundry-paste-eater", "default-empty-canvas-target", "token");
+      await globalThis.game.settings.set("foundry-paste-eater", "pasted-token-actor-type", "npc");
+      await globalThis.game.settings.set("foundry-paste-eater", "lock-pasted-token-rotation", false);
       await globalThis.game.settings.set("foundry-paste-eater", "canvas-text-paste-mode", "disabled");
       await globalThis.game.settings.set("foundry-paste-eater", "selected-token-paste-mode", "scene-only");
 
@@ -1498,18 +2063,21 @@ describe("ui and hook integration helpers", () => {
 
       expect(env.settingsValues.get("foundry-paste-eater.default-empty-canvas-target")).toBe("active-layer");
       expect(env.settingsValues.get("foundry-paste-eater.create-backing-actors")).toBe(true);
+      expect(env.settingsValues.get("foundry-paste-eater.pasted-token-actor-type")).toBe("ask");
+      expect(env.settingsValues.get("foundry-paste-eater.lock-pasted-token-rotation")).toBe(true);
       expect(env.settingsValues.get("foundry-paste-eater.canvas-text-paste-mode")).toBe("scene-notes");
       expect(env.settingsValues.get("foundry-paste-eater.selected-token-paste-mode")).toBe("prompt");
       expect(env.settingsValues.get("foundry-paste-eater.upload-path-organization")).toBe("context-user-month");
       expect(env.settingsValues.get("foundry-paste-eater.image-location-source")).toBe("s3");
       expect(env.settingsValues.get("foundry-paste-eater.verbose-logging")).toBe(true);
       expect(globalThis.ui.notifications.info).toHaveBeenCalledWith(
-        "Foundry Paste Eater: Applied 4 recommended world settings."
+        "Foundry Paste Eater: Applied 6 recommended world settings."
       );
     });
 
     it("opens a close-only recommended-defaults dialog when nothing differs", async () => {
       api._clipboardRegisterSettings();
+      env.settingsValues.set("foundry-paste-eater.pasted-token-actor-type", "ask");
       env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "prompt");
       env.settingsValues.set("foundry-paste-eater.upload-path-organization", "context-user-month");
 

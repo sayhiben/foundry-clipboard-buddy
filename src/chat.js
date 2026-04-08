@@ -59,6 +59,39 @@ function _clipboardCreateChatMediaContent(path) {
   return figure.outerHTML;
 }
 
+function _clipboardGetFoundryGeneration() {
+  const version = String(game?.release?.version || game?.version || "");
+  const generation = Number.parseInt(version.split(".")[0], 10);
+  return Number.isNaN(generation) ? null : generation;
+}
+
+function _clipboardGetChatMessageVisibilityOptions() {
+  const settings = game?.settings;
+  if (typeof settings?.get !== "function") {
+    return null;
+  }
+
+  const generation = _clipboardGetFoundryGeneration();
+  if ((generation || 0) >= 14) {
+    const messageMode = settings.get("core", "messageMode");
+    if (typeof messageMode === "string" && messageMode.trim()) {
+      return {messageMode};
+    }
+
+    const legacyRollMode = settings.get("core", "rollMode");
+    if (typeof legacyRollMode === "string" && legacyRollMode.trim()) {
+      return {rollMode: legacyRollMode};
+    }
+    return null;
+  }
+
+  const rollMode = settings.get("core", "rollMode");
+  if (typeof rollMode === "string" && rollMode.trim()) {
+    return {rollMode};
+  }
+  return null;
+}
+
 async function _clipboardCreateChatMessage(path) {
   if (!path) {
     throw new Error("Cannot create a chat media message without a usable media path");
@@ -67,11 +100,15 @@ async function _clipboardCreateChatMessage(path) {
     path,
     mediaKind: _clipboardGetMediaKind({src: path}) || "image",
   });
-  return foundry.documents.ChatMessage.create({
+  const messageData = {
     content: _clipboardCreateChatMediaContent(path),
     speaker: foundry.documents.ChatMessage.getSpeaker(),
     user: game.user.id,
-  });
+  };
+  const visibilityOptions = _clipboardGetChatMessageVisibilityOptions();
+  return visibilityOptions
+    ? foundry.documents.ChatMessage.create(messageData, visibilityOptions)
+    : foundry.documents.ChatMessage.create(messageData);
 }
 
 async function _clipboardPostChatImage(blob) {

@@ -2,6 +2,8 @@ const SHIPPED_DEFAULT_SETTINGS = Object.freeze({
   "image-location-source": "data",
   "default-empty-canvas-target": "active-layer",
   "create-backing-actors": true,
+  "pasted-token-actor-type": "ask",
+  "lock-pasted-token-rotation": true,
   "chat-media-display": "thumbnail",
   "canvas-text-paste-mode": "scene-notes",
   "scene-paste-prompt-mode": "auto",
@@ -25,6 +27,8 @@ const CONFIGURABLE_WORLD_DEFAULT_SETTINGS = Object.freeze({
   "enable-scene-upload-tool": true,
   "default-empty-canvas-target": "active-layer",
   "create-backing-actors": true,
+  "pasted-token-actor-type": "ask",
+  "lock-pasted-token-rotation": true,
   "chat-media-display": "thumbnail",
   "canvas-text-paste-mode": "scene-notes",
   "scene-paste-prompt-mode": "auto",
@@ -34,6 +38,7 @@ const CONFIGURABLE_WORLD_DEFAULT_SETTINGS = Object.freeze({
 
 const USER_VISIBLE_SETTING_LABELS = Object.freeze({
   "default-empty-canvas-target": "Default empty-canvas paste target",
+  "lock-pasted-token-rotation": "Lock pasted token rotation by default",
   "selected-token-paste-mode": "Selected token image paste mode",
 });
 

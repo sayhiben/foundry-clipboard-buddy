@@ -33,6 +33,7 @@
 - `npm run zip`: zip `dist/` into a release archive in the repository root.
 - `npm run lint`: lint the runtime, unit tests, and Playwright helpers.
 - `npm test`: run the jsdom/Vitest unit suite with coverage checks.
+- `npm run handoff:validate`: validate the handoff snapshots and protocol metadata when you intentionally refresh handoff state.
 - `npm run typecheck`: run the JS + JSDoc contract check for the support/report surface and shared test contracts.
 - `npm run verify:bundle`: rebuild the runtime and fail if `foundry-paste-eater.js` differs from the committed artifact.
 - `npm run verify:release`: run the local release gate across lint, unit tests, typecheck, bundle parity, packaging, and smoke tests when Foundry is reachable.
@@ -312,7 +313,9 @@ Existing worlds keep their previously persisted settings. The GM-only `recommend
 - Prefer shared helpers over duplicating clipboard parsing logic between async clipboard reads and `DataTransfer` paste/drop handling.
 - Prefer shared helpers over duplicating picker/upload flow logic between scene and chat paths.
 - Keep logging routed through `_clipboardLog`; do not add new raw `console.*` calls unless there is a strong reason.
+- Treat diagnostic logging as first-class product behavior. Unless a workflow is intentionally silent, log every identifiable function or method step that materially narrows the debugging surface: what action started, what branch or target was chosen, what succeeded, what failed, and what warning or error conditions were encountered.
 - When adding structured log output, prefer the existing `_clipboardDescribe...` helpers or add similarly scoped helpers.
+- When logs describe a failure, include actionable remediation guidance whenever the module can reasonably infer it. Prefer guidance that helps both developers and users: what setting, permission, environment prerequisite, or fallback path should be checked next.
 - Route user-visible failures through the centralized diagnostics reporter instead of ad hoc `ui.notifications.error(...)` calls, so player, GM, and verbose-debug outputs stay consistent.
 - Keep permission and feature-policy logic centralized in `src/settings.js` or another dedicated policy seam. Do not scatter direct `game.settings.get(...)` checks throughout unrelated modules.
 - Keep modules domain-driven. Avoid reintroducing a single giant runtime file or a generic `utils.js` dumping ground.
@@ -324,6 +327,8 @@ Existing worlds keep their previously persisted settings. The GM-only `recommend
 ## Testing Guidance
 - Use the unit suite for deterministic runtime coverage and regression protection.
 - Use the Playwright smoke suite for stable automatable flows.
+- Unless a test is explicitly validating logging settings or quiet-mode behavior, run unit and smoke coverage with the module's most verbose logging configuration enabled. Treat maximum verbosity as the default verification posture so logfile output captures every identifiable workflow step and narrows failures to the smallest possible surface.
+- When adding or updating tests, prefer fixtures and assertions that preserve verbose diagnostics instead of muting them. A useful logfile should show where execution went, what decisions it made, which warnings or errors occurred, and what a developer or user should try next.
 - Use `TESTING.md` for manual QA cases that still matter: browser permission prompts, Safari/iOS/Android behavior, Forge/S3 integration, and visual animation/video validation.
 - Read `test/README.md` before changing the suite; it documents required env vars and current scope.
 - The local Foundry V13 test server lives in `/Users/sayhiben/dev/foundry-latest`. Start Docker first with `open -a Docker` if needed, then run `docker compose up --build -d` from that folder. Verify it is reachable with `curl -I http://127.0.0.1:30000/`.
@@ -360,6 +365,25 @@ Existing worlds keep their previously persisted settings. The GM-only `recommend
 - After changing SVG handling, upload naming, or browser-specific rendering behavior, run at least one targeted Firefox smoke in addition to unit tests.
 - After changing user-facing behavior, update `README.md`, `TESTING.md`, and `test/README.md` as needed.
 - After changing settings or permissions, do at least one live manual pass in addition to automated coverage so the Foundry settings UI and notifications are exercised end to end.
+
+## Handoff Protocol
+- At the start of a new session, read `AGENTS.md`, `handoff/current.md`, and `handoff/current.json` before making assumptions about project state.
+- When a session ends with meaningful code, test, release, CI, or product-decision changes, update both handoff snapshots:
+  - `handoff/current.md`
+  - `handoff/current.json`
+- Append a new event to `handoff/history.ndjson` for every meaningful milestone such as implementation batches, verification passes, release work, CI failures/fixes, or major design decisions.
+- Treat `handoff/history.ndjson` as append-only. Do not rewrite old events unless they are factually wrong. When the file is tracked, `npm run handoff:validate` enforces append-only updates relative to `HEAD`.
+- Keep `summary_lineage` in `handoff/current.json` additive. Do not replace older lineage entries when compacting again later.
+- Use repo-relative paths inside `handoff/current.json` for repository files such as `modified_files`, `untracked_paths`, and `files_to_read`. Do not encode workstation-specific absolute checkout paths there.
+- The handoff must reflect the real non-handoff git state. In particular:
+  - `repo_state.branch` must match the current branch
+  - `repo_state.head_commit` should be refreshed to the most recent useful snapshot base when the handoff is updated, but exact parity is not validator-enforced because the tracked handoff refresh itself may be the last commit in the series
+  - `repo_state.worktree_clean` must match the real non-handoff worktree
+  - when the non-handoff worktree is dirty, `modified_files` and `untracked_paths` must be updated to match `git status`
+- `handoff/` snapshot files are excluded from `repo_state` parity checks so the handoff can describe the repo without creating a self-referential dirty-state loop.
+- If you are ending a session with a dirty non-handoff worktree, record that explicitly in the handoff and include the immediate next step a future agent should take before proceeding.
+- Keep the most recent 5-10 user asks in `recent_turns`, and compress older context into structured decisions, implemented changes, open threads, and history events. These narrative fields are strongly recommended but no longer part of the minimum required handoff schema.
+- Run `npm run handoff:validate` before ending any substantial session that refreshed the handoff snapshots. This is a handoff-maintenance check, not part of `verify:release`.
 
 ## Suggested Verification Sequence
 - `npm run lint`

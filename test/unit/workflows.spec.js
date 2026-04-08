@@ -12,6 +12,7 @@ describe("paste and handler workflows", () => {
     api = env.api;
     env.settingsValues.set("foundry-paste-eater.default-empty-canvas-target", "active-layer");
     env.settingsValues.set("foundry-paste-eater.create-backing-actors", true);
+    env.settingsValues.set("foundry-paste-eater.pasted-token-actor-type", "system-default");
     env.settingsValues.set("foundry-paste-eater.canvas-text-paste-mode", "scene-notes");
     env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "scene-only");
     env.settingsValues.set("foundry-paste-eater.upload-path-organization", "flat");
@@ -45,12 +46,14 @@ describe("paste and handler workflows", () => {
           texture: {src: "path.png"},
           width: 2,
           height: 1,
+          lockRotation: true,
         }),
       ]);
       expect(globalThis.foundry.documents.Actor.create).toHaveBeenCalledWith(expect.objectContaining({
         img: "path.png",
         prototypeToken: expect.objectContaining({
           texture: {src: "path.png"},
+          lockRotation: true,
         }),
       }));
     });

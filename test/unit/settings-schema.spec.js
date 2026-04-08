@@ -30,12 +30,17 @@ describe("settings schema contract", () => {
   it("keeps recommended-default differences aligned with the shared labels", () => {
     api._clipboardRegisterSettings();
     env.settingsValues.set("foundry-paste-eater.default-empty-canvas-target", "token");
+    env.settingsValues.set("foundry-paste-eater.lock-pasted-token-rotation", false);
     env.settingsValues.set("foundry-paste-eater.selected-token-paste-mode", "scene-only");
 
     expect(api._clipboardGetSettingsThatDifferFromDefaults()).toEqual([
       expect.objectContaining({
         key: "default-empty-canvas-target",
         displayName: USER_VISIBLE_SETTING_LABELS["default-empty-canvas-target"],
+      }),
+      expect.objectContaining({
+        key: "lock-pasted-token-rotation",
+        displayName: USER_VISIBLE_SETTING_LABELS["lock-pasted-token-rotation"],
       }),
       expect.objectContaining({
         key: "selected-token-paste-mode",

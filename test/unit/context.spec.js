@@ -57,6 +57,7 @@ describe("canvas context helpers", () => {
 
     it("builds actor-backed token create data", async () => {
       env.settingsValues.set("foundry-paste-eater.create-backing-actors", true);
+      env.settingsValues.set("foundry-paste-eater.pasted-token-actor-type", "npc");
       api._clipboardSetRuntimeState({hiddenMode: true});
       await expect(api._clipboardGetPlaceableStrategy("Token").createData({
         path: "image.png",
@@ -75,26 +76,29 @@ describe("canvas context helpers", () => {
         y: 200,
         hidden: true,
         locked: false,
+        lockRotation: true,
       }]);
       expect(globalThis.foundry.documents.Actor.create).toHaveBeenCalledWith({
         name: "image",
-        type: "character",
+        type: "npc",
         img: "image.png",
         prototypeToken: {
           name: "image",
           texture: {src: "image.png"},
           width: 2,
           height: 1,
+          lockRotation: true,
         },
       });
     });
 
     it("uses the default actor icon for video-backed token actors", async () => {
-      await expect(api._clipboardCreatePastedTokenActor({
+      await expect(api._clipboardCreatePastedTokenActorWithType({
         path: "video.webm",
         mediaKind: "video",
         width: 1,
         height: 1,
+        actorType: "character",
       })).resolves.toMatchObject({
         id: "actor-1",
         img: "icons/svg/mystery-man.svg",
@@ -102,6 +106,7 @@ describe("canvas context helpers", () => {
           texture: {src: "video.webm"},
           width: 1,
           height: 1,
+          lockRotation: true,
         },
       });
       expect(globalThis.foundry.documents.Actor.create).toHaveBeenCalledWith({
@@ -113,6 +118,45 @@ describe("canvas context helpers", () => {
           texture: {src: "video.webm"},
           width: 1,
           height: 1,
+          lockRotation: true,
+        },
+      });
+    });
+
+    it("respects the token rotation-lock setting for new pasted tokens and backing actors", async () => {
+      env.settingsValues.set("foundry-paste-eater.create-backing-actors", true);
+      env.settingsValues.set("foundry-paste-eater.pasted-token-actor-type", "npc");
+      env.settingsValues.set("foundry-paste-eater.lock-pasted-token-rotation", false);
+
+      await expect(api._clipboardGetPlaceableStrategy("Token").createData({
+        path: "image.png",
+        imgWidth: 400,
+        imgHeight: 200,
+        mousePos: {x: 155, y: 245},
+        mediaKind: "image",
+      })).resolves.toEqual([{
+        actorId: "actor-1",
+        actorLink: true,
+        name: "image",
+        texture: {src: "image.png"},
+        width: 2,
+        height: 1,
+        x: 100,
+        y: 200,
+        hidden: false,
+        locked: false,
+        lockRotation: false,
+      }]);
+      expect(globalThis.foundry.documents.Actor.create).toHaveBeenCalledWith({
+        name: "image",
+        type: "npc",
+        img: "image.png",
+        prototypeToken: {
+          name: "image",
+          texture: {src: "image.png"},
+          width: 2,
+          height: 1,
+          lockRotation: false,
         },
       });
     });
@@ -140,12 +184,28 @@ describe("canvas context helpers", () => {
     });
 
     it("prefers the configured default actor type when it is allowed", () => {
+      env.settingsValues.set("foundry-paste-eater.pasted-token-actor-type", "system-default");
       globalThis.CONFIG.Actor.defaultType = "npc";
       expect(api._clipboardGetDefaultActorType()).toBe("npc");
     });
 
+    it("prefers the explicitly configured pasted-token actor type over the system default", () => {
+      env.settingsValues.set("foundry-paste-eater.pasted-token-actor-type", "npc");
+      globalThis.CONFIG.Actor.defaultType = "character";
+
+      expect(api._clipboardGetDefaultActorType()).toBe("npc");
+    });
+
     it("falls back to the first available actor type when the configured default is unavailable", () => {
+      env.settingsValues.set("foundry-paste-eater.pasted-token-actor-type", "system-default");
       globalThis.CONFIG.Actor.defaultType = "vehicle";
+      expect(api._clipboardGetDefaultActorType()).toBe("character");
+    });
+
+    it("falls back to the system default when the configured pasted-token actor type is unavailable", () => {
+      env.settingsValues.set("foundry-paste-eater.pasted-token-actor-type", "vehicle");
+      globalThis.CONFIG.Actor.defaultType = "character";
+
       expect(api._clipboardGetDefaultActorType()).toBe("character");
     });
 
@@ -195,6 +255,7 @@ describe("canvas context helpers", () => {
         y: 200,
         hidden: false,
         locked: false,
+        lockRotation: true,
       }]);
       expect(globalThis.foundry.documents.Actor.create).not.toHaveBeenCalled();
     });
@@ -735,6 +796,126 @@ describe("canvas context helpers", () => {
       globalThis.foundry.documents.Actor.TYPES = null;
 
       expect(api._clipboardGetAvailableActorTypes()).toEqual([]);
+    });
+
+    it("builds pasted-token actor-type choices with a system-default option", () => {
+      expect(api._clipboardGetPastedTokenActorTypeChoices()).toEqual({
+        ask: "Ask each time",
+        "system-default": "System default",
+        character: "Character",
+        npc: "NPC",
+      });
+    });
+
+    it("defaults the new-token creation prompt to the system-default actor choice when the dialog closes", async () => {
+      const prompt = api._clipboardPromptPastedTokenActorType();
+      expect(env.dialogInstances).toHaveLength(1);
+      env.dialogInstances.at(-1).data.close();
+
+      await expect(prompt).resolves.toEqual({
+        createBackingActor: true,
+        actorType: "character",
+      });
+    });
+
+    it("restores .game focus after the new-token creation prompt resolves", async () => {
+      document.body.innerHTML = '<div class="game" tabindex="0"></div><button id="other">Other</button>';
+      document.getElementById("other").focus();
+
+      const prompt = api._clipboardPromptPastedTokenActorType();
+      expect(env.dialogInstances).toHaveLength(1);
+      env.dialogInstances.at(-1).data.buttons.systemDefault.callback();
+
+      await expect(prompt).resolves.toEqual({
+        createBackingActor: true,
+        actorType: "character",
+      });
+      expect(document.activeElement).toBe(document.querySelector(".game"));
+    });
+
+    it("renders the new-token creation prompt with scene-only and system-default options", async () => {
+      const prompt = api._clipboardPromptPastedTokenActorType();
+      const dialog = env.dialogInstances.at(-1);
+
+      expect(dialog.data.buttons.actorless.label).toBe("Scene token only");
+      expect(dialog.data.buttons.systemDefault.label).toBe("System default (Character)");
+      expect(dialog.data.default).toBe("systemDefault");
+      expect(dialog.options.classes).toContain("foundry-paste-eater-token-create-dialog");
+      expect(dialog.options.width).toBe(760);
+
+      dialog.data.close();
+      await expect(prompt).resolves.toEqual({
+        createBackingActor: true,
+        actorType: "character",
+      });
+    });
+
+    it("offers explicit non-default actor types in the new-token creation prompt", async () => {
+      const prompt = api._clipboardPromptPastedTokenActorType();
+      const dialog = env.dialogInstances.at(-1);
+
+      expect(dialog.data.buttons["type-npc"].label).toBe("Create NPC Actor");
+      dialog.data.buttons["type-npc"].callback();
+
+      await expect(prompt).resolves.toEqual({
+        createBackingActor: true,
+        actorType: "npc",
+      });
+    });
+
+    it("falls back to the system-default actor choice when dialog support is unavailable", async () => {
+      const OriginalDialog = globalThis.Dialog;
+      globalThis.Dialog = undefined;
+
+      try {
+        await expect(api._clipboardPromptPastedTokenActorType()).resolves.toEqual({
+          createBackingActor: true,
+          actorType: "character",
+        });
+      } finally {
+        globalThis.Dialog = OriginalDialog;
+      }
+    });
+
+    it("creates actorless tokens when the pasted-token actor-type setting is ask and scene-only is chosen", async () => {
+      env.settingsValues.set("foundry-paste-eater.create-backing-actors", true);
+      env.settingsValues.set("foundry-paste-eater.pasted-token-actor-type", "ask");
+
+      const OriginalDialog = globalThis.Dialog;
+      globalThis.Dialog = class PromptDialog {
+        constructor(data) {
+          this.data = data;
+        }
+
+        render() {
+          this.data.buttons.actorless.callback();
+          return this;
+        }
+      };
+
+      try {
+        await expect(api._clipboardGetPlaceableStrategy("Token").createData({
+          path: "image.png",
+          imgWidth: 400,
+          imgHeight: 200,
+          mousePos: {x: 155, y: 245},
+          mediaKind: "image",
+        })).resolves.toEqual([{
+          name: "image",
+          texture: {src: "image.png"},
+          width: 2,
+          height: 1,
+          x: 100,
+          y: 200,
+          hidden: false,
+          locked: false,
+          lockRotation: true,
+        }]);
+      } finally {
+        globalThis.Dialog = OriginalDialog;
+      }
+
+      expect(globalThis.foundry.documents.Actor.create).not.toHaveBeenCalled();
     });
 
     it("falls back to the Foundry default token icon when actor default icons are unavailable", () => {

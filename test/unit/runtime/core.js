@@ -77,6 +77,7 @@ function createActor(env, data = {}) {
       },
       width: data.prototypeToken?.width ?? 1,
       height: data.prototypeToken?.height ?? 1,
+      lockRotation: data.prototypeToken?.lockRotation ?? false,
     },
     update: vi.fn(async updateData => {
       for (const [key, value] of Object.entries(updateData || {})) {
@@ -116,6 +117,7 @@ function createPlaceableDocument(documentName, data = {}) {
     texture: {
       src: data.texture?.src || "",
     },
+    lockRotation: data.lockRotation ?? false,
     actorId: data.actorId ?? data.actor?.id ?? null,
     actorLink: data.actorLink ?? false,
     actor: data.actor || null,
@@ -203,6 +205,8 @@ function loadRuntime(options = {}) {
     ["foundry-paste-eater.enable-scene-upload-tool", true],
     ["foundry-paste-eater.default-empty-canvas-target", "active-layer"],
     ["foundry-paste-eater.create-backing-actors", true],
+    ["foundry-paste-eater.pasted-token-actor-type", "ask"],
+    ["foundry-paste-eater.lock-pasted-token-rotation", true],
     ["foundry-paste-eater.chat-media-display", "thumbnail"],
     ["foundry-paste-eater.canvas-text-paste-mode", "scene-notes"],
     ["foundry-paste-eater.scene-paste-prompt-mode", "auto"],
@@ -519,6 +523,10 @@ function loadRuntime(options = {}) {
   globalThis.CONFIG = {
     Actor: {
       defaultType: "character",
+      typeLabels: {
+        character: "Character",
+        npc: "NPC",
+      },
     },
     JournalEntry: {
       noteIcons: {

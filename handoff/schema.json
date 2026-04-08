@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Foundry Paste Eater Handoff State",
+  "type": "object",
+  "required": [
+    "handoff_version",
+    "project",
+    "conversation",
+    "user_preferences",
+    "repo_state",
+    "release_state",
+    "validation_state",
+    "decisions",
+    "implemented_changes",
+    "open_threads",
+    "files_to_read",
+    "resume_prompt"
+  ],
+  "properties": {
+    "handoff_version": {
+      "type": "number"
+    },
+    "project": {
+      "type": "object",
+      "required": [
+        "name",
+        "module_id",
+        "repo_path",
+        "foundry_target"
+      ],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "module_id": {"type": "string", "minLength": 1},
+        "repo_path": {"type": "string", "minLength": 1},
+        "foundry_target": {"type": "string", "minLength": 1},
+        "live_module_path": {"type": "string"}
+      }
+    },
+    "conversation": {
+      "type": "object",
+      "required": [
+        "intent",
+        "tags"
+      ],
+      "properties": {
+        "intent": {"type": "string", "minLength": 1},
+        "tags": {
+          "type": "object",
+          "required": [
+            "domain",
+            "phase",
+            "platform",
+            "product",
+            "future"
+          ],
+          "properties": {
+            "domain": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+            "phase": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+            "platform": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+            "product": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+            "future": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+          }
+        }
+      }
+    },
+    "user_preferences": {
+      "type": "array",
+      "items": {"type": "string"},
+      "minItems": 1
+    },
+    "repo_state": {
+      "type": "object",
+      "required": [
+        "branch",
+        "package_version",
+        "latest_tag",
+        "head_commit",
+        "head_commit_subject",
+        "worktree_clean",
+        "modified_files",
+        "untracked_paths",
+        "note"
+      ],
+      "properties": {
+        "branch": {"type": "string", "minLength": 1},
+        "package_version": {"type": "string", "minLength": 1},
+        "latest_tag": {"type": "string", "minLength": 1},
+        "head_commit": {"type": "string", "minLength": 1},
+        "head_commit_subject": {"type": "string", "minLength": 1},
+        "worktree_clean": {"type": "boolean"},
+        "modified_files": {"type": "array", "items": {"type": "string"}},
+        "untracked_paths": {"type": "array", "items": {"type": "string"}},
+        "note": {"type": "string", "minLength": 1}
+      }
+    },
+    "release_state": {
+      "type": "object",
+      "required": [
+        "released_version",
+        "release_commit",
+        "release_title",
+        "release_url",
+        "manifest_url",
+        "download_url",
+        "post_release_note"
+      ],
+      "properties": {
+        "released_version": {"type": "string", "minLength": 1},
+        "release_commit": {"type": "string", "minLength": 1},
+        "release_title": {"type": "string", "minLength": 1},
+        "release_url": {"type": "string", "minLength": 1},
+        "manifest_url": {"type": "string", "minLength": 1},
+        "download_url": {"type": "string", "minLength": 1},
+        "post_release_note": {"type": "string", "minLength": 1}
+      }
+    },
+    "validation_state": {
+      "type": "object",
+      "required": [
+        "latest_local_release_pass",
+        "ci"
+      ],
+      "properties": {
+        "latest_local_release_pass": {"type": "object"},
+        "latest_local_unit_after_ci_fix": {"type": "object"},
+        "ci": {"type": "object"}
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "summary"],
+        "properties": {
+          "type": {"type": "string", "minLength": 1},
+          "summary": {"type": "string", "minLength": 1}
+        }
+      },
+      "minItems": 1
+    },
+    "implemented_changes": {
+      "type": "array",
+      "items": {"type": "string"},
+      "minItems": 1
+    },
+    "open_threads": {
+      "type": "array",
+      "items": {"type": "string"},
+      "minItems": 1
+    },
+    "files_to_read": {
+      "type": "array",
+      "items": {"type": "string"},
+      "minItems": 1
+    },
+    "recent_commands": {
+      "type": "array",
+      "items": {"type": "string"},
+      "minItems": 1
+    },
+    "recent_turns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "speaker",
+          "summary"
+        ],
+        "properties": {
+          "speaker": {"type": "string", "minLength": 1},
+          "summary": {"type": "string", "minLength": 1}
+        }
+      },
+      "minItems": 1
+    },
+    "summary_lineage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "note"
+        ],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "kind": {"type": "string", "minLength": 1},
+          "note": {"type": "string", "minLength": 1}
+        }
+      },
+      "minItems": 1
+    },
+    "compaction_protocol": {
+      "type": "object",
+      "required": [
+        "compact_at_fraction",
+        "recent_turn_budget_fraction",
+        "summary_budget_fraction",
+        "headroom_fraction",
+        "rules"
+      ],
+      "properties": {
+        "compact_at_fraction": {"type": "number"},
+        "recent_turn_budget_fraction": {"type": "number"},
+        "summary_budget_fraction": {"type": "number"},
+        "headroom_fraction": {"type": "number"},
+        "rules": {
+          "type": "array",
+          "items": {"type": "string"},
+          "minItems": 1
+        }
+      }
+    },
+    "resume_prompt": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

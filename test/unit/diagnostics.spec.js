@@ -709,6 +709,73 @@ describe("diagnostics and settings helpers", () => {
       })).toBe("the active S3-Compatible Storage destination (bucket-a)");
     });
 
+    it("covers storage-permission helper fallbacks and assertions", () => {
+      expect(api._clipboardIsStoragePermissionError("AccessDenied from backend")).toBe(true);
+      expect(api._clipboardIsStoragePermissionError("transport failed")).toBe(false);
+
+      globalThis.game.user.isGM = true;
+      globalThis.game.user.role = undefined;
+      expect(api._clipboardUserHasCorePermission("FILES_UPLOAD")).toBe(true);
+
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = globalThis.CONST.USER_ROLES.TRUSTED;
+      env.settingsValues.set("core.permissions", {
+        FILES_BROWSE: "invalid",
+        FILES_UPLOAD: [2],
+      });
+      expect(api._clipboardGetCorePermissionRoles("FILES_BROWSE")).toEqual([]);
+      expect(api._clipboardGetCurrentUserRole()).toBe(globalThis.CONST.USER_ROLES.TRUSTED);
+
+      expect(api._clipboardBuildStoragePermissionDestinationLabel({
+        source: "data",
+        bucket: "",
+      })).toBe("the active User Data destination");
+
+      env.settingsValues.set("core.permissions", {
+        FILES_BROWSE: [2],
+        FILES_UPLOAD: [2],
+      });
+      expect(api._clipboardBuildStoragePermissionResolution({
+        source: "data",
+        bucket: "",
+      })).toContain("backend write access");
+
+      const transportError = new Error("transport failed");
+      expect(api._clipboardWrapStoragePermissionError(transportError, {
+        source: "data",
+        target: "folder",
+        bucket: "",
+      }, "upload pasted media")).toBe(transportError);
+
+      expect(() => api._clipboardAssertUploadDestination({
+        source: "data",
+        bucket: "",
+      })).not.toThrow();
+      expect(() => api._clipboardAssertUploadDestination({
+        source: "s3",
+        bucket: "",
+      })).toThrow("bucket selection");
+    });
+
+    it("falls back cleanly when game user or settings data is missing", () => {
+      const originalGame = globalThis.game;
+      globalThis.game = {};
+      expect(api._clipboardGetCurrentUserRole()).toBe(globalThis.CONST.USER_ROLES.PLAYER);
+      expect(api._clipboardGetCorePermissionRoles("FILES_UPLOAD")).toEqual([]);
+
+      globalThis.game = {
+        user: {isGM: true},
+        settings: {},
+      };
+      expect(api._clipboardGetCurrentUserRole()).toBe(globalThis.CONST.USER_ROLES.GAMEMASTER);
+
+      globalThis.game = originalGame;
+      expect(api._clipboardBuildStoragePermissionDestinationLabel({
+        source: "s3",
+        bucket: "",
+      })).toBe("the active S3-Compatible Storage destination");
+    });
+
     it("describes upload destinations", () => {
       expect(api._clipboardDescribeDestination({
         storedSource: "auto",

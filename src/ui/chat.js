@@ -28,6 +28,37 @@ function _clipboardToggleChatDropTarget(root, active) {
   root.classList.toggle("foundry-paste-eater-chat-drop-target", active);
 }
 
+function _clipboardGetChatOwnerDocument(root) {
+  return root?.ownerDocument || document;
+}
+
+function _clipboardGetChatControls(root, ownerDocument = _clipboardGetChatOwnerDocument(root)) {
+  if (root?.id === "chat-controls") return root;
+
+  return root?.querySelector?.("#chat-controls")
+    || root?.closest?.("#chat-controls")
+    || ownerDocument.getElementById?.("chat-controls")
+    || null;
+}
+
+function _clipboardGetChatRoots(element) {
+  if (!(element instanceof HTMLElement)) return [];
+
+  const ownerDocument = _clipboardGetChatOwnerDocument(element);
+  const roots = new Set([element]);
+  const form = element.matches("form") ? element : (element.querySelector("form") || element.closest("form"));
+  const chatControls = _clipboardGetChatControls(element, ownerDocument);
+  const chatMessage = ownerDocument.getElementById?.("chat-message");
+  const messageModes = ownerDocument.getElementById?.("message-modes");
+
+  if (form instanceof HTMLElement) roots.add(form);
+  if (chatControls instanceof HTMLElement) roots.add(chatControls);
+  if (chatMessage instanceof HTMLElement) roots.add(chatMessage);
+  if (messageModes instanceof HTMLElement) roots.add(messageModes);
+
+  return Array.from(roots);
+}
+
 function _clipboardOnChatDragOver(event) {
   if (!_clipboardCanUseChatMedia()) return;
   const root = event.currentTarget;
@@ -65,10 +96,16 @@ function _clipboardOnChatDrop(event) {
 }
 
 function _clipboardSyncChatUploadButton(root) {
-  const existingButtons = Array.from(root.querySelectorAll(`[data-action="${CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION}"]`));
+  const ownerDocument = _clipboardGetChatOwnerDocument(root);
+  const chatControls = _clipboardGetChatControls(root, ownerDocument);
+  const form = root.matches("form") ? root : (root.querySelector("form") || root.closest("form"));
+  const mountRoot = chatControls || form || root;
+  const existingButtons = Array.from(mountRoot?.querySelectorAll?.(`[data-action="${CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION}"]`) || []);
   if (!_clipboardCanUseChatUploadButton()) {
-    for (const button of existingButtons) button.remove();
-    const temporaryContainers = Array.from(root.querySelectorAll(".foundry-paste-eater-chat-buttons"));
+    for (const button of ownerDocument.querySelectorAll(`[data-action="${CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION}"]`)) {
+      button.remove();
+    }
+    const temporaryContainers = Array.from(ownerDocument.querySelectorAll(".foundry-paste-eater-chat-buttons"));
     for (const container of temporaryContainers) {
       if (!container.childElementCount) container.remove();
     }
@@ -77,20 +114,17 @@ function _clipboardSyncChatUploadButton(root) {
 
   if (existingButtons.length) return;
 
-  const form = root.matches("form") ? root : (root.querySelector("form") || root.closest("form"));
-  if (!form) return;
-  const controls = form.querySelector("#chat-controls");
-  let mount = form;
-  if (controls) {
-    mount = controls.querySelector(".control-buttons");
+  let mount = mountRoot;
+  if (chatControls) {
+    mount = chatControls.querySelector(".foundry-paste-eater-chat-buttons, .control-buttons:not([hidden])");
     if (!mount) {
-      mount = document.createElement("div");
+      mount = ownerDocument.createElement("div");
       mount.className = "control-buttons foundry-paste-eater-chat-buttons";
-      controls.append(mount);
+      chatControls.append(mount);
     }
   }
 
-  const button = document.createElement("button");
+  const button = ownerDocument.createElement("button");
   button.type = "button";
   button.className = "ui-control icon fa-solid fa-file-image foundry-paste-eater-chat-upload";
   button.dataset.action = CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION;
@@ -108,6 +142,7 @@ function _clipboardAttachChatUploadButton(root) {
 function _clipboardBindChatRoot(root) {
   if (!root) return;
 
+  require("./paste-events")._clipboardBindEventDocument(_clipboardGetChatOwnerDocument(root));
   _clipboardSyncChatUploadButton(root);
   if (CLIPBOARD_IMAGE_BOUND_CHAT_ROOTS.has(root)) return;
 
@@ -120,9 +155,9 @@ function _clipboardBindChatRoot(root) {
 
 function _clipboardOnRenderChatInput(_app, elements) {
   for (const element of Object.values(elements || {})) {
-    if (!(element instanceof HTMLElement)) continue;
-    const root = element.matches("form") ? element : (element.closest("form") || element);
-    _clipboardBindChatRoot(root);
+    for (const root of _clipboardGetChatRoots(element)) {
+      _clipboardBindChatRoot(root);
+    }
   }
 }
 
