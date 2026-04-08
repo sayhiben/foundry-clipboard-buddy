@@ -244,10 +244,6 @@ function main() {
     cwd: rootDir,
     encoding: "utf8",
   }).trim();
-  const actualHead = execFileSync("git", ["rev-parse", "--short", "HEAD"], {
-    cwd: rootDir,
-    encoding: "utf8",
-  }).trim();
   const actualTag = execFileSync("git", ["describe", "--tags", "--abbrev=0"], {
     cwd: rootDir,
     encoding: "utf8",
