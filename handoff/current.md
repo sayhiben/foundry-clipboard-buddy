@@ -9,17 +9,17 @@ Carry forward a long-running implementation, testing, release, and support threa
 - Package version: `1.3.0`
 - Latest tag: `1.3.0`
 - Released tag commit: `8ab2fc9` (`Release 1.3.0`)
-- Snapshot base commit on `main`: `0f03226` (`Refine defaults and support tooling`)
+- Snapshot base commit on `main`: `6fe72f0` (`Refresh handoff snapshot`)
 - Latest CI run on `main`: `24111495040`
 - Latest CI status: `success`
 - Latest handoff validation: `passed`
 - Important release note:
   `1.3.0` is published and functionally fine, but the tag does not include the post-release CI-only coverage commit `f5ac610`.
 - Latest handoff-maintenance note:
-  the handoff protocol was tightened after strict review so it is repo-relative, non-release-gating, and append-only for `history.ndjson` once tracked.
+  the tracked handoff snapshot now needs periodic refreshes even on a clean branch, and the repo guidance currently emphasizes maximum-verbosity unit/smoke verification plus ignoring local `.playwright-cli/` browser-debug exhaust.
 
 ## Current Repo State
-The local non-handoff worktree was clean at the snapshot base commit `0f03226`. Handoff snapshot files under `handoff/` are intentionally excluded from repo-state parity so the handoff can be refreshed without creating a self-referential dirty-state loop.
+The local non-handoff worktree was clean at the snapshot base commit `6fe72f0`, and `main` matched `origin/main` when this refresh started. Handoff snapshot files under `handoff/` are intentionally excluded from repo-state parity so the handoff can be refreshed without creating a self-referential dirty-state loop.
 
 ### Modified Files
 - None outside the handoff snapshot files.
@@ -58,6 +58,7 @@ This thread has been a long-running hardening and release program for the module
 - Canvas text paste now defaults to `scene-notes`.
 - Selected token image paste defaults to `prompt`.
 - Upload path organization defaults to `context-user-month`.
+- Unless a test is explicitly about logging settings or quiet-mode behavior, unit and smoke verification should run with the module's most verbose logging configuration enabled.
 - The release is valid even though CI failed afterward, because the failure was coverage margin only.
 
 ## Shipped 1.3.0 Summary
@@ -133,7 +134,7 @@ See:
 ## Immediate Next Step For A New Agent
 1. Read `AGENTS.md`.
 2. Read this file and `handoff/current.json`.
-3. Inspect whether any new post-snapshot changes exist beyond the handoff refresh commit.
+3. Inspect whether any new post-snapshot changes exist beyond the clean `main` baseline at `6fe72f0`.
 4. Run `npm run handoff:validate` after refreshing the handoff snapshot again if you change the handoff files.
 5. Do not cut a new release until new post-snapshot work is understood and verified.
 
@@ -172,3 +173,4 @@ Recommended budgeting heuristics:
 - The thread accumulated many assistant close-out summaries during implementation and release work.
 - A system carry-forward summary later captured the release-pass state and pending files.
 - This handoff is intended to become the new canonical compaction root for future agents.
+- This refresh re-anchors the snapshot to the committed handoff baseline on `main` and records the current maintainer guidance around verbose diagnostics and local browser-debug artifacts.
