@@ -205,6 +205,74 @@ describe("ui and hook integration helpers", () => {
       restoreImage();
     });
 
+    it("routes pasted PDFs into focused PDF Journal page source fields before canvas handling", async () => {
+      const root = document.createElement("form");
+      root.id = "JournalEntryPageConfig-4";
+      root.className = "application sheet journal-page";
+      root.innerHTML = '<file-picker name="src"><input type="text" value=""></file-picker>';
+      document.body.append(root);
+      const page = env.createPage({type: "pdf"});
+      page.documentName = "JournalEntryPage";
+      globalThis.foundry.applications.instances = new Map([[root.id, {
+        id: root.id,
+        object: page,
+      }]]);
+      const field = root.querySelector("input");
+      field.focus();
+
+      const file = new File(["pdf"], "focused.pdf", {type: "application/pdf"});
+      const event = new Event("paste", {bubbles: true, cancelable: true});
+      Object.defineProperty(event, "clipboardData", {
+        configurable: true,
+        value: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "application/pdf",
+            getAsFile: () => file,
+          }],
+          files: [file],
+        }),
+      });
+
+      field.dispatchEvent(event);
+      await flush();
+
+      expect(field.value).toMatch(/^pasted_images\/focused-\d+\.pdf\?foundry-paste-eater=\d+$/);
+      expect(event.defaultPrevented).toBe(true);
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
+    it("ignores pasted PDFs in unsupported editable fields", async () => {
+      const root = document.createElement("section");
+      root.dataset.appid = "actor-sheet-pdf";
+      root.innerHTML = '<input type="text" name="src" value="original">';
+      document.body.append(root);
+      globalThis.ui.windows["actor-sheet-pdf"] = {object: {documentName: "Actor"}};
+      const field = root.querySelector("input");
+      field.focus();
+
+      const file = new File(["pdf"], "ignored.pdf", {type: "application/pdf"});
+      const event = new Event("paste", {bubbles: true, cancelable: true});
+      Object.defineProperty(event, "clipboardData", {
+        configurable: true,
+        value: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "application/pdf",
+            getAsFile: () => file,
+          }],
+          files: [file],
+        }),
+      });
+
+      field.dispatchEvent(event);
+      await flush();
+
+      expect(field.value).toBe("original");
+      expect(event.defaultPrevented).toBe(false);
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
     it("warns when direct scene paste is unavailable", () => {
       const originalClipboard = window.navigator.clipboard;
       Object.defineProperty(window.navigator, "clipboard", {
@@ -214,7 +282,7 @@ describe("ui and hook integration helpers", () => {
 
       api._clipboardHandleScenePasteAction();
       expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith(
-        "Foundry Paste Eater: Direct clipboard reads are unavailable here. Use your browser's Paste action or the Upload Media tool instead."
+        "Foundry Paste Eater: Direct clipboard reads are unavailable here. Use your browser's Paste action or the Upload Media/PDF tool instead."
       );
       Object.defineProperty(window.navigator, "clipboard", {
         configurable: true,
@@ -302,6 +370,34 @@ describe("ui and hook integration helpers", () => {
       restoreImage();
     });
 
+    it("handles PDFs pasted into the scene paste prompt", async () => {
+      const prompt = api._clipboardOpenScenePastePrompt();
+      const target = prompt.querySelector("#foundry-paste-eater-scene-paste-target");
+      const file = new File(["pdf"], "prompt.pdf", {type: "application/pdf"});
+      const event = new Event("paste", {bubbles: true, cancelable: true});
+      Object.defineProperty(event, "clipboardData", {
+        configurable: true,
+        value: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "application/pdf",
+            getAsFile: () => file,
+          }],
+          files: [file],
+        }),
+      });
+
+      target.dispatchEvent(event);
+      await flush();
+
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("Note", [
+        expect.objectContaining({
+          text: "prompt",
+        }),
+      ]);
+      expect(api._clipboardGetScenePastePrompt()).toBeNull();
+    });
+
     it("keeps the scene paste prompt open for unsupported pasted content", async () => {
       const prompt = api._clipboardOpenScenePastePrompt();
       const target = prompt.querySelector("#foundry-paste-eater-scene-paste-target");
@@ -317,7 +413,7 @@ describe("ui and hook integration helpers", () => {
       await flush();
 
       expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith(
-        "Foundry Paste Eater: No supported media was found in that paste."
+        "Foundry Paste Eater: No supported media or PDF was found in that paste."
       );
       expect(api._clipboardGetScenePastePrompt()).toBe(prompt);
       api._clipboardCloseScenePastePrompt(prompt);
@@ -345,6 +441,34 @@ describe("ui and hook integration helpers", () => {
       await flush();
 
       expect(prompt.querySelector("[data-role='message']").textContent).toContain("Paste did not create media");
+      expect(api._clipboardGetScenePastePrompt()).toBe(prompt);
+      api._clipboardSetRuntimeState({locked: false});
+      api._clipboardCloseScenePastePrompt(prompt);
+    });
+
+    it("keeps the scene paste prompt open when PDF handling returns false", async () => {
+      const prompt = api._clipboardOpenScenePastePrompt();
+      const target = prompt.querySelector("#foundry-paste-eater-scene-paste-target");
+      const file = new File(["pdf"], "prompt.pdf", {type: "application/pdf"});
+      api._clipboardSetRuntimeState({locked: true});
+
+      const event = new Event("paste", {bubbles: true, cancelable: true});
+      Object.defineProperty(event, "clipboardData", {
+        configurable: true,
+        value: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "application/pdf",
+            getAsFile: () => file,
+          }],
+          files: [file],
+        }),
+      });
+
+      target.dispatchEvent(event);
+      await flush();
+
+      expect(prompt.querySelector("[data-role='message']").textContent).toContain("Paste did not create a PDF note");
       expect(api._clipboardGetScenePastePrompt()).toBe(prompt);
       api._clipboardSetRuntimeState({locked: false});
       api._clipboardCloseScenePastePrompt(prompt);
@@ -406,6 +530,21 @@ describe("ui and hook integration helpers", () => {
       restoreImage();
     });
 
+    it("closes the scene paste prompt when direct read PDF succeeds", async () => {
+      window.navigator.clipboard.read.mockResolvedValueOnce([
+        {types: ["application/pdf"], getType: async () => new File(["pdf"], "direct.pdf", {type: "application/pdf"})},
+      ]);
+
+      const prompt = api._clipboardOpenScenePastePrompt();
+      await expect(api._clipboardTryScenePastePromptDirectRead(prompt)).resolves.toBe(true);
+      expect(api._clipboardGetScenePastePrompt()).toBeNull();
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("Note", [
+        expect.objectContaining({
+          text: "direct",
+        }),
+      ]);
+    });
+
     it("keeps the scene paste prompt open when direct read media cannot be applied", async () => {
       const restoreImage = withMockImage();
       window.navigator.clipboard.read.mockResolvedValueOnce([
@@ -421,6 +560,21 @@ describe("ui and hook integration helpers", () => {
       api._clipboardSetRuntimeState({locked: false});
       api._clipboardCloseScenePastePrompt(prompt);
       restoreImage();
+    });
+
+    it("keeps the scene paste prompt open when direct read PDF cannot be applied", async () => {
+      window.navigator.clipboard.read.mockResolvedValueOnce([
+        {types: ["application/pdf"], getType: async () => new File(["pdf"], "direct.pdf", {type: "application/pdf"})},
+      ]);
+      api._clipboardSetRuntimeState({locked: true});
+
+      const prompt = api._clipboardOpenScenePastePrompt();
+      await expect(api._clipboardTryScenePastePromptDirectRead(prompt)).resolves.toBe(false);
+      expect(prompt.querySelector("[data-role='message']").textContent).toContain("did not create a PDF note");
+      expect(api._clipboardGetScenePastePrompt()).toBe(prompt);
+
+      api._clipboardSetRuntimeState({locked: false});
+      api._clipboardCloseScenePastePrompt(prompt);
     });
 
     it("allows the scene paste prompt buttons to upload or cancel", async () => {
@@ -614,10 +768,10 @@ describe("ui and hook integration helpers", () => {
       };
 
       api._clipboardAddSceneControlButtons(controls);
-      expect(controls.tiles.tools["foundry-paste-eater-paste"]).toMatchObject({title: "Paste Media", button: true});
+      expect(controls.tiles.tools["foundry-paste-eater-paste"]).toMatchObject({title: "Paste Media or PDF", button: true});
       expect(controls.tiles.tools["foundry-paste-eater-paste"].onClick).toBeTypeOf("function");
       expect(controls.tiles.tools["foundry-paste-eater-paste"].onChange).toBe(controls.tiles.tools["foundry-paste-eater-paste"].onClick);
-      expect(controls.tokens.tools["foundry-paste-eater-upload"]).toMatchObject({title: "Upload Media", button: true});
+      expect(controls.tokens.tools["foundry-paste-eater-upload"]).toMatchObject({title: "Upload Media or PDF", button: true});
       expect(controls.tokens.tools["foundry-paste-eater-upload"].onClick).toBeTypeOf("function");
       expect(controls.tokens.tools["foundry-paste-eater-upload"].onChange).toBe(controls.tokens.tools["foundry-paste-eater-upload"].onClick);
       expect(controls.walls.tools["foundry-paste-eater-paste"]).toBeUndefined();
@@ -790,6 +944,20 @@ describe("ui and hook integration helpers", () => {
 
       api._clipboardOnChatDragOver(event);
       expect(event.preventDefault).toHaveBeenCalled();
+
+      const pdfEvent = {
+        currentTarget: root,
+        dataTransfer: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "application/pdf",
+            getAsFile: () => new File(["pdf"], "drag.pdf", {type: "application/pdf"}),
+          }],
+        }),
+        preventDefault: vi.fn(),
+      };
+      api._clipboardOnChatDragOver(pdfEvent);
+      expect(pdfEvent.preventDefault).toHaveBeenCalled();
     });
 
     it("ignores dragover when chat media is disabled or no media is present", () => {
@@ -856,6 +1024,31 @@ describe("ui and hook integration helpers", () => {
       api._clipboardOnChatDrop(event);
       await flush();
       expect(event.preventDefault).toHaveBeenCalled();
+    });
+
+    it("handles dropped chat PDFs", async () => {
+      const root = document.createElement("form");
+      const pdf = new File(["pdf"], "drag.pdf", {type: "application/pdf"});
+      const event = {
+        currentTarget: root,
+        target: root,
+        dataTransfer: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "application/pdf",
+            getAsFile: () => pdf,
+          }],
+          files: [pdf],
+        }),
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+
+      api._clipboardOnChatDrop(event);
+      await flush();
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(event.stopPropagation).toHaveBeenCalled();
+      expect(globalThis.game.messages.contents.at(-1).content).toContain("foundry-paste-eater-chat-pdf-message");
     });
 
     it("ignores dropped chat media when disabled or unsupported", () => {
@@ -1269,6 +1462,27 @@ describe("ui and hook integration helpers", () => {
 
     it("classifies native paste routes across all supported outcomes", () => {
       expect(api._clipboardResolveNativePasteRoute({
+        hasPdfInput: true,
+        hasPdfFieldTarget: true,
+      })).toEqual({route: "pdf-field"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasPdfInput: true,
+        isChatTarget: true,
+        canUseChatMedia: true,
+      })).toEqual({route: "chat-pdf"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasPdfInput: true,
+        isEditableTarget: true,
+      })).toEqual({route: "ignore-editable-pdf"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasPdfInput: true,
+        canvasContextEligible: true,
+      })).toEqual({route: "canvas-pdf"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasPdfInput: true,
+        canvasContextEligible: false,
+      })).toEqual({route: "ignore-pdf-ineligible"});
+      expect(api._clipboardResolveNativePasteRoute({
         hasMediaInput: true,
         hasArtFieldTarget: true,
       })).toEqual({route: "art-field-media"});
@@ -1346,6 +1560,60 @@ describe("ui and hook integration helpers", () => {
       api._clipboardOnPaste(event);
       await flush();
       expect(event.preventDefault).toHaveBeenCalled();
+    });
+
+    it("routes chat PDF paste events through the PDF chat pipeline", async () => {
+      const root = document.createElement("form");
+      root.setAttribute("data-foundry-paste-eater-chat-root", "true");
+      const input = document.createElement("textarea");
+      root.append(input);
+
+      const pdf = new File(["pdf"], "chat.pdf", {type: "application/pdf"});
+      const event = {
+        target: input,
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "application/pdf",
+            getAsFile: () => pdf,
+          }],
+          files: [pdf],
+        }),
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+
+      api._clipboardOnPaste(event);
+      await flush();
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(globalThis.game.messages.contents.at(-1).content).toContain("foundry-paste-eater-chat-pdf-message");
+    });
+
+    it("routes canvas PDF paste events through the PDF note pipeline", async () => {
+      document.querySelector(".game").focus();
+      const pdf = new File(["pdf"], "canvas.pdf", {type: "application/pdf"});
+      const event = {
+        target: document.querySelector(".game"),
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "application/pdf",
+            getAsFile: () => pdf,
+          }],
+          files: [pdf],
+        }),
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+
+      api._clipboardOnPaste(event);
+      await flush();
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("Note", [
+        expect.objectContaining({
+          text: "canvas",
+        }),
+      ]);
     });
 
     it("ignores already-handled, empty, disabled-chat, and unsupported-editable paste events", () => {

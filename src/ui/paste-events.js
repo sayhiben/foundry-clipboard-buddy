@@ -9,11 +9,15 @@ const {
 } = require("../diagnostics");
 const {
   _clipboardExtractImageInputFromDataTransfer,
+  _clipboardExtractPdfInputFromDataTransfer,
   _clipboardExtractTextInputFromDataTransfer,
   _clipboardGetChatRootFromTarget,
   _clipboardIsEditableTarget,
 } = require("../clipboard");
-const {_clipboardGetFocusedArtFieldTarget} = require("../field-targets");
+const {
+  _clipboardGetFocusedArtFieldTarget,
+  _clipboardGetFocusedPdfFieldTarget,
+} = require("../field-targets");
 const {_clipboardResolvePasteContext, _clipboardCanPasteToContext} = require("../context");
 const {
   _clipboardCanUseChatMedia,
@@ -21,6 +25,11 @@ const {
 const {
   _clipboardHandleImageInputWithTextFallback,
   _clipboardHandleArtFieldImageInput,
+  _clipboardHandleCanvasPdfInput,
+  _clipboardHandleChatPdfInput,
+  _clipboardHandlePdfFieldInput,
+  _clipboardCanPastePdfToCanvasContext,
+  _clipboardGetControlledSceneNoteDocuments,
   _clipboardHandleTextInput,
   _clipboardHasPasteConflict,
   _clipboardExecutePasteWorkflow,
@@ -61,6 +70,7 @@ function _clipboardFocusGameRoot() {
 function _clipboardShouldRestoreGameFocus(target) {
   if (!(target instanceof HTMLElement)) return false;
   if (_clipboardGetChatRootFromTarget(target)) return false;
+  if (_clipboardGetFocusedPdfFieldTarget(target)) return false;
   if (_clipboardIsEditableTarget(target)) return false;
   if (_clipboardGetFocusedArtFieldTarget(target)) return false;
   return Boolean(target.closest("#board, #scene-controls"));
@@ -82,14 +92,25 @@ function _clipboardBindEventDocument(eventDocument = document) {
 }
 
 function _clipboardResolveNativePasteRoute({
+  hasPdfInput = false,
   hasMediaInput = false,
   hasTextInput = false,
+  hasPdfFieldTarget = false,
   hasArtFieldTarget = false,
   isChatTarget = false,
   isEditableTarget = false,
   canUseChatMedia = _clipboardCanUseChatMedia(),
   canvasContextEligible = false,
 } = {}) {
+  if (hasPdfInput) {
+    if (hasPdfFieldTarget) return {route: "pdf-field"};
+    if (isChatTarget) {
+      return {route: canUseChatMedia ? "chat-pdf" : "ignore-chat-media-disabled"};
+    }
+    if (isEditableTarget) return {route: "ignore-editable-pdf"};
+    return {route: canvasContextEligible ? "canvas-pdf" : "ignore-pdf-ineligible"};
+  }
+
   if (hasMediaInput) {
     if (hasArtFieldTarget) return {route: "art-field-media"};
     if (isChatTarget) {
@@ -119,9 +140,64 @@ function _clipboardOnPaste(event) {
   });
 
   const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
+  const pdfInput = _clipboardExtractPdfInputFromDataTransfer(event.clipboardData);
   const context = _clipboardResolvePasteContext();
   const isChatTarget = Boolean(_clipboardGetChatRootFromTarget(event.target));
   const isEditableTarget = _clipboardIsEditableTarget(event.target);
+  if (pdfInput) {
+    const pdfFieldTarget = _clipboardGetFocusedPdfFieldTarget(event.target);
+    const route = _clipboardResolveNativePasteRoute({
+      hasPdfInput: true,
+      hasPdfFieldTarget: Boolean(pdfFieldTarget),
+      isChatTarget,
+      isEditableTarget,
+      canUseChatMedia: _clipboardCanUseChatMedia(),
+      canvasContextEligible: _clipboardCanPastePdfToCanvasContext(context, _clipboardGetControlledSceneNoteDocuments()),
+    });
+
+    if (route.route === "pdf-field") {
+      if (_clipboardHasPasteConflict({respectCopiedObjects: false})) return;
+
+      _clipboardConsumePasteEvent(event);
+      void _clipboardExecutePasteWorkflow(() => _clipboardHandlePdfFieldInput(pdfInput, pdfFieldTarget), {
+        respectCopiedObjects: false,
+      });
+      return;
+    }
+
+    if (route.route === "chat-pdf") {
+      if (_clipboardHasPasteConflict({respectCopiedObjects: false})) return;
+
+      _clipboardConsumePasteEvent(event);
+      void _clipboardExecutePasteWorkflow(() => _clipboardHandleChatPdfInput(pdfInput), {
+        respectCopiedObjects: false,
+      });
+      return;
+    }
+
+    if (route.route === "ignore-chat-media-disabled") return;
+
+    if (route.route === "ignore-editable-pdf") {
+      _clipboardLog("info", "Ignoring pasted PDF in an unsupported editable target.", {
+        targetTagName: event.target?.tagName || null,
+        targetName: event.target?.name || event.target?.dataset?.edit || null,
+      });
+      return;
+    }
+
+    if (route.route === "ignore-pdf-ineligible") {
+      if (!_clipboardCanHandleCanvasPasteContext(context, "Ignoring pasted PDF because the canvas context is not eligible.")) return;
+    }
+
+    if (_clipboardHasPasteConflict()) return;
+
+    _clipboardConsumePasteEvent(event);
+    void _clipboardExecutePasteWorkflow(() => _clipboardHandleCanvasPdfInput(pdfInput, {context}), {
+      respectCopiedObjects: false,
+    });
+    return;
+  }
+
   if (imageInput) {
     const artFieldTarget = _clipboardGetFocusedArtFieldTarget(event.target);
     const route = _clipboardResolveNativePasteRoute({

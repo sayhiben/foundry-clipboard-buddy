@@ -76,7 +76,8 @@ var FoundryPasteEaterRuntime = (() => {
       var CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS = "canvas";
       var CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT = "chat";
       var CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART = "document-art";
-      var CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT = "image/*,video/*";
+      var CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF = "pdf";
+      var CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT = "image/*,video/*,application/pdf,.pdf";
       var CLIPBOARD_IMAGE_IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["apng", "avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "tif", "tiff", "webp"]);
       var CLIPBOARD_IMAGE_VIDEO_EXTENSIONS = /* @__PURE__ */ new Set(["m4v", "mp4", "mpeg", "mpg", "ogg", "ogv", "webm"]);
       var CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS = Object.freeze({
@@ -151,6 +152,7 @@ var FoundryPasteEaterRuntime = (() => {
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS,
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT,
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
+        CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF,
         CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT,
         CLIPBOARD_IMAGE_IMAGE_EXTENSIONS,
         CLIPBOARD_IMAGE_VIDEO_EXTENSIONS,
@@ -461,7 +463,7 @@ var FoundryPasteEaterRuntime = (() => {
         {
           key: CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING,
           name: "Minimum role for canvas text paste",
-          hint: "Lowest Foundry role allowed to create or update Journal-backed scene notes from pasted text.",
+          hint: "Lowest Foundry role allowed to create or update Journal-backed scene notes from pasted text or PDFs.",
           scope: "world",
           config: true,
           type: String,
@@ -470,7 +472,7 @@ var FoundryPasteEaterRuntime = (() => {
         {
           key: CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING,
           name: "Minimum role for chat media paste",
-          hint: "Lowest Foundry role allowed to post pasted/uploaded media into chat.",
+          hint: "Lowest Foundry role allowed to post pasted/uploaded media or PDFs into chat.",
           scope: "world",
           config: true,
           type: String,
@@ -488,8 +490,8 @@ var FoundryPasteEaterRuntime = (() => {
         },
         {
           key: CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING,
-          name: "Enable chat media handling",
-          hint: "Allow pasted, dropped, and uploaded media in chat.",
+          name: "Enable chat media and PDF handling",
+          hint: "Allow pasted, dropped, and uploaded media or PDFs in chat.",
           scope: "world",
           config: true,
           type: Boolean,
@@ -498,7 +500,7 @@ var FoundryPasteEaterRuntime = (() => {
         {
           key: CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING,
           name: "Enable chat upload button",
-          hint: "Show the Upload Chat Media button next to the chat input when chat media handling is enabled.",
+          hint: "Show the Upload Chat Media or PDF button next to the chat input when chat media handling is enabled.",
           scope: "world",
           config: true,
           type: Boolean,
@@ -538,8 +540,8 @@ var FoundryPasteEaterRuntime = (() => {
         },
         {
           key: CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING,
-          name: "Enable scene Paste Media tool",
-          hint: "Show the Paste Media scene control button.",
+          name: "Enable scene Paste Media or PDF tool",
+          hint: "Show the Paste Media or PDF scene control button.",
           scope: "world",
           config: true,
           type: Boolean,
@@ -547,8 +549,8 @@ var FoundryPasteEaterRuntime = (() => {
         },
         {
           key: CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING,
-          name: "Enable scene Upload Media tool",
-          hint: "Show the Upload Media scene control button.",
+          name: "Enable scene Upload Media or PDF tool",
+          hint: "Show the Upload Media or PDF scene control button.",
           scope: "world",
           config: true,
           type: Boolean,
@@ -620,7 +622,7 @@ var FoundryPasteEaterRuntime = (() => {
         {
           key: CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING,
           name: "Scene Paste Media prompt mode",
-          hint: "Control whether the scene Paste Media tool uses direct clipboard reads, the manual paste prompt, or the current browser-dependent auto behavior.",
+          hint: "Control whether the scene Paste Media or PDF tool uses direct clipboard reads, the manual paste prompt, or the current browser-dependent auto behavior.",
           scope: "world",
           config: true,
           type: String,
@@ -646,7 +648,7 @@ var FoundryPasteEaterRuntime = (() => {
         {
           key: CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING,
           name: "Upload path organization",
-          hint: "Optionally append context, user, and month folders under the configured base destination to separate chat, canvas, and document-art uploads.",
+          hint: "Optionally append context, user, and month folders under the configured base destination to separate chat, canvas, document-art, and PDF uploads.",
           scope: "world",
           config: true,
           type: String,
@@ -1067,7 +1069,8 @@ var FoundryPasteEaterRuntime = (() => {
         CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_CONTEXT_USER_MONTH,
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS,
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT,
-        CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART
+        CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
+        CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF
       } = require_constants();
       function _clipboardUsingTheForge() {
         return typeof ForgeVTT != "undefined" && ForgeVTT.usingTheForge;
@@ -1138,6 +1141,8 @@ var FoundryPasteEaterRuntime = (() => {
             return CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT;
           case CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART:
             return CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART;
+          case CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF:
+            return CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF;
           case CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS:
           default:
             return CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS;
@@ -1362,11 +1367,18 @@ var FoundryPasteEaterRuntime = (() => {
         if (foundryVideoHelper?.hasVideoExtension?.(filename)) return true;
         return CLIPBOARD_IMAGE_VIDEO_EXTENSIONS.has(extension);
       }
+      function _clipboardLooksLikePdfFilename(filename) {
+        return _clipboardGetFilenameExtension(filename) === "pdf";
+      }
       function _clipboardIsImageMimeType(mimeType) {
         return _clipboardNormalizeMimeType(mimeType).startsWith("image/");
       }
       function _clipboardIsVideoMimeType(mimeType) {
         return _clipboardNormalizeMimeType(mimeType).startsWith("video/");
+      }
+      function _clipboardIsPdfMimeType(mimeType) {
+        const normalized = _clipboardNormalizeMimeType(mimeType);
+        return normalized === "application/pdf" || normalized === "application/x-pdf";
       }
       function _clipboardIsMediaMimeType(mimeType) {
         return _clipboardIsImageMimeType(mimeType) || _clipboardIsVideoMimeType(mimeType);
@@ -1382,6 +1394,10 @@ var FoundryPasteEaterRuntime = (() => {
       }
       function _clipboardIsSupportedMediaBlob(blob) {
         return Boolean(blob && _clipboardGetMediaKind({ blob, filename: blob.name }));
+      }
+      function _clipboardIsPdfBlob(blob, { filename = "", mimeType = "" } = {}) {
+        if (!blob) return false;
+        return _clipboardIsPdfMimeType(mimeType || blob.type) || _clipboardLooksLikePdfFilename(filename || blob.name);
       }
       function _clipboardIsGifMedia({ blob, filename, mimeType, src } = {}) {
         const normalizedMimeType = _clipboardNormalizeMimeType(mimeType || blob?.type);
@@ -1405,6 +1421,18 @@ var FoundryPasteEaterRuntime = (() => {
         }
         const typedBlob = normalizedBlobType === resolvedMimeType ? blob : new Blob([blob], { type: resolvedMimeType });
         const resolvedFilename = _clipboardEnsureFilenameExtension(candidateFilename, typedBlob);
+        if (blob instanceof File && blob.name === resolvedFilename && normalizedBlobType === resolvedMimeType) {
+          return blob;
+        }
+        return new File([typedBlob], resolvedFilename, { type: resolvedMimeType });
+      }
+      function _clipboardCoercePdfFile(blob, { filename = "", mimeType = "" } = {}) {
+        if (!blob || !_clipboardIsPdfBlob(blob, { filename, mimeType })) return null;
+        const candidateFilename = filename || (blob instanceof File ? blob.name : "") || "pasted_pdf.pdf";
+        const resolvedFilename = _clipboardLooksLikePdfFilename(candidateFilename) ? candidateFilename : `${candidateFilename.replace(/\.[^./]+$/, "") || "pasted_pdf"}.pdf`;
+        const normalizedBlobType = _clipboardNormalizeMimeType(blob.type);
+        const resolvedMimeType = _clipboardIsPdfMimeType(normalizedBlobType) ? normalizedBlobType : "application/pdf";
+        const typedBlob = normalizedBlobType === resolvedMimeType ? blob : new Blob([blob], { type: resolvedMimeType });
         if (blob instanceof File && blob.name === resolvedFilename && normalizedBlobType === resolvedMimeType) {
           return blob;
         }
@@ -1445,6 +1473,8 @@ var FoundryPasteEaterRuntime = (() => {
             return "video/ogg";
           case "webm":
             return "video/webm";
+          case "pdf":
+            return "application/pdf";
           default:
             return "image/png";
         }
@@ -1708,13 +1738,17 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardGetFilenameFromUrl,
         _clipboardLooksLikeImageFilename,
         _clipboardLooksLikeVideoFilename,
+        _clipboardLooksLikePdfFilename,
         _clipboardIsImageMimeType,
         _clipboardIsVideoMimeType,
+        _clipboardIsPdfMimeType,
         _clipboardIsMediaMimeType,
         _clipboardGetMediaKind,
         _clipboardIsSupportedMediaBlob,
+        _clipboardIsPdfBlob,
         _clipboardIsGifMedia,
         _clipboardCoerceMediaFile,
+        _clipboardCoercePdfFile,
         _clipboardGetMimeTypeFromFilename,
         _clipboardEnsureFilenameExtension,
         _clipboardGetTileVideoData,
@@ -1818,12 +1852,12 @@ var FoundryPasteEaterRuntime = (() => {
         const suffix = encodeURIComponent(String(version));
         return extension ? `${baseName}-${suffix}.${extension}` : `${baseName}-${suffix}`;
       }
-      function _clipboardCreateUploadFile(blob, version = Date.now()) {
-        const sourceName = blob instanceof File && blob.name ? blob.name : `pasted_image.${_clipboardGetFileExtension(blob)}`;
-        const normalizedFile = _clipboardCoerceMediaFile(blob, {
+      function _clipboardCreateUploadFile(blob, version = Date.now(), { coerceMedia = true, fallbackBaseName = "pasted_image" } = {}) {
+        const sourceName = blob instanceof File && blob.name ? blob.name : `${fallbackBaseName}.${_clipboardGetFileExtension(blob)}`;
+        const normalizedFile = coerceMedia ? _clipboardCoerceMediaFile(blob, {
           filename: sourceName,
           mimeType: blob?.type
-        });
+        }) : null;
         const resolvedName = normalizedFile?.name || _clipboardEnsureFilenameExtension(sourceName, blob);
         const resolvedType = _clipboardNormalizeMimeType(normalizedFile?.type || blob?.type) || _clipboardGetMimeTypeFromFilename(resolvedName);
         const filename = _clipboardCreateVersionedFilename(resolvedName, version);
@@ -1836,10 +1870,10 @@ var FoundryPasteEaterRuntime = (() => {
         const freshPath = `${basePath}${separator}${encodeURIComponent(CLIPBOARD_IMAGE_MODULE_ID)}=${encodeURIComponent(String(version))}`;
         return hash ? `${freshPath}#${hash}` : freshPath;
       }
-      async function _clipboardUploadBlob(blob, targetFolder) {
+      async function _clipboardUploadBlob(blob, targetFolder, options = {}) {
         _clipboardAssertUploadDestination(targetFolder);
         const normalizedBlob = await _clipboardNormalizeSvgBlobForUpload(blob);
-        const file = _clipboardCreateUploadFile(normalizedBlob);
+        const file = _clipboardCreateUploadFile(normalizedBlob, Date.now(), options);
         const fileDetails = _clipboardDescribeFile(file);
         _clipboardLog("info", "Uploading pasted media", {
           destination: _clipboardDescribeDestinationForLog(targetFolder),
@@ -1868,12 +1902,26 @@ var FoundryPasteEaterRuntime = (() => {
         });
         return uploadPath;
       }
+      function _clipboardCreatePdfUploadFile(blob, version = Date.now()) {
+        return _clipboardCreateUploadFile(blob, version, {
+          coerceMedia: false,
+          fallbackBaseName: "pasted_pdf"
+        });
+      }
+      async function _clipboardUploadPdfBlob(blob, targetFolder) {
+        return _clipboardUploadBlob(blob, targetFolder, {
+          coerceMedia: false,
+          fallbackBaseName: "pasted_pdf"
+        });
+      }
       module.exports = {
         _clipboardCreateFolderIfMissing,
         _clipboardCreateVersionedFilename,
         _clipboardCreateUploadFile,
+        _clipboardCreatePdfUploadFile,
         _clipboardCreateFreshMediaPath,
-        _clipboardUploadBlob
+        _clipboardUploadBlob,
+        _clipboardUploadPdfBlob
       };
     }
   });
@@ -1887,6 +1935,8 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardGetMimeTypeFromFilename,
         _clipboardGetMediaKind,
         _clipboardIsMediaMimeType,
+        _clipboardIsPdfMimeType,
+        _clipboardLooksLikePdfFilename,
         _clipboardGetFilenameFromUrl,
         _clipboardEnsureFilenameExtension
       } = require_media();
@@ -1928,9 +1978,51 @@ var FoundryPasteEaterRuntime = (() => {
         if (imageInput.url) return _clipboardFetchImageUrl(imageInput.url);
         return null;
       }
+      async function _clipboardFetchPdfUrl(url) {
+        let response;
+        try {
+          _clipboardLog("info", "Downloading pasted PDF URL", { url });
+          response = await fetch(url);
+        } catch (error) {
+          throw new Error(`Failed to download pasted PDF URL from ${url}`);
+        }
+        if (!response.ok) {
+          throw new Error(`Failed to download pasted PDF URL (${response.status} ${response.statusText})`);
+        }
+        const blob = await response.blob();
+        const filename = _clipboardGetFilenameFromUrl(url) || "pasted_pdf.pdf";
+        const contentType = _clipboardNormalizeMimeType(response.headers.get("content-type"));
+        const blobType = _clipboardNormalizeMimeType(blob.type);
+        const isPdf = _clipboardIsPdfMimeType(contentType) || _clipboardIsPdfMimeType(blobType) || _clipboardLooksLikePdfFilename(filename);
+        if (!isPdf) {
+          throw Object.assign(new Error("Pasted URL did not resolve to PDF content"), {
+            clipboardPdfUrlNotPdf: true
+          });
+        }
+        const typedBlob = _clipboardIsPdfMimeType(contentType) || _clipboardIsPdfMimeType(blobType) ? blob : new Blob([blob], { type: _clipboardGetMimeTypeFromFilename(filename) });
+        const resolvedFilename = _clipboardEnsureFilenameExtension(filename, typedBlob);
+        const resolvedMimeType = _clipboardNormalizeMimeType(typedBlob.type) || "application/pdf";
+        _clipboardLog("info", "Downloaded pasted PDF URL", {
+          url,
+          responseContentType: contentType || null,
+          blobType: blobType || null,
+          resolvedFilename,
+          resolvedMimeType,
+          size: typedBlob.size
+        });
+        return new File([typedBlob], resolvedFilename, { type: resolvedMimeType });
+      }
+      async function _clipboardResolvePdfInputBlob(pdfInput) {
+        if (!pdfInput) return null;
+        if (pdfInput.blob) return pdfInput.blob;
+        if (pdfInput.url) return _clipboardFetchPdfUrl(pdfInput.url);
+        return null;
+      }
       module.exports = {
         _clipboardFetchImageUrl,
-        _clipboardResolveImageInputBlob
+        _clipboardResolveImageInputBlob,
+        _clipboardFetchPdfUrl,
+        _clipboardResolvePdfInputBlob
       };
     }
   });
@@ -2260,7 +2352,7 @@ var FoundryPasteEaterRuntime = (() => {
             "Direct clipboard reads",
             browserContext.clipboardReadAvailable ? "pass" : "warn",
             browserContext.clipboardReadAvailable ? "This browser exposes navigator.clipboard.read for richer scene-paste flows." : "This browser does not expose navigator.clipboard.read here. Native paste events and upload fallbacks still work where enabled.",
-            "Use a Chromium-based browser on a secure/trusted origin if you want the scene Paste Media tool to try direct clipboard reads first.",
+            "Use a Chromium-based browser on a secure/trusted origin if you want the scene Paste Media or PDF tool to try direct clipboard reads first.",
             browserContext
           )
         );
@@ -2349,10 +2441,10 @@ var FoundryPasteEaterRuntime = (() => {
         section.items.push(
           _clipboardCreateReadinessItem(
             "chat-role-gate",
-            "Chat media role gate",
+            "Chat media/PDF role gate",
             chatEnabled ? chatRoleHasUploadPermissions ? "pass" : "fail" : "warn",
-            chatEnabled ? `Chat media requires ${_clipboardGetRoleLabel(chatRole)} and above. That role ${chatRoleHasUploadPermissions ? "has" : "does not have"} Use File Browser plus Upload Files in Foundry core permissions.` : "Chat media handling is disabled in this world, so players will keep normal chat text behavior only.",
-            chatEnabled ? `Open Game Settings -> Configure Permissions and enable Use File Browser plus Upload Files for ${_clipboardGetRoleLabel(chatRole)} if players at that role should post pasted media to chat.` : "Enable chat media handling if you want players to paste or upload media into chat.",
+            chatEnabled ? `Chat media/PDF posting requires ${_clipboardGetRoleLabel(chatRole)} and above. That role ${chatRoleHasUploadPermissions ? "has" : "does not have"} Use File Browser plus Upload Files in Foundry core permissions.` : "Chat media/PDF handling is disabled in this world, so players will keep normal chat text behavior only.",
+            chatEnabled ? `Open Game Settings -> Configure Permissions and enable Use File Browser plus Upload Files for ${_clipboardGetRoleLabel(chatRole)} if players at that role should post pasted media or PDFs to chat.` : "Enable chat media/PDF handling if you want players to paste or upload media or PDFs into chat.",
             {
               role: chatRole,
               chatEnabled
@@ -2593,7 +2685,9 @@ var FoundryPasteEaterRuntime = (() => {
       var {
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS,
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT,
-        CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART
+        CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
+        CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF,
+        CLIPBOARD_IMAGE_MODULE_ID
       } = require_constants();
       var { _clipboardGetKnownUploadRoots } = require_known_roots();
       function _clipboardNormalizeAuditPath(path) {
@@ -2616,7 +2710,7 @@ var FoundryPasteEaterRuntime = (() => {
         if (!normalizedPath || !uploadRoot) return fallbackContext;
         const relativePath = normalizedPath.slice(uploadRoot.target.length).replace(/^\/+/, "");
         const leadingSegment = relativePath.split("/")[0];
-        if (leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS || leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT || leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART) {
+        if (leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS || leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT || leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART || leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF) {
           return leadingSegment;
         }
         return fallbackContext;
@@ -2675,6 +2769,35 @@ var FoundryPasteEaterRuntime = (() => {
         });
         return reference ? [reference] : [];
       }
+      function _clipboardCollectJournalPdfPageReferences(entry, page, uploadRoots) {
+        if (page?.type !== "pdf") return [];
+        const references = [];
+        const pdfPath = page.src || "";
+        const pdfRoot = _clipboardMatchUploadRoot(pdfPath, uploadRoots);
+        const pdfReference = _clipboardCreateAuditReference({
+          path: pdfPath,
+          documentType: "JournalEntryPage",
+          documentId: page.id,
+          documentName: page.name || entry?.name || page.id,
+          field: "src",
+          uploadRoot: pdfRoot,
+          fallbackContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF
+        });
+        if (pdfReference) references.push(pdfReference);
+        const previewPath = page.flags?.[CLIPBOARD_IMAGE_MODULE_ID]?.pdfPreview || "";
+        const previewRoot = _clipboardMatchUploadRoot(previewPath, uploadRoots);
+        const previewReference = _clipboardCreateAuditReference({
+          path: previewPath,
+          documentType: "JournalEntryPage",
+          documentId: page.id,
+          documentName: page.name || entry?.name || page.id,
+          field: "flags.foundry-paste-eater.pdfPreview",
+          uploadRoot: previewRoot,
+          fallbackContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF
+        });
+        if (previewReference) references.push(previewReference);
+        return references;
+      }
       function _clipboardCollectMediaAuditReport() {
         const uploadRoots = _clipboardGetKnownUploadRoots({ includeCurrent: true });
         const references = [];
@@ -2732,6 +2855,11 @@ var FoundryPasteEaterRuntime = (() => {
               sceneId: scene.id || null,
               sceneName: scene.name || null
             }));
+          }
+        }
+        for (const entry of game?.journal?.contents || []) {
+          for (const page of entry?.pages?.contents || []) {
+            references.push(..._clipboardCollectJournalPdfPageReferences(entry, page, uploadRoots));
           }
         }
         for (const message of game?.messages?.contents || []) {
@@ -2812,6 +2940,7 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardCollectChatMessagePaths,
         _clipboardCreateAuditReference,
         _clipboardCollectDocumentMediaReferences,
+        _clipboardCollectJournalPdfPageReferences,
         _clipboardCollectMediaAuditReport,
         _clipboardCreateMediaAuditFile,
         _clipboardDownloadMediaAuditReport
@@ -4305,8 +4434,12 @@ var FoundryPasteEaterRuntime = (() => {
       } = require_diagnostics();
       var {
         _clipboardCoerceMediaFile,
+        _clipboardCoercePdfFile,
+        _clipboardGetFilenameFromUrl,
         _clipboardGetMediaKind,
+        _clipboardIsPdfMimeType,
         _clipboardIsSupportedMediaBlob,
+        _clipboardLooksLikePdfFilename,
         _clipboardParseSupportedUrl
       } = require_media();
       var {
@@ -4354,6 +4487,17 @@ var FoundryPasteEaterRuntime = (() => {
         }
         return null;
       }
+      async function _clipboardExtractPdfBlob(clipItems) {
+        for (const clipItem of clipItems || []) {
+          for (const fileType of clipItem.types) {
+            if (!_clipboardIsPdfMimeType(fileType)) continue;
+            const blob = await clipItem.getType(fileType);
+            const file = _clipboardCoercePdfFile(blob, { mimeType: fileType });
+            if (file) return file;
+          }
+        }
+        return null;
+      }
       async function _clipboardReadClipboardText(clipItems, mimeType) {
         for (const clipItem of clipItems || []) {
           if (!clipItem.types.includes(mimeType)) continue;
@@ -4383,11 +4527,42 @@ var FoundryPasteEaterRuntime = (() => {
         if (!candidate || /\s/.test(candidate)) return null;
         return _clipboardParseSupportedUrl(candidate);
       }
+      function _clipboardLooksLikePdfUrl(value) {
+        const url = _clipboardParseSupportedUrl(value);
+        if (!url) return false;
+        if (/^data:application\/(?:x-)?pdf\b/i.test(url)) return true;
+        return _clipboardLooksLikePdfFilename(_clipboardGetFilenameFromUrl(url) || url);
+      }
+      function _clipboardExtractPdfUrlFromUriList(text) {
+        for (const line of (text || "").split(/\r?\n/)) {
+          const candidate = line.trim();
+          if (!candidate || candidate.startsWith("#")) continue;
+          const url = _clipboardParseSupportedUrl(candidate);
+          if (url && _clipboardLooksLikePdfUrl(url)) return url;
+        }
+        return null;
+      }
+      function _clipboardExtractPdfUrlFromText(text) {
+        const candidate = text?.trim();
+        if (!candidate || /\s/.test(candidate)) return null;
+        const url = _clipboardParseSupportedUrl(candidate);
+        return url && _clipboardLooksLikePdfUrl(url) ? url : null;
+      }
       function _clipboardExtractImageUrlFromHtml(html) {
         if (!html?.trim()) return null;
         const documentFragment = new DOMParser().parseFromString(html, "text/html");
         const mediaElement = documentFragment.querySelector("img[src], video[src], source[src]");
         return _clipboardParseSupportedUrl(mediaElement?.getAttribute("src")?.trim());
+      }
+      function _clipboardExtractPdfUrlFromHtml(html) {
+        if (!html?.trim()) return null;
+        const documentFragment = new DOMParser().parseFromString(html, "text/html");
+        for (const pdfElement of documentFragment.querySelectorAll("a[href], iframe[src], embed[src], object[data]")) {
+          const candidate = pdfElement.getAttribute("href") || pdfElement.getAttribute("src") || pdfElement.getAttribute("data") || "";
+          const url = _clipboardParseSupportedUrl(candidate.trim());
+          if (url && _clipboardLooksLikePdfUrl(url)) return url;
+        }
+        return null;
       }
       function _clipboardGetUrlBackedImageInputCandidate({ uriList = "", html = "", plainText = "" } = {}, {
         uriListMessage,
@@ -4420,6 +4595,44 @@ var FoundryPasteEaterRuntime = (() => {
         if (textUrl) {
           return {
             imageInput: {
+              url: textUrl,
+              text: fallbackText || textUrl
+            },
+            message: plainTextMessage
+          };
+        }
+        return null;
+      }
+      function _clipboardGetUrlBackedPdfInputCandidate({ uriList = "", html = "", plainText = "" } = {}, {
+        uriListMessage,
+        htmlMessage,
+        plainTextMessage
+      } = {}) {
+        const fallbackText = plainText || "";
+        const uriListUrl = _clipboardExtractPdfUrlFromUriList(uriList);
+        if (uriListUrl) {
+          return {
+            pdfInput: {
+              url: uriListUrl,
+              text: fallbackText || uriListUrl
+            },
+            message: uriListMessage
+          };
+        }
+        const htmlUrl = _clipboardExtractPdfUrlFromHtml(html);
+        if (htmlUrl) {
+          return {
+            pdfInput: {
+              url: htmlUrl,
+              text: fallbackText || htmlUrl
+            },
+            message: htmlMessage
+          };
+        }
+        const textUrl = _clipboardExtractPdfUrlFromText(fallbackText);
+        if (textUrl) {
+          return {
+            pdfInput: {
               url: textUrl,
               text: fallbackText || textUrl
             },
@@ -4466,6 +4679,20 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardLog("debug", message, logDetails);
         return imageInput;
       }
+      function _clipboardCreateLoggedPdfInput(pdfInput, message, details = void 0) {
+        const logDetails = {
+          pdfInput: pdfInput ? {
+            source: pdfInput.blob ? "blob" : "url",
+            name: pdfInput.blob?.name || null,
+            type: pdfInput.blob?.type || null,
+            size: pdfInput.blob?.size ?? null,
+            url: pdfInput.url || null
+          } : null
+        };
+        if (details) Object.assign(logDetails, details);
+        _clipboardLog("debug", message, logDetails);
+        return pdfInput;
+      }
       function _clipboardExtractTextInputFromValues({ plainText = "", html = "" } = {}) {
         const normalizedPlainText = _clipboardNormalizePastedText(plainText);
         if (normalizedPlainText) return { text: normalizedPlainText };
@@ -4499,6 +4726,30 @@ var FoundryPasteEaterRuntime = (() => {
         if (urlCandidate) return _clipboardCreateLoggedImageInput(urlCandidate.imageInput, urlCandidate.message, details);
         return null;
       }
+      function _clipboardExtractPdfInputFromValues({ blob = null, uriList = "", html = "", plainText = "" } = {}, {
+        blobMessage,
+        uriListMessage,
+        htmlMessage,
+        plainTextMessage,
+        details
+      } = {}) {
+        const pdfBlob = _clipboardCoercePdfFile(blob, {
+          filename: blob?.name,
+          mimeType: blob?.type
+        });
+        if (pdfBlob) return _clipboardCreateLoggedPdfInput({ blob: pdfBlob }, blobMessage, details);
+        const urlCandidate = _clipboardGetUrlBackedPdfInputCandidate({
+          uriList,
+          html,
+          plainText
+        }, {
+          uriListMessage,
+          htmlMessage,
+          plainTextMessage
+        });
+        if (urlCandidate) return _clipboardCreateLoggedPdfInput(urlCandidate.pdfInput, urlCandidate.message, details);
+        return null;
+      }
       async function _clipboardExtractImageInput(clipItems) {
         return _clipboardExtractImageInputFromValues({
           blob: await _clipboardExtractImageBlob(clipItems),
@@ -4510,6 +4761,19 @@ var FoundryPasteEaterRuntime = (() => {
           uriListMessage: "Resolved media input from async clipboard uri-list",
           htmlMessage: "Resolved media input from async clipboard HTML",
           plainTextMessage: "Resolved media input from async clipboard plain text"
+        });
+      }
+      async function _clipboardExtractPdfInput(clipItems) {
+        return _clipboardExtractPdfInputFromValues({
+          blob: await _clipboardExtractPdfBlob(clipItems),
+          uriList: await _clipboardReadClipboardText(clipItems, "text/uri-list"),
+          html: await _clipboardReadClipboardText(clipItems, "text/html"),
+          plainText: await _clipboardReadClipboardText(clipItems, "text/plain")
+        }, {
+          blobMessage: "Resolved PDF input from async clipboard file data",
+          uriListMessage: "Resolved PDF input from async clipboard uri-list",
+          htmlMessage: "Resolved PDF input from async clipboard HTML",
+          plainTextMessage: "Resolved PDF input from async clipboard plain text"
         });
       }
       function _clipboardExtractImageBlobFromDataTransfer(dataTransfer) {
@@ -4528,6 +4792,25 @@ var FoundryPasteEaterRuntime = (() => {
             mimeType: file?.type
           });
           if (typedFile && _clipboardIsSupportedMediaBlob(typedFile)) return typedFile;
+        }
+        return null;
+      }
+      function _clipboardExtractPdfBlobFromDataTransfer(dataTransfer) {
+        for (const item of dataTransfer?.items || []) {
+          if (item.kind !== "file") continue;
+          const file = item.getAsFile();
+          const typedFile = _clipboardCoercePdfFile(file, {
+            filename: file?.name,
+            mimeType: item.type
+          });
+          if (typedFile) return typedFile;
+        }
+        for (const file of dataTransfer?.files || []) {
+          const typedFile = _clipboardCoercePdfFile(file, {
+            filename: file?.name,
+            mimeType: file?.type
+          });
+          if (typedFile) return typedFile;
         }
         return null;
       }
@@ -4551,6 +4834,22 @@ var FoundryPasteEaterRuntime = (() => {
           uriListMessage: "Resolved media input from paste/drop uri-list",
           htmlMessage: "Resolved media input from paste/drop HTML",
           plainTextMessage: "Resolved media input from paste/drop plain text URL",
+          details: {
+            dataTransfer: _clipboardDescribeDataTransfer(dataTransfer)
+          }
+        });
+      }
+      function _clipboardExtractPdfInputFromDataTransfer(dataTransfer) {
+        return _clipboardExtractPdfInputFromValues({
+          blob: _clipboardExtractPdfBlobFromDataTransfer(dataTransfer),
+          uriList: _clipboardReadDataTransferText(dataTransfer, "text/uri-list"),
+          html: _clipboardReadDataTransferText(dataTransfer, "text/html"),
+          plainText: _clipboardReadDataTransferText(dataTransfer, "text/plain")
+        }, {
+          blobMessage: "Resolved PDF input from paste/drop file data",
+          uriListMessage: "Resolved PDF input from paste/drop uri-list",
+          htmlMessage: "Resolved PDF input from paste/drop HTML",
+          plainTextMessage: "Resolved PDF input from paste/drop plain text URL",
           details: {
             dataTransfer: _clipboardDescribeDataTransfer(dataTransfer)
           }
@@ -4628,23 +4927,34 @@ var FoundryPasteEaterRuntime = (() => {
       module.exports = {
         _clipboardReadClipboardItems,
         _clipboardExtractImageBlob,
+        _clipboardExtractPdfBlob,
         _clipboardReadClipboardText,
         _clipboardExtractTextInput,
         _clipboardExtractImageUrlFromUriList,
         _clipboardExtractImageUrlFromText,
         _clipboardExtractImageUrlFromHtml,
+        _clipboardLooksLikePdfUrl,
+        _clipboardExtractPdfUrlFromUriList,
+        _clipboardExtractPdfUrlFromText,
+        _clipboardExtractPdfUrlFromHtml,
         _clipboardGetUrlBackedImageInputCandidate,
+        _clipboardGetUrlBackedPdfInputCandidate,
         _clipboardIsAnimationCapableUrl,
         _clipboardIsLikelyRasterizedImageBlob,
         _clipboardShouldPreferUrlCandidateOverBlob,
         _clipboardCreateLoggedImageInput,
+        _clipboardCreateLoggedPdfInput,
         _clipboardExtractTextInputFromValues,
         _clipboardExtractImageInputFromValues,
+        _clipboardExtractPdfInputFromValues,
         _clipboardExtractImageInput,
+        _clipboardExtractPdfInput,
         _clipboardExtractImageBlobFromDataTransfer,
+        _clipboardExtractPdfBlobFromDataTransfer,
         _clipboardReadDataTransferText,
         _clipboardExtractTextInputFromDataTransfer,
         _clipboardExtractImageInputFromDataTransfer,
+        _clipboardExtractPdfInputFromDataTransfer,
         _clipboardGetChatRootFromTarget,
         _clipboardIsEditableTarget,
         _clipboardInsertTextAtTarget
@@ -4669,6 +4979,7 @@ var FoundryPasteEaterRuntime = (() => {
         "texture.src": /* @__PURE__ */ new Set(["Token"]),
         "prototypeToken.texture.src": /* @__PURE__ */ new Set(["Actor", "Token"])
       };
+      var CLIPBOARD_IMAGE_SUPPORTED_PDF_FIELD_NAMES = /* @__PURE__ */ new Set(["src"]);
       function _clipboardGetApplicationRoot(target) {
         return target?.closest?.("[data-appid], .window-app[id], .app[id], .application[id]") || null;
       }
@@ -4723,6 +5034,21 @@ var FoundryPasteEaterRuntime = (() => {
         }
         return null;
       }
+      function _clipboardGetPdfFieldName(target) {
+        const picker = target?.closest?.("file-picker[name]") || null;
+        const candidates = [
+          target?.name,
+          target?.dataset?.edit,
+          picker?.getAttribute?.("name")
+        ];
+        for (const candidate of candidates) {
+          if (typeof candidate !== "string") continue;
+          const normalized = candidate.trim();
+          if (!normalized) continue;
+          if (CLIPBOARD_IMAGE_SUPPORTED_PDF_FIELD_NAMES.has(normalized)) return normalized;
+        }
+        return null;
+      }
       function _clipboardGetArtFieldMediaKinds(fieldName) {
         if (fieldName === "img") return ["image"];
         return ["image", "video"];
@@ -4746,6 +5072,25 @@ var FoundryPasteEaterRuntime = (() => {
           picker: target.closest?.("file-picker[name]") || null,
           app,
           appRoot,
+          documentName
+        };
+      }
+      function _clipboardGetFocusedPdfFieldTarget(target = document.activeElement) {
+        const field = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement ? target : target?.closest?.("file-picker[name]")?.querySelector?.("input, textarea") || null;
+        if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) return null;
+        const fieldName = _clipboardGetPdfFieldName(field) || _clipboardGetPdfFieldName(target);
+        if (!fieldName) return null;
+        const { app, appRoot } = _clipboardGetAppFromElement(field);
+        const pageDocument = app?.document || app?.object || null;
+        const documentName = pageDocument?.documentName || null;
+        if (documentName !== "JournalEntryPage" || pageDocument?.type !== "pdf") return null;
+        return {
+          field,
+          fieldName,
+          picker: field.closest?.("file-picker[name]") || null,
+          app,
+          appRoot,
+          document: pageDocument,
           documentName
         };
       }
@@ -4806,21 +5151,43 @@ var FoundryPasteEaterRuntime = (() => {
         });
         return true;
       }
+      function _clipboardPopulatePdfFieldTarget(targetInfo, value, pdfInput = null) {
+        if (!targetInfo || !value) return false;
+        const updated = _clipboardSetFormFieldValue(targetInfo.field, value);
+        if (!updated) return false;
+        _clipboardLog("info", "Populated a focused PDF journal page source field", {
+          documentName: targetInfo.documentName,
+          fieldName: targetInfo.fieldName,
+          value,
+          pdfInput: pdfInput ? {
+            source: pdfInput.blob ? "blob" : "url",
+            name: pdfInput.blob?.name || null,
+            type: pdfInput.blob?.type || null,
+            size: pdfInput.blob?.size ?? null,
+            url: pdfInput.url || null
+          } : null
+        });
+        return true;
+      }
       module.exports = {
         CLIPBOARD_IMAGE_SUPPORTED_ART_FIELD_NAMES,
         CLIPBOARD_IMAGE_SUPPORTED_ART_FIELD_DOCUMENTS,
+        CLIPBOARD_IMAGE_SUPPORTED_PDF_FIELD_NAMES,
         _clipboardGetApplicationRoot,
         _clipboardIterateApplicationInstances,
         _clipboardResolveApplicationForRoot,
         _clipboardGetAppFromElement,
         _clipboardGetArtFieldName,
+        _clipboardGetPdfFieldName,
         _clipboardGetArtFieldMediaKinds,
         _clipboardCanPopulateArtField,
         _clipboardGetFocusedArtFieldTarget,
+        _clipboardGetFocusedPdfFieldTarget,
         _clipboardReloadMediaPreview,
         _clipboardSetFormFieldValue,
         _clipboardUpdateArtFieldPreview,
-        _clipboardPopulateArtFieldTarget
+        _clipboardPopulateArtFieldTarget,
+        _clipboardPopulatePdfFieldTarget
       };
     }
   });
@@ -4843,7 +5210,8 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardAppendHtmlContent,
         _clipboardConvertTextToHtml,
         _clipboardGetTextPageFormat,
-        _clipboardCreateSceneNoteData
+        _clipboardCreateSceneNoteData,
+        _clipboardGetDefaultNoteIcon
       } = require_text();
       async function _clipboardCreateTextJournalEntry(text, name) {
         const journalEntry = await foundry.documents.JournalEntry.create({
@@ -4853,6 +5221,87 @@ var FoundryPasteEaterRuntime = (() => {
         return {
           entry: journalEntry,
           page: journalEntry?.pages?.contents?.[0] || null
+        };
+      }
+      function _clipboardGetDocumentOwnershipLevel(level, fallback) {
+        return CONST?.DOCUMENT_OWNERSHIP_LEVELS?.[level] ?? fallback;
+      }
+      function _clipboardCreateSharedJournalOwnership() {
+        const observer = _clipboardGetDocumentOwnershipLevel("OBSERVER", 2);
+        const owner = _clipboardGetDocumentOwnershipLevel("OWNER", 3);
+        return {
+          default: observer,
+          [game.user.id]: owner
+        };
+      }
+      function _clipboardMergeSharedJournalOwnership(ownership = {}) {
+        const sharedOwnership = _clipboardCreateSharedJournalOwnership();
+        const currentDefault = Number(ownership.default ?? 0);
+        const currentUserLevel = Number(ownership[game.user.id] ?? 0);
+        return {
+          ...ownership,
+          default: Math.max(currentDefault, sharedOwnership.default),
+          [game.user.id]: Math.max(currentUserLevel, sharedOwnership[game.user.id])
+        };
+      }
+      async function _clipboardEnsureSharedJournalOwnership(entry) {
+        if (!entry) return null;
+        const ownership = _clipboardMergeSharedJournalOwnership(entry.ownership || entry._source?.ownership || {});
+        const unchanged = entry.ownership && entry.ownership.default === ownership.default && entry.ownership[game.user.id] === ownership[game.user.id];
+        if (unchanged) return entry;
+        if (typeof entry.update === "function") {
+          await entry.update({ ownership });
+        } else {
+          entry.ownership = ownership;
+        }
+        return entry;
+      }
+      function _clipboardCreatePdfPageData({ src, name = "PDF", previewSrc = "", external = false } = {}) {
+        return {
+          name,
+          type: "pdf",
+          title: {
+            show: true,
+            level: 1
+          },
+          src,
+          flags: {
+            [CLIPBOARD_IMAGE_MODULE_ID]: {
+              pdfPreview: previewSrc || "",
+              pdfExternal: Boolean(external)
+            }
+          }
+        };
+      }
+      function _clipboardGetJournalPageUuid(entry, page) {
+        if (page?.uuid) return page.uuid;
+        if (entry?.uuid && page?.id) return `${entry.uuid}.JournalEntryPage.${page.id}`;
+        if (entry?.id && page?.id) return `JournalEntry.${entry.id}.JournalEntryPage.${page.id}`;
+        if (entry?.uuid) return entry.uuid;
+        return entry?.id ? `JournalEntry.${entry.id}` : "";
+      }
+      async function _clipboardCreatePdfJournalEntry({ src, name = "Pasted PDF", previewSrc = "", external = false } = {}) {
+        const journalEntry = await foundry.documents.JournalEntry.create({
+          name,
+          ownership: _clipboardCreateSharedJournalOwnership(),
+          pages: [_clipboardCreatePdfPageData({ src, name, previewSrc, external })]
+        });
+        return {
+          entry: journalEntry,
+          page: journalEntry?.pages?.contents?.[0] || null
+        };
+      }
+      function _clipboardCreatePdfSceneNoteData({ entryId, pageId, position, text, previewSrc = "" }) {
+        return {
+          ..._clipboardCreateSceneNoteData({
+            entryId,
+            pageId,
+            position,
+            text
+          }),
+          texture: {
+            src: previewSrc || _clipboardGetDefaultNoteIcon()
+          }
         };
       }
       async function _clipboardAppendTextToPage(page, text) {
@@ -4865,6 +5314,51 @@ var FoundryPasteEaterRuntime = (() => {
           "text.format": _clipboardGetTextPageFormat()
         });
         return page;
+      }
+      async function _clipboardAppendPdfPageToSceneNote(noteDocument, pdfData) {
+        const noteName = pdfData.name || noteDocument?.text || noteDocument?.name || "Pasted PDF";
+        const { entry } = _clipboardGetSceneNoteEntryAndPage(noteDocument);
+        let targetEntry = entry;
+        let page = null;
+        if (targetEntry) {
+          const createdPages = await targetEntry.createEmbeddedDocuments("JournalEntryPage", [
+            _clipboardCreatePdfPageData({
+              src: pdfData.src,
+              name: noteName,
+              previewSrc: pdfData.previewSrc,
+              external: pdfData.external
+            })
+          ]);
+          page = createdPages[0] || null;
+        } else {
+          const created = await _clipboardCreatePdfJournalEntry({
+            src: pdfData.src,
+            name: noteName,
+            previewSrc: pdfData.previewSrc,
+            external: pdfData.external
+          });
+          targetEntry = created.entry;
+          page = created.page;
+        }
+        if (!targetEntry || !page) {
+          throw new Error("Failed to create a PDF journal page for the selected scene note");
+        }
+        await noteDocument.update({
+          entryId: targetEntry.id,
+          pageId: page.id,
+          text: noteName,
+          "texture.src": pdfData.previewSrc || _clipboardGetDefaultNoteIcon()
+        });
+        _clipboardLog("info", "Created or updated a PDF page for a selected scene note", {
+          noteId: noteDocument?.id || null,
+          entryId: targetEntry.id,
+          pageId: page.id,
+          external: Boolean(pdfData.external)
+        });
+        return {
+          entry: targetEntry,
+          page
+        };
       }
       function _clipboardGetAssociatedTextNoteData(document2) {
         const currentValue = document2?.getFlag?.(CLIPBOARD_IMAGE_MODULE_ID, CLIPBOARD_IMAGE_TEXT_NOTE_FLAG) || null;
@@ -5046,8 +5540,42 @@ var FoundryPasteEaterRuntime = (() => {
         });
         return true;
       }
+      async function _clipboardCreateStandalonePdfNote(pdfData, context) {
+        const position = context.mousePos;
+        if (!position) return false;
+        canvas?.notes?.activate?.();
+        const { entry, page } = await _clipboardCreatePdfJournalEntry(pdfData);
+        if (!entry || !page) throw new Error("Failed to create a PDF journal page");
+        await canvas.scene.createEmbeddedDocuments("Note", [
+          _clipboardCreatePdfSceneNoteData({
+            entryId: entry.id,
+            pageId: page.id,
+            position,
+            text: pdfData.name,
+            previewSrc: pdfData.previewSrc
+          })
+        ]);
+        _clipboardLog("info", "Created standalone PDF note", {
+          entryId: entry.id,
+          pageId: page.id,
+          position,
+          external: Boolean(pdfData.external)
+        });
+        return {
+          entry,
+          page
+        };
+      }
       module.exports = {
         _clipboardCreateTextJournalEntry,
+        _clipboardGetDocumentOwnershipLevel,
+        _clipboardCreateSharedJournalOwnership,
+        _clipboardMergeSharedJournalOwnership,
+        _clipboardEnsureSharedJournalOwnership,
+        _clipboardCreatePdfPageData,
+        _clipboardGetJournalPageUuid,
+        _clipboardCreatePdfJournalEntry,
+        _clipboardCreatePdfSceneNoteData,
         _clipboardAppendTextToPage,
         _clipboardGetAssociatedTextNoteData,
         _clipboardEnsureAssociatedTextPage,
@@ -5055,7 +5583,9 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardGetSceneNoteEntryAndPage,
         _clipboardEnsureSceneNoteTextPage,
         _clipboardAppendTextToSceneNote,
-        _clipboardCreateStandaloneTextNote
+        _clipboardCreateStandaloneTextNote,
+        _clipboardAppendPdfPageToSceneNote,
+        _clipboardCreateStandalonePdfNote
       };
     }
   });
@@ -5063,7 +5593,7 @@ var FoundryPasteEaterRuntime = (() => {
   // src/chat.js
   var require_chat = __commonJS({
     "src/chat.js"(exports, module) {
-      var { _clipboardLog } = require_diagnostics();
+      var { _clipboardEscapeHtml, _clipboardLog } = require_diagnostics();
       var { _clipboardGetMediaKind } = require_media();
       var {
         CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW,
@@ -5071,6 +5601,7 @@ var FoundryPasteEaterRuntime = (() => {
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT
       } = require_constants();
       var { _clipboardGetChatMediaDisplayMode } = require_settings();
+      var { _clipboardGetJournalPageUuid } = require_notes();
       var {
         _clipboardGetUploadDestination,
         _clipboardCreateFolderIfMissing,
@@ -5112,6 +5643,59 @@ var FoundryPasteEaterRuntime = (() => {
         openLink.rel = "noopener noreferrer";
         openLink.textContent = "Open full media";
         caption.append(openLink);
+        figure.append(caption);
+        return figure.outerHTML;
+      }
+      function _clipboardCreateJournalPageContentLink({ entry, page, label = "Open PDF" } = {}) {
+        const uuid = _clipboardGetJournalPageUuid(entry, page);
+        if (!uuid) return "";
+        return [
+          '<a class="content-link" draggable="true" data-link=""',
+          ` data-uuid="${_clipboardEscapeHtml(uuid)}"`,
+          page?.id ? ` data-id="${_clipboardEscapeHtml(page.id)}"` : "",
+          ' data-type="JournalEntryPage">',
+          '<i class="fas fa-file-pdf" aria-hidden="true"></i>',
+          _clipboardEscapeHtml(label),
+          "</a>"
+        ].join("");
+      }
+      function _clipboardCreateChatPdfContent({ entry, page, pdfData = {} } = {}) {
+        const displayMode = _clipboardGetChatMediaDisplayMode();
+        const figure = document.createElement("figure");
+        figure.className = "foundry-paste-eater-chat-message foundry-paste-eater-chat-pdf-message";
+        if (displayMode !== CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY) {
+          const preview = document.createElement("div");
+          preview.className = displayMode === CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW ? "foundry-paste-eater-chat-pdf-full-preview" : "foundry-paste-eater-chat-pdf-thumbnail";
+          if (pdfData.previewSrc) {
+            const image = document.createElement("img");
+            image.src = pdfData.previewSrc;
+            image.alt = `PDF preview: ${pdfData.name || "Pasted PDF"}`;
+            preview.append(image);
+          } else {
+            const icon = document.createElement("i");
+            icon.className = "fa-solid fa-file-pdf foundry-paste-eater-chat-pdf-icon";
+            icon.setAttribute("aria-hidden", "true");
+            preview.append(icon);
+          }
+          figure.append(preview);
+        }
+        const caption = document.createElement("figcaption");
+        caption.className = "foundry-paste-eater-chat-pdf-caption";
+        const title = document.createElement("strong");
+        title.textContent = pdfData.name || "Pasted PDF";
+        caption.append(title);
+        const linkContainer = document.createElement("div");
+        linkContainer.innerHTML = _clipboardCreateJournalPageContentLink({
+          entry,
+          page,
+          label: "Open PDF"
+        });
+        caption.append(linkContainer);
+        if (pdfData.external) {
+          const source = document.createElement("small");
+          source.textContent = "External PDF URL";
+          caption.append(source);
+        }
         figure.append(caption);
         return figure.outerHTML;
       }
@@ -5159,6 +5743,24 @@ var FoundryPasteEaterRuntime = (() => {
         const visibilityOptions = _clipboardGetChatMessageVisibilityOptions();
         return visibilityOptions ? foundry.documents.ChatMessage.create(messageData, visibilityOptions) : foundry.documents.ChatMessage.create(messageData);
       }
+      async function _clipboardCreatePdfChatMessage({ entry, page, pdfData = {} } = {}) {
+        if (!entry || !page) {
+          throw new Error("Cannot create a chat PDF message without a journal PDF page");
+        }
+        _clipboardLog("info", "Creating chat PDF message", {
+          entryId: entry.id || null,
+          pageId: page.id || null,
+          src: pdfData.src || null,
+          external: Boolean(pdfData.external)
+        });
+        const messageData = {
+          content: _clipboardCreateChatPdfContent({ entry, page, pdfData }),
+          speaker: foundry.documents.ChatMessage.getSpeaker(),
+          user: game.user.id
+        };
+        const visibilityOptions = _clipboardGetChatMessageVisibilityOptions();
+        return visibilityOptions ? foundry.documents.ChatMessage.create(messageData, visibilityOptions) : foundry.documents.ChatMessage.create(messageData);
+      }
       async function _clipboardPostChatImage(blob) {
         const destination = _clipboardGetUploadDestination({
           uploadContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT
@@ -5170,7 +5772,10 @@ var FoundryPasteEaterRuntime = (() => {
       }
       module.exports = {
         _clipboardCreateChatMediaContent,
+        _clipboardCreateJournalPageContentLink,
+        _clipboardCreateChatPdfContent,
         _clipboardCreateChatMessage,
+        _clipboardCreatePdfChatMessage,
         _clipboardPostChatImage
       };
     }
@@ -5671,6 +6276,298 @@ var FoundryPasteEaterRuntime = (() => {
     }
   });
 
+  // src/paste/pdf-workflows.js
+  var require_pdf_workflows = __commonJS({
+    "src/paste/pdf-workflows.js"(exports, module) {
+      var { CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF } = require_constants();
+      var {
+        _clipboardDescribeDestinationForLog,
+        _clipboardLog,
+        _clipboardSerializeError
+      } = require_diagnostics();
+      var {
+        _clipboardGetFilenameExtension,
+        _clipboardGetFilenameFromUrl,
+        _clipboardNormalizeMimeType
+      } = require_media();
+      var {
+        _clipboardLooksLikePdfUrl
+      } = require_clipboard();
+      var {
+        _clipboardGetUploadDestination,
+        _clipboardCreateFolderIfMissing,
+        _clipboardResolvePdfInputBlob,
+        _clipboardUploadBlob,
+        _clipboardUploadPdfBlob,
+        _clipboardCreateFreshMediaPath
+      } = require_storage();
+      var {
+        _clipboardCanUserModifyDocument,
+        _clipboardGetControlledPlaceables,
+        _clipboardHasCanvasFocus,
+        _clipboardIsMouseWithinCanvas,
+        _clipboardResolvePasteContext
+      } = require_context();
+      var {
+        _clipboardCanUseCanvasText,
+        _clipboardCanUseChatMedia
+      } = require_settings();
+      var {
+        _clipboardAppendPdfPageToSceneNote,
+        _clipboardCreatePdfJournalEntry,
+        _clipboardCreateStandalonePdfNote
+      } = require_notes();
+      var { _clipboardCreatePdfChatMessage } = require_chat();
+      var {
+        _clipboardGetFocusedPdfFieldTarget,
+        _clipboardPopulatePdfFieldTarget
+      } = require_field_targets();
+      var {
+        _clipboardAnnotateWorkflowError
+      } = require_helpers();
+      function _clipboardDescribePdfInput(pdfInput) {
+        if (!pdfInput) return null;
+        if (pdfInput.blob) {
+          return {
+            source: "blob",
+            name: pdfInput.blob.name || null,
+            type: pdfInput.blob.type || null,
+            size: pdfInput.blob.size ?? null
+          };
+        }
+        return {
+          source: "url",
+          url: pdfInput.url || null
+        };
+      }
+      function _clipboardGetPdfFilename(pdfInput = {}, blob = null) {
+        const candidate = blob?.name || pdfInput.blob?.name || _clipboardGetFilenameFromUrl(pdfInput.url) || "Pasted PDF.pdf";
+        return _clipboardGetFilenameExtension(candidate) === "pdf" ? candidate : `${candidate.replace(/\.[^./]+$/, "") || "Pasted PDF"}.pdf`;
+      }
+      function _clipboardGetPdfDisplayName(pdfInput = {}, blob = null) {
+        return _clipboardGetPdfFilename(pdfInput, blob).replace(/\.pdf$/i, "") || "Pasted PDF";
+      }
+      function _clipboardSanitizePdfPreviewBaseName(name) {
+        return String(name || "pasted-pdf").trim().replace(/\.pdf$/i, "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "pasted-pdf";
+      }
+      function _clipboardIsBlockedDirectPdfUrlDownload(pdfInput, error) {
+        return Boolean(
+          pdfInput?.url && error instanceof Error && error.message.startsWith("Failed to download pasted PDF URL from ")
+        );
+      }
+      function _clipboardCanUseExternalPdfUrlFallback(pdfInput, error) {
+        return Boolean(
+          _clipboardIsBlockedDirectPdfUrlDownload(pdfInput, error) && _clipboardLooksLikePdfUrl(pdfInput.url)
+        );
+      }
+      async function _clipboardRenderPdfPreviewBlobWithPdfJs(pdfInput, blob, name) {
+        const pdfjs = globalThis.pdfjsLib || globalThis.PDFJS || null;
+        if (!pdfjs?.getDocument || typeof document === "undefined" || typeof document.createElement !== "function") return null;
+        const source = blob ? { data: new Uint8Array(await _clipboardReadPdfPreviewArrayBuffer(blob)) } : pdfInput?.url || null;
+        if (!source) return null;
+        const loadingTask = pdfjs.getDocument(source);
+        const pdfDocument = await (loadingTask?.promise || loadingTask);
+        const firstPage = await pdfDocument.getPage(1);
+        const baseViewport = firstPage.getViewport({ scale: 1 });
+        const scale = Math.min(1, 360 / Math.max(baseViewport.width || 360, 1));
+        const viewport = firstPage.getViewport({ scale });
+        const canvasElement = document.createElement("canvas");
+        canvasElement.width = Math.ceil(viewport.width);
+        canvasElement.height = Math.ceil(viewport.height);
+        const context = canvasElement.getContext("2d");
+        if (!context) return null;
+        const renderTask = firstPage.render({ canvasContext: context, viewport });
+        await (renderTask?.promise || renderTask);
+        const previewBlob = await new Promise((resolve) => {
+          canvasElement.toBlob(resolve, "image/png");
+        });
+        if (!previewBlob) return null;
+        return new File(
+          [previewBlob],
+          `${_clipboardSanitizePdfPreviewBaseName(name)}-preview.png`,
+          { type: "image/png" }
+        );
+      }
+      async function _clipboardReadPdfPreviewArrayBuffer(blob) {
+        if (typeof blob?.arrayBuffer === "function") return blob.arrayBuffer();
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error || new Error("Failed to read PDF preview data"));
+          reader.readAsArrayBuffer(blob);
+        });
+      }
+      async function _clipboardTryCreatePdfPreviewBlob(pdfInput, blob = pdfInput?.blob || null, name = "") {
+        try {
+          return await _clipboardRenderPdfPreviewBlobWithPdfJs(pdfInput, blob, name);
+        } catch (error) {
+          _clipboardLog("debug", "PDF preview generation failed; continuing with the generic PDF icon fallback", {
+            pdfInput: _clipboardDescribePdfInput(pdfInput),
+            error: _clipboardSerializeError(error)
+          });
+          return null;
+        }
+      }
+      async function _clipboardTryUploadPdfPreviewBlob(previewBlob, destination) {
+        if (!previewBlob) return "";
+        try {
+          const previewPath = await _clipboardUploadBlob(previewBlob, destination);
+          return _clipboardCreateFreshMediaPath(previewPath);
+        } catch (error) {
+          _clipboardLog("warn", "PDF preview upload failed; continuing with the generic PDF icon fallback", {
+            destination: _clipboardDescribeDestinationForLog(destination),
+            error: _clipboardSerializeError(error)
+          });
+          return "";
+        }
+      }
+      async function _clipboardResolvePdfResource(pdfInput) {
+        if (!pdfInput) return null;
+        let blob = pdfInput.blob || null;
+        let external = false;
+        let src = "";
+        try {
+          blob = blob || await _clipboardResolvePdfInputBlob(pdfInput);
+        } catch (error) {
+          if (!_clipboardCanUseExternalPdfUrlFallback(pdfInput, error)) throw error;
+          external = true;
+          src = pdfInput.url;
+          _clipboardLog("warn", "Direct PDF URL download failed; falling back to the original PDF URL", {
+            pdfInput: _clipboardDescribePdfInput(pdfInput),
+            error: _clipboardSerializeError(error)
+          });
+        }
+        const name = _clipboardGetPdfDisplayName(pdfInput, blob);
+        if (external) {
+          return {
+            src,
+            name,
+            previewSrc: "",
+            external: true
+          };
+        }
+        if (!blob) return null;
+        const destination = _clipboardGetUploadDestination({
+          uploadContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF
+        });
+        await _clipboardCreateFolderIfMissing(destination);
+        const uploadPath = await _clipboardUploadPdfBlob(blob, destination);
+        const previewBlob = await _clipboardTryCreatePdfPreviewBlob(pdfInput, blob, name);
+        const previewSrc = await _clipboardTryUploadPdfPreviewBlob(previewBlob, destination);
+        _clipboardLog("info", "Resolved pasted PDF resource", {
+          name,
+          src: uploadPath,
+          previewSrc: previewSrc || null,
+          destination: _clipboardDescribeDestinationForLog(destination),
+          pdfInput: _clipboardDescribePdfInput(pdfInput),
+          mimeType: _clipboardNormalizeMimeType(blob.type) || null
+        });
+        return {
+          src: _clipboardCreateFreshMediaPath(uploadPath),
+          name,
+          previewSrc,
+          external: false
+        };
+      }
+      function _clipboardGetControlledSceneNoteDocuments() {
+        return _clipboardGetControlledPlaceables(canvas?.notes).map((placeable) => placeable.document).filter(Boolean);
+      }
+      function _clipboardCanPastePdfToCanvasContext(context, selectedNoteDocuments) {
+        if (context?.requireCanvasFocus && !_clipboardHasCanvasFocus()) return false;
+        if (selectedNoteDocuments.length) return true;
+        return _clipboardIsMouseWithinCanvas(context?.mousePos);
+      }
+      function _clipboardGetEligiblePdfSceneNoteDocuments(selectedNoteDocuments) {
+        if (!selectedNoteDocuments.length) return [];
+        const ineligible = selectedNoteDocuments.filter((document2) => !_clipboardCanUserModifyDocument(document2, "update"));
+        if (ineligible.length) {
+          throw new Error("Selected scene notes must be editable before a pasted PDF can be attached to them.");
+        }
+        const linkedEntryIneligible = selectedNoteDocuments.some((document2) => {
+          const entry = document2?.entryId ? game.journal?.get?.(document2.entryId) : null;
+          return entry && !_clipboardCanUserModifyDocument(entry, "update");
+        });
+        if (linkedEntryIneligible) {
+          throw new Error("Selected scene notes must be linked to Journal entries you can update before a pasted PDF can be attached to them.");
+        }
+        return selectedNoteDocuments;
+      }
+      async function _clipboardHandleCanvasPdfInput(pdfInput, options = {}) {
+        if (!canvas?.ready || !canvas.scene) return false;
+        if (!_clipboardCanUseCanvasText()) return false;
+        try {
+          const context = options.context || _clipboardResolvePasteContext(options.contextOptions);
+          const selectedNoteDocuments = _clipboardGetEligiblePdfSceneNoteDocuments(_clipboardGetControlledSceneNoteDocuments());
+          if (!_clipboardCanPastePdfToCanvasContext(context, selectedNoteDocuments)) {
+            _clipboardLog("info", "Skipping canvas PDF paste because the current context is not eligible", {
+              context,
+              selectedNoteCount: selectedNoteDocuments.length
+            });
+            return false;
+          }
+          const pdfData = await _clipboardResolvePdfResource(pdfInput);
+          if (!pdfData?.src) return false;
+          if (selectedNoteDocuments.length) {
+            for (const noteDocument of selectedNoteDocuments) {
+              await _clipboardAppendPdfPageToSceneNote(noteDocument, pdfData);
+            }
+            return true;
+          }
+          await _clipboardCreateStandalonePdfNote(pdfData, context);
+          return true;
+        } catch (error) {
+          throw _clipboardAnnotateWorkflowError(error, {
+            clipboardContentSummary: "a PDF"
+          });
+        }
+      }
+      async function _clipboardHandleChatPdfInput(pdfInput) {
+        if (!_clipboardCanUseChatMedia()) return false;
+        try {
+          const pdfData = await _clipboardResolvePdfResource(pdfInput);
+          if (!pdfData?.src) return false;
+          const { entry, page } = await _clipboardCreatePdfJournalEntry(pdfData);
+          await _clipboardCreatePdfChatMessage({ entry, page, pdfData });
+          return true;
+        } catch (error) {
+          throw _clipboardAnnotateWorkflowError(error, {
+            clipboardContentSummary: "a PDF"
+          });
+        }
+      }
+      async function _clipboardHandlePdfFieldInput(pdfInput, target) {
+        if (!_clipboardCanUseCanvasText()) return false;
+        const pdfFieldTarget = target?.field ? target : _clipboardGetFocusedPdfFieldTarget(target);
+        if (!pdfFieldTarget) return false;
+        try {
+          const pdfData = await _clipboardResolvePdfResource(pdfInput);
+          if (!pdfData?.src) return false;
+          return _clipboardPopulatePdfFieldTarget(pdfFieldTarget, pdfData.src, pdfInput);
+        } catch (error) {
+          throw _clipboardAnnotateWorkflowError(error, {
+            clipboardContentSummary: "a PDF"
+          });
+        }
+      }
+      module.exports = {
+        _clipboardDescribePdfInput,
+        _clipboardGetPdfFilename,
+        _clipboardGetPdfDisplayName,
+        _clipboardSanitizePdfPreviewBaseName,
+        _clipboardIsBlockedDirectPdfUrlDownload,
+        _clipboardCanUseExternalPdfUrlFallback,
+        _clipboardTryCreatePdfPreviewBlob,
+        _clipboardResolvePdfResource,
+        _clipboardGetControlledSceneNoteDocuments,
+        _clipboardCanPastePdfToCanvasContext,
+        _clipboardGetEligiblePdfSceneNoteDocuments,
+        _clipboardHandleCanvasPdfInput,
+        _clipboardHandleChatPdfInput,
+        _clipboardHandlePdfFieldInput
+      };
+    }
+  });
+
   // src/paste/scene-tools.js
   var require_scene_tools = __commonJS({
     "src/paste/scene-tools.js"(exports, module) {
@@ -5682,28 +6579,39 @@ var FoundryPasteEaterRuntime = (() => {
       var {
         _clipboardReadClipboardItems,
         _clipboardExtractImageInput,
+        _clipboardExtractPdfInput,
         _clipboardExtractTextInput
       } = require_clipboard();
       var {
         _clipboardCanUseScenePasteTool,
         _clipboardCanUseSceneUploadTool
       } = require_settings();
+      var { _clipboardIsPdfBlob } = require_media();
       var {
         _clipboardHandleImageInput,
         _clipboardHandleImageInputWithTextFallback,
         _clipboardHandleImageBlob
       } = require_canvas_media();
       var { _clipboardHandleTextInput } = require_text_workflows();
+      var {
+        _clipboardHandleCanvasPdfInput,
+        _clipboardHandleChatPdfInput
+      } = require_pdf_workflows();
       var { _clipboardExecutePasteWorkflow } = require_workflow_runner();
       async function _clipboardReadAndPasteImage(options = {}) {
         const clipItems = await _clipboardReadClipboardItems();
         if (!clipItems?.length) {
-          if (options.notifyNoImage) ui.notifications.warn("Foundry Paste Eater: No clipboard media was available.");
+          if (options.notifyNoImage) ui.notifications.warn("Foundry Paste Eater: No clipboard media or PDF was available.");
           return false;
+        }
+        const pdfInput = await _clipboardExtractPdfInput(clipItems);
+        if (pdfInput) {
+          if (options.handlePdfInput) return options.handlePdfInput(pdfInput);
+          return _clipboardHandleCanvasPdfInput(pdfInput, options);
         }
         const imageInput = await _clipboardExtractImageInput(clipItems);
         if (!imageInput) {
-          if (options.notifyNoImage) ui.notifications.warn("Foundry Paste Eater: No supported media or media URL was found in the clipboard.");
+          if (options.notifyNoImage) ui.notifications.warn("Foundry Paste Eater: No supported media, PDF, or direct URL was found in the clipboard.");
           return false;
         }
         if (options.handleImageInput) return options.handleImageInput(imageInput);
@@ -5720,6 +6628,11 @@ var FoundryPasteEaterRuntime = (() => {
           if (options.notifyNoContent) ui.notifications.warn("Foundry Paste Eater: No clipboard data was available.");
           return false;
         }
+        const pdfInput = await _clipboardExtractPdfInput(clipItems);
+        if (pdfInput) {
+          if (options.handlePdfInput) return options.handlePdfInput(pdfInput);
+          return _clipboardHandleCanvasPdfInput(pdfInput, options);
+        }
         const mediaInput = await _clipboardExtractImageInput(clipItems);
         if (mediaInput) {
           if (options.handleImageInput) return options.handleImageInput(mediaInput);
@@ -5731,7 +6644,7 @@ var FoundryPasteEaterRuntime = (() => {
           return _clipboardHandleTextInput(textInput, options);
         }
         if (options.notifyNoContent) {
-          ui.notifications.warn("Foundry Paste Eater: No supported media or text was found in the clipboard.");
+          ui.notifications.warn("Foundry Paste Eater: No supported media, PDF, or text was found in the clipboard.");
         }
         return false;
       }
@@ -5776,26 +6689,38 @@ var FoundryPasteEaterRuntime = (() => {
       async function _clipboardOpenUploadPicker() {
         return _clipboardChooseAndHandleMediaFile({
           emptyMessage: "Upload picker closed without selecting a file.",
-          selectedMessage: "Selected a media file from the upload picker",
-          handler: (file) => _clipboardHandleImageBlob(file, {
-            contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS
-          })
+          selectedMessage: "Selected a media or PDF file from the upload picker",
+          handler: (file) => {
+            if (_clipboardIsPdfBlob(file, { filename: file?.name, mimeType: file?.type })) {
+              return _clipboardHandleCanvasPdfInput({ blob: file }, {
+                contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS
+              });
+            }
+            return _clipboardHandleImageBlob(file, {
+              contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS
+            });
+          }
         });
       }
       async function _clipboardOpenChatUploadPicker() {
         return _clipboardChooseAndHandleMediaFile({
           emptyMessage: "Chat upload picker closed without selecting a file.",
-          selectedMessage: "Selected a media file from the chat upload picker",
-          handler: (file) => require_chat_media()._clipboardHandleChatImageBlob(file)
+          selectedMessage: "Selected a media or PDF file from the chat upload picker",
+          handler: (file) => {
+            if (_clipboardIsPdfBlob(file, { filename: file?.name, mimeType: file?.type })) {
+              return _clipboardHandleChatPdfInput({ blob: file });
+            }
+            return require_chat_media()._clipboardHandleChatImageBlob(file);
+          }
         });
       }
       function _clipboardHandleScenePasteAction() {
         if (!_clipboardCanUseScenePasteTool()) return false;
         if (!navigator.clipboard?.read) {
-          ui.notifications.warn("Foundry Paste Eater: Direct clipboard reads are unavailable here. Use your browser's Paste action or the Upload Media tool instead.");
+          ui.notifications.warn("Foundry Paste Eater: Direct clipboard reads are unavailable here. Use your browser's Paste action or the Upload Media/PDF tool instead.");
           return false;
         }
-        _clipboardLog("info", "Invoked scene Paste Media action.", {
+        _clipboardLog("info", "Invoked scene Paste Media/PDF action.", {
           activeLayer: canvas?.activeLayer?.options?.name || null
         });
         void _clipboardExecutePasteWorkflow(() => _clipboardReadAndPasteImage({
@@ -5808,7 +6733,7 @@ var FoundryPasteEaterRuntime = (() => {
       }
       function _clipboardHandleSceneUploadAction() {
         if (!_clipboardCanUseSceneUploadTool()) return false;
-        _clipboardLog("info", "Invoked scene Upload Media action.", {
+        _clipboardLog("info", "Invoked scene Upload Media/PDF action.", {
           activeLayer: canvas?.activeLayer?.options?.name || null
         });
         void _clipboardExecutePasteWorkflow(() => _clipboardOpenUploadPicker(), {
@@ -5887,7 +6812,7 @@ var FoundryPasteEaterRuntime = (() => {
       }
       function _clipboardHandleChatUploadAction() {
         if (!_clipboardCanUseChatMedia()) return false;
-        _clipboardLog("info", "Invoked chat Upload Media action.");
+        _clipboardLog("info", "Invoked chat Upload Media/PDF action.");
         void _clipboardExecutePasteWorkflow(() => _clipboardOpenChatUploadPicker(), {
           respectCopiedObjects: false
         });
@@ -6018,6 +6943,7 @@ var FoundryPasteEaterRuntime = (() => {
         ...require_token_modes(),
         ...require_canvas_media(),
         ...require_chat_media(),
+        ...require_pdf_workflows(),
         ...require_art_fields(),
         ...require_text_workflows(),
         ...require_scene_tools()
@@ -6042,6 +6968,8 @@ var FoundryPasteEaterRuntime = (() => {
       var {
         _clipboardExtractImageBlobFromDataTransfer,
         _clipboardExtractImageInputFromDataTransfer,
+        _clipboardExtractPdfBlobFromDataTransfer,
+        _clipboardExtractPdfInputFromDataTransfer,
         _clipboardInsertTextAtTarget
       } = require_clipboard();
       var {
@@ -6050,7 +6978,9 @@ var FoundryPasteEaterRuntime = (() => {
       } = require_settings();
       var {
         _clipboardExecutePasteWorkflow,
+        _clipboardDescribePdfInput,
         _clipboardHandleChatImageInput,
+        _clipboardHandleChatPdfInput,
         _clipboardHandleChatUploadAction
       } = require_workflows();
       function _clipboardToggleChatDropTarget(root, active) {
@@ -6080,7 +7010,7 @@ var FoundryPasteEaterRuntime = (() => {
       function _clipboardOnChatDragOver(event) {
         if (!_clipboardCanUseChatMedia()) return;
         const root = event.currentTarget;
-        const blob = _clipboardExtractImageBlobFromDataTransfer(event.dataTransfer);
+        const blob = _clipboardExtractPdfBlobFromDataTransfer(event.dataTransfer) || _clipboardExtractImageBlobFromDataTransfer(event.dataTransfer);
         if (!blob) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = "copy";
@@ -6095,6 +7025,19 @@ var FoundryPasteEaterRuntime = (() => {
         if (!_clipboardCanUseChatMedia()) return;
         const root = event.currentTarget;
         _clipboardToggleChatDropTarget(root, false);
+        const pdfInput = _clipboardExtractPdfInputFromDataTransfer(event.dataTransfer);
+        if (pdfInput) {
+          _clipboardLog("info", "Handling dropped PDF in chat.", {
+            pdfInput: _clipboardDescribePdfInput(pdfInput),
+            dataTransfer: _clipboardDescribeDataTransfer(event.dataTransfer)
+          });
+          event.preventDefault();
+          event.stopPropagation();
+          void _clipboardExecutePasteWorkflow(() => _clipboardHandleChatPdfInput(pdfInput), {
+            respectCopiedObjects: false
+          });
+          return;
+        }
         const mediaInput = _clipboardExtractImageInputFromDataTransfer(event.dataTransfer);
         if (!mediaInput) return;
         _clipboardLog("info", "Handling dropped media in chat.", {
@@ -6135,11 +7078,11 @@ var FoundryPasteEaterRuntime = (() => {
         }
         const button = ownerDocument.createElement("button");
         button.type = "button";
-        button.className = "ui-control icon fa-solid fa-file-image foundry-paste-eater-chat-upload";
+        button.className = "ui-control icon fa-solid fa-file-arrow-up foundry-paste-eater-chat-upload";
         button.dataset.action = CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION;
         button.dataset.tooltip = "";
-        button.title = "Upload Chat Media";
-        button.ariaLabel = "Upload Chat Media";
+        button.title = "Upload Chat Media or PDF";
+        button.ariaLabel = "Upload Chat Media or PDF";
         button.addEventListener("click", () => _clipboardHandleChatUploadAction());
         mount.append(button);
       }
@@ -6205,11 +7148,15 @@ var FoundryPasteEaterRuntime = (() => {
       } = require_diagnostics();
       var {
         _clipboardExtractImageInputFromDataTransfer,
+        _clipboardExtractPdfInputFromDataTransfer,
         _clipboardExtractTextInputFromDataTransfer,
         _clipboardGetChatRootFromTarget,
         _clipboardIsEditableTarget
       } = require_clipboard();
-      var { _clipboardGetFocusedArtFieldTarget } = require_field_targets();
+      var {
+        _clipboardGetFocusedArtFieldTarget,
+        _clipboardGetFocusedPdfFieldTarget
+      } = require_field_targets();
       var { _clipboardResolvePasteContext, _clipboardCanPasteToContext } = require_context();
       var {
         _clipboardCanUseChatMedia
@@ -6217,6 +7164,11 @@ var FoundryPasteEaterRuntime = (() => {
       var {
         _clipboardHandleImageInputWithTextFallback,
         _clipboardHandleArtFieldImageInput,
+        _clipboardHandleCanvasPdfInput,
+        _clipboardHandleChatPdfInput,
+        _clipboardHandlePdfFieldInput,
+        _clipboardCanPastePdfToCanvasContext,
+        _clipboardGetControlledSceneNoteDocuments,
         _clipboardHandleTextInput,
         _clipboardHasPasteConflict,
         _clipboardExecutePasteWorkflow
@@ -6249,6 +7201,7 @@ var FoundryPasteEaterRuntime = (() => {
       function _clipboardShouldRestoreGameFocus(target) {
         if (!(target instanceof HTMLElement)) return false;
         if (_clipboardGetChatRootFromTarget(target)) return false;
+        if (_clipboardGetFocusedPdfFieldTarget(target)) return false;
         if (_clipboardIsEditableTarget(target)) return false;
         if (_clipboardGetFocusedArtFieldTarget(target)) return false;
         return Boolean(target.closest("#board, #scene-controls"));
@@ -6266,14 +7219,24 @@ var FoundryPasteEaterRuntime = (() => {
         CLIPBOARD_IMAGE_BOUND_EVENT_DOCUMENTS.add(eventDocument);
       }
       function _clipboardResolveNativePasteRoute({
+        hasPdfInput = false,
         hasMediaInput = false,
         hasTextInput = false,
+        hasPdfFieldTarget = false,
         hasArtFieldTarget = false,
         isChatTarget = false,
         isEditableTarget = false,
         canUseChatMedia = _clipboardCanUseChatMedia(),
         canvasContextEligible = false
       } = {}) {
+        if (hasPdfInput) {
+          if (hasPdfFieldTarget) return { route: "pdf-field" };
+          if (isChatTarget) {
+            return { route: canUseChatMedia ? "chat-pdf" : "ignore-chat-media-disabled" };
+          }
+          if (isEditableTarget) return { route: "ignore-editable-pdf" };
+          return { route: canvasContextEligible ? "canvas-pdf" : "ignore-pdf-ineligible" };
+        }
         if (hasMediaInput) {
           if (hasArtFieldTarget) return { route: "art-field-media" };
           if (isChatTarget) {
@@ -6298,9 +7261,54 @@ var FoundryPasteEaterRuntime = (() => {
           dataTransfer: _clipboardDescribeDataTransfer(event.clipboardData)
         });
         const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
+        const pdfInput = _clipboardExtractPdfInputFromDataTransfer(event.clipboardData);
         const context = _clipboardResolvePasteContext();
         const isChatTarget = Boolean(_clipboardGetChatRootFromTarget(event.target));
         const isEditableTarget = _clipboardIsEditableTarget(event.target);
+        if (pdfInput) {
+          const pdfFieldTarget = _clipboardGetFocusedPdfFieldTarget(event.target);
+          const route2 = _clipboardResolveNativePasteRoute({
+            hasPdfInput: true,
+            hasPdfFieldTarget: Boolean(pdfFieldTarget),
+            isChatTarget,
+            isEditableTarget,
+            canUseChatMedia: _clipboardCanUseChatMedia(),
+            canvasContextEligible: _clipboardCanPastePdfToCanvasContext(context, _clipboardGetControlledSceneNoteDocuments())
+          });
+          if (route2.route === "pdf-field") {
+            if (_clipboardHasPasteConflict({ respectCopiedObjects: false })) return;
+            _clipboardConsumePasteEvent(event);
+            void _clipboardExecutePasteWorkflow(() => _clipboardHandlePdfFieldInput(pdfInput, pdfFieldTarget), {
+              respectCopiedObjects: false
+            });
+            return;
+          }
+          if (route2.route === "chat-pdf") {
+            if (_clipboardHasPasteConflict({ respectCopiedObjects: false })) return;
+            _clipboardConsumePasteEvent(event);
+            void _clipboardExecutePasteWorkflow(() => _clipboardHandleChatPdfInput(pdfInput), {
+              respectCopiedObjects: false
+            });
+            return;
+          }
+          if (route2.route === "ignore-chat-media-disabled") return;
+          if (route2.route === "ignore-editable-pdf") {
+            _clipboardLog("info", "Ignoring pasted PDF in an unsupported editable target.", {
+              targetTagName: event.target?.tagName || null,
+              targetName: event.target?.name || event.target?.dataset?.edit || null
+            });
+            return;
+          }
+          if (route2.route === "ignore-pdf-ineligible") {
+            if (!_clipboardCanHandleCanvasPasteContext(context, "Ignoring pasted PDF because the canvas context is not eligible.")) return;
+          }
+          if (_clipboardHasPasteConflict()) return;
+          _clipboardConsumePasteEvent(event);
+          void _clipboardExecutePasteWorkflow(() => _clipboardHandleCanvasPdfInput(pdfInput, { context }), {
+            respectCopiedObjects: false
+          });
+          return;
+        }
         if (imageInput) {
           const artFieldTarget = _clipboardGetFocusedArtFieldTarget(event.target);
           const route2 = _clipboardResolveNativePasteRoute({
@@ -6401,7 +7409,13 @@ var FoundryPasteEaterRuntime = (() => {
         CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS,
         CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER
       } = require_constants();
-      var { _clipboardExtractImageInput, _clipboardExtractImageInputFromDataTransfer, _clipboardReadClipboardItems } = require_clipboard();
+      var {
+        _clipboardExtractImageInput,
+        _clipboardExtractImageInputFromDataTransfer,
+        _clipboardExtractPdfInput,
+        _clipboardExtractPdfInputFromDataTransfer,
+        _clipboardReadClipboardItems
+      } = require_clipboard();
       var { _clipboardLog } = require_diagnostics();
       var {
         _clipboardCanUseScenePasteTool,
@@ -6410,6 +7424,7 @@ var FoundryPasteEaterRuntime = (() => {
       } = require_settings();
       var {
         _clipboardExecutePasteWorkflow,
+        _clipboardHandleCanvasPdfInput,
         _clipboardHandleImageInput,
         _clipboardHandleScenePasteAction,
         _clipboardHandleSceneUploadAction
@@ -6443,7 +7458,7 @@ var FoundryPasteEaterRuntime = (() => {
           const onUploadClick = () => _clipboardHandleSceneUploadAction();
           _clipboardUpsertSceneControlTool(control, CLIPBOARD_IMAGE_TOOL_PASTE, {
             name: CLIPBOARD_IMAGE_TOOL_PASTE,
-            title: "Paste Media",
+            title: "Paste Media or PDF",
             icon: "fa-solid fa-paste",
             order,
             button: true,
@@ -6453,8 +7468,8 @@ var FoundryPasteEaterRuntime = (() => {
           });
           _clipboardUpsertSceneControlTool(control, CLIPBOARD_IMAGE_TOOL_UPLOAD, {
             name: CLIPBOARD_IMAGE_TOOL_UPLOAD,
-            title: "Upload Media",
-            icon: "fa-solid fa-file-image",
+            title: "Upload Media or PDF",
+            icon: "fa-solid fa-file-arrow-up",
             order: order + 1,
             button: true,
             visible: _clipboardCanUseSceneUploadTool(),
@@ -6486,16 +7501,32 @@ var FoundryPasteEaterRuntime = (() => {
       }
       function _clipboardGetScenePastePromptFallbackMessage(clipItems) {
         if (clipItems?.length && clipItems.every((item) => !item?.types?.length)) {
-          return "This clipboard content is not exposed to direct clipboard reads here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media.";
+          return "This clipboard content is not exposed to direct clipboard reads here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.";
         }
-        return "Direct clipboard read did not return usable media. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media.";
+        return "Direct clipboard read did not return usable media or PDF. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.";
       }
       async function _clipboardOnScenePastePromptPaste(event) {
         const prompt = event.currentTarget?.closest?.(`#${CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_ID}`);
+        const pdfInput = _clipboardExtractPdfInputFromDataTransfer(event.clipboardData);
+        if (pdfInput) {
+          _clipboardConsumePasteEvent(event);
+          const handled2 = await _clipboardExecutePasteWorkflow(() => _clipboardHandleCanvasPdfInput(pdfInput, {
+            contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS
+          }), {
+            respectCopiedObjects: false
+          });
+          if (handled2) {
+            _clipboardCloseScenePastePrompt(prompt);
+            return;
+          }
+          _clipboardSetScenePastePromptMessage(prompt, "Paste did not create a PDF note. Try again, or use Upload Media/PDF.");
+          _clipboardFocusScenePastePrompt(prompt);
+          return;
+        }
         const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
         if (!imageInput) {
-          ui.notifications.warn("Foundry Paste Eater: No supported media was found in that paste.");
-          _clipboardSetScenePastePromptMessage(prompt, "No supported media was found in that paste. Try again, or use Upload Media.");
+          ui.notifications.warn("Foundry Paste Eater: No supported media or PDF was found in that paste.");
+          _clipboardSetScenePastePromptMessage(prompt, "No supported media or PDF was found in that paste. Try again, or use Upload Media/PDF.");
           return;
         }
         _clipboardConsumePasteEvent(event);
@@ -6508,7 +7539,7 @@ var FoundryPasteEaterRuntime = (() => {
           _clipboardCloseScenePastePrompt(prompt);
           return;
         }
-        _clipboardSetScenePastePromptMessage(prompt, "Paste did not create media. Try again, or use Upload Media.");
+        _clipboardSetScenePastePromptMessage(prompt, "Paste did not create media. Try again, or use Upload Media/PDF.");
         _clipboardFocusScenePastePrompt(prompt);
       }
       function _clipboardOpenScenePastePrompt() {
@@ -6522,8 +7553,8 @@ var FoundryPasteEaterRuntime = (() => {
         prompt.className = "foundry-paste-eater-scene-paste-prompt";
         prompt.innerHTML = `
     <div class="foundry-paste-eater-scene-paste-panel" role="dialog" aria-modal="true" aria-labelledby="foundry-paste-eater-scene-paste-title">
-      <h2 id="foundry-paste-eater-scene-paste-title">Paste Media</h2>
-      <p data-role="message">Trying direct clipboard read. If nothing happens, press Cmd+V / Ctrl+V in the field below.</p>
+      <h2 id="foundry-paste-eater-scene-paste-title">Paste Media or PDF</h2>
+      <p data-role="message">Trying direct clipboard read for media or PDFs. If nothing happens, press Cmd+V / Ctrl+V in the field below.</p>
       <textarea
         id="${CLIPBOARD_IMAGE_SCENE_PASTE_TARGET_ID}"
         class="foundry-paste-eater-scene-paste-target"
@@ -6531,7 +7562,7 @@ var FoundryPasteEaterRuntime = (() => {
         placeholder="Press Cmd+V / Ctrl+V here if direct clipboard read does not complete."
       ></textarea>
       <div class="foundry-paste-eater-scene-paste-actions">
-        ${_clipboardCanUseSceneUploadTool() ? '<button type="button" data-action="upload">Upload Media</button>' : ""}
+        ${_clipboardCanUseSceneUploadTool() ? '<button type="button" data-action="upload">Upload Media/PDF</button>' : ""}
         <button type="button" data-action="cancel">Cancel</button>
       </div>
     </div>
@@ -6590,7 +7621,7 @@ var FoundryPasteEaterRuntime = (() => {
       }
       async function _clipboardTryScenePastePromptDirectRead(prompt) {
         if (!navigator.clipboard?.read) {
-          _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard reads are unavailable here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media.");
+          _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard reads are unavailable here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.");
           return false;
         }
         const clipItems = await _clipboardReadClipboardItems();
@@ -6598,6 +7629,24 @@ var FoundryPasteEaterRuntime = (() => {
         if (!clipItems?.length) {
           _clipboardSetScenePastePromptMessage(prompt, _clipboardGetScenePastePromptFallbackMessage(clipItems));
           _clipboardFocusScenePastePrompt(prompt);
+          return false;
+        }
+        const pdfInput = await _clipboardExtractPdfInput(clipItems);
+        if (!_clipboardScenePastePromptIsOpen(prompt)) return false;
+        if (pdfInput) {
+          const handled2 = await _clipboardExecutePasteWorkflow(() => _clipboardHandleCanvasPdfInput(pdfInput, {
+            contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS
+          }), {
+            respectCopiedObjects: false
+          });
+          if (handled2) {
+            _clipboardCloseScenePastePrompt(prompt);
+            return true;
+          }
+          if (_clipboardScenePastePromptIsOpen(prompt)) {
+            _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create a PDF note. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.");
+            _clipboardFocusScenePastePrompt(prompt);
+          }
           return false;
         }
         const imageInput = await _clipboardExtractImageInput(clipItems);
@@ -6617,7 +7666,7 @@ var FoundryPasteEaterRuntime = (() => {
           return true;
         }
         if (_clipboardScenePastePromptIsOpen(prompt)) {
-          _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create media. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media.");
+          _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create media. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.");
           _clipboardFocusScenePastePrompt(prompt);
         }
         return false;
@@ -6785,6 +7834,7 @@ var FoundryPasteEaterRuntime = (() => {
             CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS: constants.CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS,
             CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT: constants.CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT,
             CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART: constants.CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
+            CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF: constants.CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF,
             CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT: constants.CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT,
             CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS: constants.CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS
           }

@@ -66,6 +66,8 @@ describe("media helpers", () => {
       expect(api._clipboardIsImageMimeType("video/mp4")).toBe(false);
       expect(api._clipboardIsVideoMimeType("video/mp4")).toBe(true);
       expect(api._clipboardIsVideoMimeType("image/png")).toBe(false);
+      expect(api._clipboardIsPdfMimeType("application/pdf; charset=binary")).toBe(true);
+      expect(api._clipboardIsPdfMimeType("application/x-pdf")).toBe(true);
       expect(api._clipboardIsMediaMimeType("video/mp4")).toBe(true);
       expect(api._clipboardIsMediaMimeType("text/plain")).toBe(false);
     });
@@ -81,6 +83,19 @@ describe("media helpers", () => {
     it("validates supported media blobs", () => {
       expect(api._clipboardIsSupportedMediaBlob(new File(["x"], "portrait.JPG", {type: "image/jpeg"}))).toBe(true);
       expect(api._clipboardIsSupportedMediaBlob(new File(["x"], "notes.txt", {type: "text/plain"}))).toBe(false);
+    });
+
+    it("detects and coerces PDF files separately from media files", () => {
+      const untypedPdf = new File(["pdf"], "handout", {type: ""});
+      const typedPdf = api._clipboardCoercePdfFile(untypedPdf, {mimeType: "application/pdf"});
+
+      expect(api._clipboardLooksLikePdfFilename("handout.PDF")).toBe(true);
+      expect(api._clipboardLooksLikePdfFilename("handout.png")).toBe(false);
+      expect(api._clipboardIsPdfBlob(new File(["pdf"], "handout.pdf", {type: ""}))).toBe(true);
+      expect(typedPdf).toBeInstanceOf(File);
+      expect(typedPdf.name).toBe("handout.pdf");
+      expect(typedPdf.type).toBe("application/pdf");
+      expect(api._clipboardCoercePdfFile(new File(["x"], "notes.txt", {type: "text/plain"}))).toBeNull();
     });
 
     it("can coerce under-described media blobs into typed files", () => {
@@ -121,6 +136,7 @@ describe("media helpers", () => {
       expect(api._clipboardGetMimeTypeFromFilename("a.mpg")).toBe("video/mpeg");
       expect(api._clipboardGetMimeTypeFromFilename("a.ogg")).toBe("video/ogg");
       expect(api._clipboardGetMimeTypeFromFilename("a.webm")).toBe("video/webm");
+      expect(api._clipboardGetMimeTypeFromFilename("a.pdf")).toBe("application/pdf");
       expect(api._clipboardGetMimeTypeFromFilename("a.unknown")).toBe("image/png");
     });
 
@@ -737,6 +753,17 @@ describe("media helpers", () => {
       expect(api._clipboardExtractImageUrlFromHtml("")).toBeNull();
     });
 
+    it("parses direct PDF URLs from uri-list, HTML links, and plain text", () => {
+      expect(api._clipboardLooksLikePdfUrl("https://example.com/handout.pdf?download=1")).toBe(true);
+      expect(api._clipboardLooksLikePdfUrl("https://example.com/handout.png")).toBe(false);
+      expect(api._clipboardExtractPdfUrlFromUriList("# comment\nhttps://example.com/handout.pdf")).toBe("https://example.com/handout.pdf");
+      expect(api._clipboardExtractPdfUrlFromText("https://example.com/handout.pdf")).toBe("https://example.com/handout.pdf");
+      expect(api._clipboardExtractPdfUrlFromText("https://example.com/handout one.pdf")).toBeNull();
+      expect(api._clipboardExtractPdfUrlFromHtml('<a href="https://example.com/readme.txt">Text</a><a href="https://example.com/handout.pdf">PDF</a>')).toBe("https://example.com/handout.pdf");
+      expect(api._clipboardExtractPdfUrlFromHtml('<object data="https://example.com/handout.pdf"></object>')).toBe("https://example.com/handout.pdf");
+      expect(api._clipboardExtractPdfUrlFromHtml("")).toBeNull();
+    });
+
     it("creates logged image input wrappers", () => {
       expect(api._clipboardCreateLoggedImageInput({url: "https://example.com/file.png"}, "message", {a: 1})).toEqual({
         url: "https://example.com/file.png",
@@ -766,6 +793,36 @@ describe("media helpers", () => {
       });
 
       expect(api._clipboardExtractImageInputFromValues({plainText: "not a url"})).toBeNull();
+    });
+
+    it("extracts PDF input from blobs and PDF-like URL values", () => {
+      const pdf = new File(["pdf"], "handout.pdf", {type: "application/pdf"});
+      expect(api._clipboardExtractPdfInputFromValues({
+        blob: pdf,
+      }, {
+        blobMessage: "blob",
+      })).toEqual({blob: pdf});
+
+      expect(api._clipboardExtractPdfInputFromValues({
+        uriList: "https://example.com/handout.pdf",
+      }, {
+        uriListMessage: "uri",
+      })).toEqual({
+        url: "https://example.com/handout.pdf",
+        text: "https://example.com/handout.pdf",
+      });
+
+      expect(api._clipboardExtractPdfInputFromValues({
+        html: '<a href="https://example.com/handout.pdf">Handout</a>',
+      }, {
+        htmlMessage: "html",
+      })).toEqual({
+        url: "https://example.com/handout.pdf",
+        text: "https://example.com/handout.pdf",
+      });
+
+      expect(api._clipboardExtractPdfInputFromValues({plainText: "not a url"})).toBeNull();
+      expect(api._clipboardExtractPdfInputFromValues({plainText: "https://example.com/image.png"})).toBeNull();
     });
 
     it("extracts image input from html media sources", () => {
@@ -834,6 +891,20 @@ describe("media helpers", () => {
       });
     });
 
+    it("extracts PDF input from async clipboard file and text values", async () => {
+      const pdf = new File(["pdf"], "handout.pdf", {type: "application/pdf"});
+      await expect(api._clipboardExtractPdfInput([
+        createClipboardItem({"application/pdf": pdf}),
+      ])).resolves.toEqual({blob: pdf});
+
+      await expect(api._clipboardExtractPdfInput([
+        createClipboardItem({"text/plain": "https://example.com/handout.pdf"}),
+      ])).resolves.toEqual({
+        url: "https://example.com/handout.pdf",
+        text: "https://example.com/handout.pdf",
+      });
+    });
+
     it("prefers animated-media urls from async clipboard items over rasterized image blobs", async () => {
       const pngBlob = new File(["x"], "copied-image.png", {type: "image/png"});
       await expect(api._clipboardExtractImageInput([
@@ -875,6 +946,33 @@ describe("media helpers", () => {
         files: [new File(["x"], "fallback.png", {type: "image/png"})],
       });
       expect(api._clipboardExtractImageBlobFromDataTransfer(fallbackFileTransfer)).toBeInstanceOf(File);
+    });
+
+    it("extracts PDF blobs and inputs from dataTransfer payloads", () => {
+      const pdf = new File(["pdf"], "handout", {type: ""});
+      const pdfTransfer = createDataTransfer({
+        items: [{
+          kind: "file",
+          type: "application/pdf",
+          getAsFile: () => pdf,
+        }],
+        files: [pdf],
+      });
+      const blob = api._clipboardExtractPdfBlobFromDataTransfer(pdfTransfer);
+      expect(blob).toBeInstanceOf(File);
+      expect(blob.name).toBe("handout.pdf");
+      expect(blob.type).toBe("application/pdf");
+
+      const urlTransfer = createDataTransfer({
+        data: {
+          "text/uri-list": "https://example.com/handout.pdf",
+          "text/plain": "https://example.com/handout.pdf",
+        },
+      });
+      expect(api._clipboardExtractPdfInputFromDataTransfer(urlTransfer)).toEqual({
+        url: "https://example.com/handout.pdf",
+        text: "https://example.com/handout.pdf",
+      });
     });
 
     it("uses dataTransfer item metadata to recover Finder-style gif files", () => {

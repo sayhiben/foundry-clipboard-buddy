@@ -4,10 +4,10 @@
     "name": "foundry-paste-eater",
     "module_id": "foundry-paste-eater",
     "repo_path": ".",
-    "foundry_target": "v13"
+    "foundry_target": "v13-v14.359"
   },
   "conversation": {
-    "intent": "Long-running coding, testing, support, release, and CI-hardening thread for Foundry Paste Eater.",
+    "intent": "Long-running coding, testing, support, release, CI-hardening, V14 compatibility, and unreleased PDF paste support thread for Foundry Paste Eater.",
     "tags": {
       "domain": [
         "foundry",
@@ -17,17 +17,23 @@
         "settings",
         "support",
         "storage",
-        "testing"
+        "testing",
+        "pdf",
+        "journal"
       ],
       "phase": [
         "implementation",
         "verification",
         "release",
-        "ci-fix",
-        "post-release"
+        "post-release",
+        "handoff",
+        "design-review",
+        "code-review",
+        "unreleased-development"
       ],
       "platform": [
         "foundry-v13",
+        "foundry-v14",
         "macos",
         "finder",
         "chromium",
@@ -42,13 +48,21 @@
         "support-bundle",
         "gif-rasterization",
         "actor-link-default",
-        "chat-upload-button"
+        "chat-upload-button",
+        "prosemirror-chat-fallback",
+        "pdf-paste-support",
+        "journal-pdf-pages",
+        "chat-pdf-cards",
+        "canvas-pdf-notes"
       ],
       "future": [
         "owned-token-replacement-setting",
         "scene-drag-drop",
         "gif-to-webm-optional",
-        "v14-validation"
+        "post-release-monitoring",
+        "pdf-compendium-curation",
+        "pdf-preview-enhancement",
+        "codex-skills-review-perspectives"
       ]
     }
   },
@@ -57,66 +71,145 @@
     "Prefer strong verification and full release passes.",
     "Keep docs, tests, and runtime aligned.",
     "Prefer practical GM-facing UX and sensible defaults.",
-    "Do not loosen compatibility claims without validation."
+    "Do not loosen compatibility claims without validation.",
+    "Avoid nested ternaries where control flow clarity matters.",
+    "Avoid brittle Foundry editor helper behavior that mutates wrapper DOM instead of the real editable field."
   ],
   "repo_state": {
     "branch": "main",
-    "package_version": "1.3.0",
-    "latest_tag": "1.3.0",
-    "head_commit": "6fe72f0",
-    "head_commit_subject": "Refresh handoff snapshot",
-    "worktree_clean": true,
-    "modified_files": [],
-    "untracked_paths": [],
-    "note": "Non-handoff repo state was clean immediately after commit 6fe72f0, and main matched origin/main when this refresh began. Handoff snapshot files under handoff/ remain excluded from repo-state parity checks."
+    "package_version": "1.3.1",
+    "latest_tag": "1.3.1",
+    "head_commit": "96868de",
+    "head_commit_subject": "Release 1.3.1",
+    "worktree_clean": false,
+    "modified_files": [
+      "README.md",
+      "TESTING.md",
+      "foundry-paste-eater.css",
+      "foundry-paste-eater.js",
+      "module.json",
+      "package.json",
+      "src/chat.js",
+      "src/clipboard.js",
+      "src/constants.js",
+      "src/field-targets.js",
+      "src/index.js",
+      "src/media.js",
+      "src/notes.js",
+      "src/paste/chat-media.js",
+      "src/paste/scene-tools.js",
+      "src/settings/schema.js",
+      "src/storage/destination.js",
+      "src/storage/remote-url.js",
+      "src/storage/upload.js",
+      "src/support/media-audit.js",
+      "src/support/readiness.js",
+      "src/ui/chat.js",
+      "src/ui/paste-events.js",
+      "src/ui/scene-controls.js",
+      "src/workflows.js",
+      "test/playwright/helpers/core.js",
+      "test/playwright/smoke.canvas-text.spec.js",
+      "test/playwright/smoke.chat.spec.js",
+      "test/shared/behavior-scenarios.js",
+      "test/unit/field-targets.spec.js",
+      "test/unit/journal-and-upload.spec.js",
+      "test/unit/media-helpers.spec.js",
+      "test/unit/runtime/core.js",
+      "test/unit/support.spec.js",
+      "test/unit/ui-and-hooks.spec.js",
+      "test/unit/workflows.spec.js"
+    ],
+    "untracked_paths": [
+      "src/paste/pdf-workflows.js",
+      "test/assets/test-document.pdf"
+    ],
+    "note": "Non-handoff repo state is intentionally dirty with unreleased PDF paste support work on top of 96868de (Release 1.3.1). No new release has been created for this PDF work. Handoff snapshot files under handoff/ remain excluded from repo-state parity checks."
   },
   "release_state": {
-    "released_version": "1.3.0",
-    "release_commit": "8ab2fc9",
-    "release_title": "Foundry Paste Eater 1.3.0",
-    "release_url": "https://github.com/sayhiben/foundry-paste-eater/releases/tag/1.3.0",
+    "released_version": "1.3.1",
+    "release_commit": "96868de",
+    "release_title": "Foundry Paste Eater 1.3.1",
+    "release_url": "https://github.com/sayhiben/foundry-paste-eater/releases/tag/1.3.1",
     "manifest_url": "https://github.com/sayhiben/foundry-paste-eater/releases/latest/download/module.json",
-    "download_url": "https://github.com/sayhiben/foundry-paste-eater/releases/download/1.3.0/foundry-paste-eater_1.3.0.zip",
-    "post_release_note": "The release tag does not include the CI-only follow-up commit f5ac610."
+    "download_url": "https://github.com/sayhiben/foundry-paste-eater/releases/download/1.3.1/foundry-paste-eater_1.3.1.zip",
+    "post_release_note": "The release is published, the release commit CI run passed, and no functional post-release blocker is known from the V14 validation pass."
   },
   "validation_state": {
     "latest_local_release_pass": {
+      "command": "FOUNDRY_URL=http://127.0.0.1:30014 npm run verify:release",
       "lint": "passed",
-      "unit_tests": "passed",
+      "unit_tests": "549 passed",
       "typecheck": "passed",
       "build_runtime": "passed",
       "verify_bundle": "passed",
+      "copy_package_zip": "passed",
       "smoke": "92 passed, 1 skipped",
-      "verify_release": "passed"
+      "verify_release": "passed",
+      "foundry_target": "V14.359"
     },
-    "latest_local_unit_after_ci_fix": {
-      "tests_passed": 506,
+    "latest_local_unit": {
+      "tests_passed": 598,
       "coverage": {
-        "statements": 99.86,
-        "functions": 100.0,
-        "branches": 85.28
+        "statements": 99.69,
+        "functions": 100,
+        "branches": 86.35
       }
     },
+    "latest_manual_v14_exercises": [
+      "Cross-editor selection fallback inserted blocked direct-media URL text into V14 ProseMirror chat without altering the foreign contenteditable selection target.",
+      "Chat rerender via ui.chat.render(true) preserved a descendant contenteditable editor and the text fallback path still worked.",
+      "Scene Paste Media prompt in always mode accepted an SVG paste, created a tile, closed successfully, and was cleaned up afterward."
+    ],
     "latest_handoff_validation": {
       "script": "npm run handoff:validate",
-      "status": "passed"
+      "status": "passed after the unreleased PDF support handoff refresh"
     },
     "ci": {
-      "failing_release_run": 24111192623,
-      "failing_reason": "Branch coverage was 84.99%, below the 85.00% threshold.",
-      "fix_commit": "f5ac610",
-      "latest_successful_run": 24111495040,
-      "latest_status": "success"
+      "latest_successful_run": 24157148547,
+      "latest_status": "success",
+      "latest_head_commit": "96868de",
+      "historical_coverage_margin_fix_commit": "f5ac610",
+      "historical_handoff_validator_lint_fix_commit": "2dd3643"
+    },
+    "latest_pdf_development_pass": {
+      "command": "env -u FOUNDRY_PASSWORD FOUNDRY_URL=http://127.0.0.1:30014 FOUNDRY_DOCKER_CONTAINER=foundry-v14-dev npm run verify:release",
+      "lint": "passed",
+      "unit_tests": "598 passed",
+      "runtime_coverage": {
+        "statements": 99.69,
+        "functions": 100,
+        "branches": 86.35
+      },
+      "typecheck": "passed",
+      "build_runtime": "passed",
+      "verify_bundle": "passed",
+      "copy_dist": "passed",
+      "smoke": "94 passed, 1 skipped",
+      "skipped": "Opt-in S3 bucket integration smoke skipped because S3 env was not configured.",
+      "verify_release": "passed",
+      "foundry_url": "http://127.0.0.1:30014",
+      "foundry_container": "foundry-v14-dev",
+      "release_created": false,
+      "note": "This was a full local development validation for unreleased PDF paste support, not a new release."
     }
   },
   "decisions": [
     {
       "type": "decision",
-      "summary": "Keep the module V13-only until V14 validation exists."
+      "summary": "The module now supports Foundry V13 and is verified through Foundry V14.359 with manifest maximum 14."
     },
     {
       "type": "decision",
-      "summary": "Do not remove the manifest maximum compatibility version without a real V14 smoke pass."
+      "summary": "Do not further loosen compatibility claims without another real Foundry validation pass."
+    },
+    {
+      "type": "decision",
+      "summary": "V14 chat fallback insertion should resolve the actual contenteditable editor and recreate the range when the current selection is outside that editor."
+    },
+    {
+      "type": "decision",
+      "summary": "Playwright chat reset helpers should clear the resolved descendant editable, not blank ProseMirror wrapper textContent or innerHTML."
     },
     {
       "type": "decision",
@@ -145,6 +238,22 @@
     {
       "type": "decision",
       "summary": "Unless a test is explicitly validating logging settings or quiet-mode behavior, unit and smoke verification should run with the module's most verbose logging configuration enabled."
+    },
+    {
+      "type": "decision",
+      "summary": "PDF paste support uses world Journal PDF pages as the canonical v1 artifact, not live compendium writes or file-link-only references."
+    },
+    {
+      "type": "decision",
+      "summary": "PDF Journal entries created from chat or empty-canvas paste are shared for players, but appending a PDF to an existing selected scene Note preserves that Journal entry ownership to avoid exposing unrelated pages."
+    },
+    {
+      "type": "decision",
+      "summary": "External PDF URL fallback is allowed only for clearly PDF-like URLs when browser-side download is blocked; ambiguous URLs remain normal text unless download proves they are PDFs."
+    },
+    {
+      "type": "decision",
+      "summary": "No new release has been created for the PDF work; release_state remains anchored to published version 1.3.1."
     }
   ],
   "implemented_changes": [
@@ -162,69 +271,117 @@
     "Canonical handoff files, schema validation, and handoff protocol tooling",
     "Handoff validation decoupled from verify:release and converted to repo-relative non-handoff repo-state checks",
     "Handoff history append-only enforcement against tracked HEAD content and relaxed narrative-field minimum schema",
-    "Handoff snapshots refreshed after staff-style code review so the next agent inherits the refined protocol and current dirty-state context",
-    "AGENTS now treats maximum-verbosity unit and smoke verification as the default unless logging behavior itself is under test",
-    "Local Playwright CLI debug artifacts are ignored through the .playwright-cli/ gitignore rule"
+    "Local Playwright CLI debug artifacts are ignored through the .playwright-cli/ gitignore rule",
+    "Foundry V14.359 manifest verification for release 1.3.1",
+    "V14 ProseMirror chat fallback insertion fix with stale-selection re-anchoring",
+    "V14 Playwright chat helper fix so clearChatInputs clears descendant editables instead of destroying ProseMirror wrapper DOM",
+    "Regression coverage for fallback insertion when another contenteditable owns the live selection",
+    "GitHub release 1.3.1 with accurate V14 compatibility release notes and assets",
+    "Unreleased PDF paste support as a new document content kind backed by world Journal PDF pages",
+    "PDF detection from local files, direct .pdf URLs, uri-list payloads, HTML links, and plain text",
+    "PDF-safe upload and remote URL resolution under the pdf upload context without image/video media coercion",
+    "Chat PDF cards with UUID Journal links and best-effort preview/icon fallback",
+    "Canvas PDF scene Notes and selected-note PDF page append behavior, with selected existing Journal ownership preserved",
+    "Focused PDF Journal page src field handling without hijacking unsupported editable fields",
+    "PDF unit coverage, PDF Playwright smoke coverage, PDF fixture, docs, support/audit/readiness updates, and regenerated runtime artifact",
+    "Review fix: selected-note PDF append preflights linked JournalEntry update rights before upload so blocked targets do not leave orphaned PDF uploads"
   ],
   "open_threads": [
     "Possible future setting: only allow token replacement for tokens owned by the user.",
     "Possible future feature: scene drag/drop from Finder or Explorer.",
     "Possible future experiment: optional GIF to WebM conversion for canvas uploads.",
-    "Possible future validation: Foundry V14 compatibility pass."
+    "Post-release watch: monitor 1.3.1 user feedback, CI, and release asset health; no known functional blocker is open from this validation pass.",
+    "PDF support is implemented and fully validated locally but remains unreleased; review, commit, and release planning are still pending.",
+    "Possible future PDF enhancements: compendium curation/export, deduplication, page-range links, stronger thumbnail generation through bundled PDF.js, and text extraction.",
+    "Possible future Codex Skills or multi-agent review workflow for specialized review perspectives after the PDF review path is closed."
   ],
   "files_to_read": [
     "AGENTS.md",
     "handoff/current.md",
+    "handoff/current.json",
+    "handoff/history.ndjson",
     "handoff/schema.json",
     "README.md",
     "TESTING.md",
-    "CHANGELOG.md",
-    ".gitignore",
+    "module.json",
+    "package.json",
     "scripts/validate-handoff.js",
-    "src/settings/schema.js",
-    "src/canvas/create-strategies.js",
-    "src/ui/chat.js",
+    "src/clipboard.js",
+    "src/media.js",
+    "src/notes.js",
+    "src/chat.js",
+    "src/field-targets.js",
+    "src/paste/pdf-workflows.js",
+    "src/paste/chat-media.js",
+    "src/paste/scene-tools.js",
+    "src/storage/upload.js",
+    "src/storage/remote-url.js",
     "src/ui/paste-events.js",
+    "src/ui/chat.js",
+    "test/unit/workflows.spec.js",
+    "test/unit/journal-and-upload.spec.js",
+    "test/unit/media-helpers.spec.js",
     "test/unit/ui-and-hooks.spec.js",
-    "test/unit/support.spec.js",
-    "test/playwright/config.spec.js",
-    "test/playwright/smoke.canvas-media.spec.js"
+    "test/playwright/smoke.canvas-text.spec.js",
+    "test/playwright/smoke.chat.spec.js",
+    "test/assets/test-document.pdf"
   ],
   "recent_commands": [
-    "git status --short",
-    "git rev-parse --short HEAD",
-    "git log --oneline --decorate -n 8",
-    "git show --stat --summary HEAD -- handoff/current.md handoff/current.json handoff/history.ndjson AGENTS.md .gitignore",
+    "git status --short -- . ':(exclude)handoff'",
+    "npx vitest run test/unit/workflows.spec.js test/unit/journal-and-upload.spec.js",
+    "npm run lint",
+    "npm run typecheck",
+    "npm run build:runtime",
+    "npm run verify:bundle",
+    "npm test",
+    "git diff --check",
+    "docker ps --format \"table {{.ID}}\\t{{.Names}}\\t{{.Status}}\\t{{.Ports}}\"",
+    "curl -s -o /dev/null -w \"%{http_code}\\n\" http://127.0.0.1:30014/join",
+    "docker inspect foundry-v14-dev --format '{{json .Mounts}}' | python3 -m json.tool",
+    "env -u FOUNDRY_PASSWORD FOUNDRY_URL=http://127.0.0.1:30014 FOUNDRY_DOCKER_CONTAINER=foundry-v14-dev npm run verify:release",
+    "git diff --check",
     "npm run handoff:validate"
   ],
   "recent_turns": [
     {
       "speaker": "user",
-      "summary": "Requested that AGENTS.md make maximum-verbosity logging the default posture for unit and smoke tests except when logging behavior itself is under test."
-    },
-    {
-      "speaker": "assistant",
-      "summary": "Confirmed the guidance belonged in AGENTS.md and recorded the verbose-logging testing expectation in prominent testing and maintainability sections."
+      "summary": "Asked how the module should handle pasted PDFs."
     },
     {
       "speaker": "user",
-      "summary": "Asked whether any current local-output paths should be added to .gitignore."
-    },
-    {
-      "speaker": "assistant",
-      "summary": "Reviewed the live worktree and identified .playwright-cli/ as the only obvious generated debug-output candidate to ignore."
+      "summary": "Shared PDF UX thoughts and asked for better options around upload, chat/canvas references, previews, fields, and sharing."
     },
     {
       "speaker": "user",
-      "summary": "Requested that .playwright-cli/ be added to .gitignore."
-    },
-    {
-      "speaker": "assistant",
-      "summary": "Added the .playwright-cli/ ignore rule."
+      "summary": "Provided a detailed PDF Paste Support Plan and initially asked to implement it."
     },
     {
       "speaker": "user",
-      "summary": "Requested a final re-review of AGENTS.md, a handoff refresh, and then a commit and push."
+      "summary": "Redirected into critical UX/design review of the PDF approach."
+    },
+    {
+      "speaker": "user",
+      "summary": "Asked for an engineering perspective on whether the new media type matched the project's strict expectations."
+    },
+    {
+      "speaker": "user",
+      "summary": "Provided review findings for selected-note Journal ownership exposure and upload-before-preflight behavior."
+    },
+    {
+      "speaker": "user",
+      "summary": "Asked what other review expertise to consider, how to use Codex sub-agents, and whether Codex Skills should be created."
+    },
+    {
+      "speaker": "user",
+      "summary": "Asked to finish the PDF review path first and return to the Codex Skills side-thought later."
+    },
+    {
+      "speaker": "user",
+      "summary": "Allowed starting a container for the full validation suite and asked to stop if user-run help would be faster."
+    },
+    {
+      "speaker": "user",
+      "summary": "Asked whether the handoff/* files are remembered and then requested a handoff refresh, explicitly noting that no new release is being created yet."
     }
   ],
   "summary_lineage": [
@@ -257,6 +414,16 @@
       "id": "handoff-refresh-v2",
       "kind": "refresh-and-maintainer-guidance",
       "note": "The tracked handoff snapshot was re-reviewed against the live clean main branch and updated to carry forward the current maintainer expectations around verbose diagnostics and ignored local Playwright CLI artifacts."
+    },
+    {
+      "id": "handoff-v14-release-1.3.1",
+      "kind": "release-and-compatibility-refresh",
+      "note": "This refresh re-anchors the handoff to the 1.3.1 release commit, records real Foundry V14.359 validation, and preserves the resolved V14 ProseMirror chat reset and fallback-insertion review context."
+    },
+    {
+      "id": "handoff-pdf-support-dev",
+      "kind": "unreleased-development-refresh",
+      "note": "This refresh records the unreleased PDF paste support implementation, the two PDF review fixes, and the full local Foundry V14 validation pass while keeping release_state anchored to published version 1.3.1."
     }
   ],
   "compaction_protocol": {
@@ -271,5 +438,5 @@
       "Preserve facts, decisions, preferences, open questions, and risks as distinct categories."
     ]
   },
-  "resume_prompt": "Resume from main after the committed handoff baseline at 6fe72f0. Treat 1.3.0 as released and functionally sound, with CI already repaired by the follow-up coverage-only commit. The non-handoff repo state was clean and origin/main matched when this refresh began, so the next agent should first inspect whether any new post-snapshot changes exist before proceeding. Refresh handoff/current.md, handoff/current.json, and handoff/history.ndjson before stopping if you change the handoff, and run npm run handoff:validate after those handoff edits."
+  "resume_prompt": "Resume from main at commit 96868de (Release 1.3.1) with a deliberately dirty non-handoff worktree containing unreleased PDF paste support. Do not assume a new release was created: release_state remains 1.3.1. Start by checking git status and reviewing src/paste/pdf-workflows.js, src/notes.js, src/clipboard.js, src/chat.js, and the PDF unit/smoke tests. The PDF work passed lint, unit, typecheck, bundle parity, and verify:release against the existing foundry-v14-dev container at http://127.0.0.1:30014 with 94 Playwright smoke tests passed and 1 S3 smoke skipped. If you edit handoff files again, append to handoff/history.ndjson and run npm run handoff:validate."
 }

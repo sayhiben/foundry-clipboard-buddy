@@ -19,8 +19,15 @@ function makeId(prefix) {
 function createPage(data = {}) {
   const page = {
     id: data.id || makeId("page"),
+    uuid: data.uuid || null,
     type: data.type || "text",
     name: data.name || "Page",
+    title: data.title || {
+      show: true,
+      level: 1,
+    },
+    src: data.src || "",
+    flags: data.flags || {},
     text: {
       content: data.text?.content || "",
       format: data.text?.format ?? 1,
@@ -28,6 +35,7 @@ function createPage(data = {}) {
     update: vi.fn(async updateData => {
       if (Object.hasOwn(updateData, "text.content")) page.text.content = updateData["text.content"];
       if (Object.hasOwn(updateData, "text.format")) page.text.format = updateData["text.format"];
+      if (Object.hasOwn(updateData, "src")) page.src = updateData.src;
       return page;
     }),
   };
@@ -45,18 +53,39 @@ function createPagesCollection(pages) {
 }
 
 function createJournalEntry(env, data = {}) {
-  const pages = (data.pages || []).map(pageData => createPage(pageData));
+  const entryId = data.id || makeId("entry");
+  const entryUuid = data.uuid || `JournalEntry.${entryId}`;
+  const pages = (data.pages || []).map(pageData => {
+    const page = createPage(pageData);
+    if (!page.uuid) page.uuid = `${entryUuid}.JournalEntryPage.${page.id}`;
+    return page;
+  });
   const entry = {
-    id: data.id || makeId("entry"),
+    id: entryId,
+    uuid: entryUuid,
     name: data.name || "Journal Entry",
+    ownership: data.ownership || {},
+    isOwner: data.isOwner ?? true,
+    canUserModify: data.canUserModify || vi.fn(() => data.isOwner ?? true),
+    testUserPermission: data.testUserPermission || vi.fn(() => data.isOwner ?? true),
     pages: createPagesCollection(pages),
     createEmbeddedDocuments: vi.fn(async (_type, pageDataList) => {
-      const createdPages = pageDataList.map(pageData => createPage(pageData));
+      const createdPages = pageDataList.map(pageData => {
+        const page = createPage(pageData);
+        if (!page.uuid) page.uuid = `${entryUuid}.JournalEntryPage.${page.id}`;
+        return page;
+      });
       for (const page of createdPages) {
         entry.pages.contents.push(page);
         entry.pages.set(page.id, page);
       }
       return createdPages;
+    }),
+    update: vi.fn(async updateData => {
+      for (const [key, value] of Object.entries(updateData || {})) {
+        entry[key] = value;
+      }
+      return entry;
     }),
   };
 
@@ -505,6 +534,12 @@ function loadRuntime(options = {}) {
   globalThis.CONST = {
     DEFAULT_TOKEN: "icons/svg/mystery-man.svg",
     BASE_DOCUMENT_TYPE: "base",
+    DOCUMENT_OWNERSHIP_LEVELS: {
+      NONE: 0,
+      LIMITED: 1,
+      OBSERVER: 2,
+      OWNER: 3,
+    },
     USER_ROLES: {
       NONE: 0,
       PLAYER: 1,

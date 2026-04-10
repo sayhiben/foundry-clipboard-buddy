@@ -86,14 +86,14 @@ function _clipboardCreateVersionedFilename(filename, version = Date.now()) {
   return extension ? `${baseName}-${suffix}.${extension}` : `${baseName}-${suffix}`;
 }
 
-function _clipboardCreateUploadFile(blob, version = Date.now()) {
+function _clipboardCreateUploadFile(blob, version = Date.now(), {coerceMedia = true, fallbackBaseName = "pasted_image"} = {}) {
   const sourceName = blob instanceof File && blob.name
     ? blob.name
-    : `pasted_image.${_clipboardGetFileExtension(blob)}`;
-  const normalizedFile = _clipboardCoerceMediaFile(blob, {
+    : `${fallbackBaseName}.${_clipboardGetFileExtension(blob)}`;
+  const normalizedFile = coerceMedia ? _clipboardCoerceMediaFile(blob, {
     filename: sourceName,
     mimeType: blob?.type,
-  });
+  }) : null;
   const resolvedName = normalizedFile?.name || _clipboardEnsureFilenameExtension(sourceName, blob);
   const resolvedType = _clipboardNormalizeMimeType(normalizedFile?.type || blob?.type)
     || _clipboardGetMimeTypeFromFilename(resolvedName);
@@ -110,10 +110,10 @@ function _clipboardCreateFreshMediaPath(path, version = Date.now()) {
   return hash ? `${freshPath}#${hash}` : freshPath;
 }
 
-async function _clipboardUploadBlob(blob, targetFolder) {
+async function _clipboardUploadBlob(blob, targetFolder, options = {}) {
   _clipboardAssertUploadDestination(targetFolder);
   const normalizedBlob = await _clipboardNormalizeSvgBlobForUpload(blob);
-  const file = _clipboardCreateUploadFile(normalizedBlob);
+  const file = _clipboardCreateUploadFile(normalizedBlob, Date.now(), options);
   const fileDetails = _clipboardDescribeFile(file);
   _clipboardLog("info", "Uploading pasted media", {
     destination: _clipboardDescribeDestinationForLog(targetFolder),
@@ -147,10 +147,26 @@ async function _clipboardUploadBlob(blob, targetFolder) {
   return uploadPath;
 }
 
+function _clipboardCreatePdfUploadFile(blob, version = Date.now()) {
+  return _clipboardCreateUploadFile(blob, version, {
+    coerceMedia: false,
+    fallbackBaseName: "pasted_pdf",
+  });
+}
+
+async function _clipboardUploadPdfBlob(blob, targetFolder) {
+  return _clipboardUploadBlob(blob, targetFolder, {
+    coerceMedia: false,
+    fallbackBaseName: "pasted_pdf",
+  });
+}
+
 module.exports = {
   _clipboardCreateFolderIfMissing,
   _clipboardCreateVersionedFilename,
   _clipboardCreateUploadFile,
+  _clipboardCreatePdfUploadFile,
   _clipboardCreateFreshMediaPath,
   _clipboardUploadBlob,
+  _clipboardUploadPdfBlob,
 };

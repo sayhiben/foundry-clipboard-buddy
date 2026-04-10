@@ -1080,18 +1080,488 @@ describe("paste and handler workflows", () => {
     });
   });
 
+  describe("PDF workflows", () => {
+    function installMockPdfJsPreview() {
+      const originalPdfJsLib = globalThis.pdfjsLib;
+      const originalCreateElement = document.createElement.bind(document);
+      const render = vi.fn(() => ({promise: Promise.resolve()}));
+      const getViewport = vi.fn(({scale}) => ({
+        width: 720 * scale,
+        height: 1000 * scale,
+      }));
+      globalThis.pdfjsLib = {
+        getDocument: vi.fn(() => ({
+          promise: Promise.resolve({
+            getPage: vi.fn(async () => ({
+              getViewport,
+              render,
+            })),
+          }),
+        })),
+      };
+      document.createElement = vi.fn(tagName => {
+        if (tagName !== "canvas") return originalCreateElement(tagName);
+        return {
+          width: 0,
+          height: 0,
+          getContext: vi.fn(() => ({drawImage: vi.fn()})),
+          toBlob: callback => callback(new Blob(["preview"], {type: "image/png"})),
+        };
+      });
+
+      return () => {
+        globalThis.pdfjsLib = originalPdfJsLib;
+        document.createElement = originalCreateElement;
+      };
+    }
+
+    it("describes and names PDF inputs", () => {
+      expect(api._clipboardDescribePdfInput(null)).toBeNull();
+      expect(api._clipboardDescribePdfInput({
+        blob: new File(["pdf"], "named.pdf", {type: "application/pdf"}),
+      })).toMatchObject({
+        source: "blob",
+        name: "named.pdf",
+        type: "application/pdf",
+      });
+      expect(api._clipboardDescribePdfInput({
+        url: "https://example.com/named.pdf",
+      })).toEqual({
+        source: "url",
+        url: "https://example.com/named.pdf",
+      });
+      expect(api._clipboardGetPdfFilename({}, new File(["pdf"], "named", {type: "application/pdf"}))).toBe("named.pdf");
+      expect(api._clipboardGetPdfFilename({url: "https://example.com/source.pdf"})).toBe("source.pdf");
+      expect(api._clipboardGetPdfDisplayName({url: "https://example.com/source.pdf"})).toBe("source");
+      expect(api._clipboardSanitizePdfPreviewBaseName(" Bad PDF!!.pdf ")).toBe("Bad-PDF");
+    });
+
+    it("detects blocked direct PDF URLs that may use external URL fallback", () => {
+      const blocked = new Error("Failed to download pasted PDF URL from https://example.com/handout.pdf");
+      expect(api._clipboardIsBlockedDirectPdfUrlDownload({url: "https://example.com/handout.pdf"}, blocked)).toBe(true);
+      expect(api._clipboardCanUseExternalPdfUrlFallback({url: "https://example.com/handout.pdf"}, blocked)).toBe(true);
+      expect(api._clipboardCanUseExternalPdfUrlFallback({url: "https://example.com/handout.txt"}, blocked)).toBe(false);
+      expect(api._clipboardIsBlockedDirectPdfUrlDownload(null, blocked)).toBe(false);
+    });
+
+    it("generates PDF preview blobs through available pdfjs rendering", async () => {
+      const restorePreview = installMockPdfJsPreview();
+      try {
+        const pdfBlob = new File(["pdf"], "handout.pdf", {type: "application/pdf"});
+        const preview = await api._clipboardTryCreatePdfPreviewBlob({
+          blob: pdfBlob,
+        }, pdfBlob, "Handout PDF.pdf");
+
+        expect(preview).toBeInstanceOf(File);
+        expect(preview.name).toBe("Handout-PDF-preview.png");
+        expect(preview.type).toBe("image/png");
+        expect(globalThis.pdfjsLib.getDocument).toHaveBeenCalled();
+      } finally {
+        restorePreview();
+      }
+    });
+
+    it("supports FileReader fallback paths while generating PDF previews", async () => {
+      const restorePreview = installMockPdfJsPreview();
+      const OriginalFileReader = globalThis.FileReader;
+      const pdfBlob = new File(["pdf"], "fallback.pdf", {type: "application/pdf"});
+      Object.defineProperty(pdfBlob, "arrayBuffer", {
+        configurable: true,
+        value: undefined,
+      });
+
+      try {
+        globalThis.FileReader = class {
+          readAsArrayBuffer() {
+            this.result = new ArrayBuffer(3);
+            this.onload();
+          }
+        };
+        await expect(api._clipboardTryCreatePdfPreviewBlob({
+          blob: pdfBlob,
+        }, pdfBlob, "Fallback.pdf")).resolves.toBeInstanceOf(File);
+
+        globalThis.FileReader = class {
+          readAsArrayBuffer() {
+            this.error = new Error("read failed");
+            this.onerror();
+          }
+        };
+        await expect(api._clipboardTryCreatePdfPreviewBlob({
+          blob: pdfBlob,
+        }, pdfBlob, "Fallback.pdf")).resolves.toBeNull();
+      } finally {
+        globalThis.FileReader = OriginalFileReader;
+        restorePreview();
+      }
+    });
+
+    it("treats PDF preview generation as optional", async () => {
+      await expect(api._clipboardTryCreatePdfPreviewBlob({
+        blob: new File(["pdf"], "handout.pdf", {type: "application/pdf"}),
+      })).resolves.toBeNull();
+
+      const originalPdfJsLib = globalThis.pdfjsLib;
+      globalThis.pdfjsLib = {
+        getDocument: vi.fn(() => {
+          throw new Error("pdfjs failed");
+        }),
+      };
+      await expect(api._clipboardTryCreatePdfPreviewBlob({
+        blob: new File(["pdf"], "handout.pdf", {type: "application/pdf"}),
+      })).resolves.toBeNull();
+      globalThis.pdfjsLib = originalPdfJsLib;
+    });
+
+    it("resolves PDF resources with best-effort preview uploads", async () => {
+      const restorePreview = installMockPdfJsPreview();
+      try {
+        const resource = await api._clipboardResolvePdfResource({
+          blob: new File(["pdf"], "resource.pdf", {type: "application/pdf"}),
+        });
+
+        expect(resource).toMatchObject({
+          name: "resource",
+          src: expect.stringMatching(/^pasted_images\/resource-\d+\.pdf\?foundry-paste-eater=\d+$/),
+          previewSrc: expect.stringMatching(/^pasted_images\/resource-preview-\d+\.png\?foundry-paste-eater=\d+$/),
+          external: false,
+        });
+      } finally {
+        restorePreview();
+      }
+    });
+
+    it("does not block PDF resource creation when preview upload fails", async () => {
+      const restorePreview = installMockPdfJsPreview();
+      env.MockFilePicker.upload
+        .mockResolvedValueOnce({path: "pasted_images/resource.pdf"})
+        .mockRejectedValueOnce(new Error("preview upload failed"));
+
+      try {
+        const resource = await api._clipboardResolvePdfResource({
+          blob: new File(["pdf"], "resource.pdf", {type: "application/pdf"}),
+        });
+
+        expect(resource).toMatchObject({
+          src: expect.stringMatching(/^pasted_images\/resource\.pdf\?foundry-paste-eater=\d+$/),
+          previewSrc: "",
+          external: false,
+        });
+      } finally {
+        restorePreview();
+      }
+    });
+
+    it("returns null for empty PDF resources", async () => {
+      await expect(api._clipboardResolvePdfResource(null)).resolves.toBeNull();
+    });
+
+    it("creates a shared Journal PDF page and rich chat card from a pasted PDF", async () => {
+      await expect(api._clipboardHandleChatPdfInput({
+        blob: new File(["pdf"], "handout.pdf", {type: "application/pdf"}),
+      })).resolves.toBe(true);
+
+      expect(globalThis.foundry.documents.JournalEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+        name: "handout",
+        ownership: expect.objectContaining({
+          default: 2,
+          "user-1": 3,
+        }),
+        pages: [expect.objectContaining({
+          type: "pdf",
+          src: expect.stringMatching(/^pasted_images\/handout-\d+\.pdf\?foundry-paste-eater=\d+$/),
+        })],
+      }));
+      const message = globalThis.game.messages.contents.at(-1);
+      expect(message.content).toContain("foundry-paste-eater-chat-pdf-message");
+      expect(message.content).toContain("data-uuid=");
+      expect(message.content).toContain("Open PDF");
+    });
+
+    it("renders chat PDF preview thumbnails when a preview upload exists", async () => {
+      const entry = env.createJournalEntry({
+        id: "entry-chat-pdf-preview",
+        pages: [{
+          id: "page-chat-pdf-preview",
+          type: "pdf",
+          src: "folder/handout.pdf",
+        }],
+      });
+      const html = api._clipboardCreateChatPdfContent({
+        entry,
+        page: entry.pages.get("page-chat-pdf-preview"),
+        pdfData: {
+          name: "Handout",
+          src: "folder/handout.pdf",
+          previewSrc: "folder/handout-preview.png",
+        },
+      });
+
+      expect(html).toContain("folder/handout-preview.png");
+      expect(html).toContain("PDF preview: Handout");
+    });
+
+    it("creates external URL PDF chat references when browser download is blocked", async () => {
+      globalThis.fetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+      await expect(api._clipboardHandleChatPdfInput({
+        url: "https://example.com/handout.pdf",
+        text: "https://example.com/handout.pdf",
+      })).resolves.toBe(true);
+
+      expect(env.MockFilePicker.upload).not.toHaveBeenCalled();
+      expect(globalThis.foundry.documents.JournalEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+        pages: [expect.objectContaining({
+          type: "pdf",
+          src: "https://example.com/handout.pdf",
+          flags: {
+            "foundry-paste-eater": expect.objectContaining({
+              pdfExternal: true,
+            }),
+          },
+        })],
+      }));
+      expect(globalThis.game.messages.contents.at(-1).content).toContain("External PDF URL");
+    });
+
+    it("returns false when PDF chat handling is disabled", async () => {
+      env.settingsValues.set("foundry-paste-eater.enable-chat-media", false);
+      await expect(api._clipboardHandleChatPdfInput({
+        blob: new File(["pdf"], "handout.pdf", {type: "application/pdf"}),
+      })).resolves.toBe(false);
+    });
+
+    it("annotates PDF chat handling failures", async () => {
+      globalThis.foundry.documents.JournalEntry.create.mockRejectedValueOnce(new Error("journal write failed"));
+
+      await expect(api._clipboardHandleChatPdfInput({
+        blob: new File(["pdf"], "broken.pdf", {type: "application/pdf"}),
+      })).rejects.toMatchObject({
+        message: "journal write failed",
+        clipboardContentSummary: "a PDF",
+      });
+    });
+
+    it("creates a canvas Journal Note for pasted PDFs without replacing selected tokens or tiles", async () => {
+      globalThis.canvas.activeLayer = globalThis.canvas.tokens;
+      const selectedToken = env.createControlledPlaceable("Token", {id: "token-pdf"});
+      globalThis.canvas.tokens.controlled = [selectedToken];
+
+      await expect(api._clipboardHandleCanvasPdfInput({
+        blob: new File(["pdf"], "map-handout.pdf", {type: "application/pdf"}),
+      })).resolves.toBe(true);
+
+      expect(globalThis.canvas.scene.updateEmbeddedDocuments).not.toHaveBeenCalled();
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("Note", [
+        expect.objectContaining({
+          text: "map-handout",
+          entryId: expect.any(String),
+          pageId: expect.any(String),
+          x: 150,
+          y: 250,
+        }),
+      ]);
+      const entry = globalThis.game.journal.contents.at(-1);
+      expect(entry.pages.contents.at(-1)).toMatchObject({
+        type: "pdf",
+        src: expect.stringMatching(/^pasted_images\/map-handout-\d+\.pdf\?foundry-paste-eater=\d+$/),
+      });
+    });
+
+    it("returns false for canvas PDF handling when canvas text is disabled or context is ineligible", async () => {
+      env.settingsValues.set("foundry-paste-eater.canvas-text-paste-mode", "disabled");
+      await expect(api._clipboardHandleCanvasPdfInput({
+        blob: new File(["pdf"], "disabled.pdf", {type: "application/pdf"}),
+      })).resolves.toBe(false);
+
+      env.settingsValues.set("foundry-paste-eater.canvas-text-paste-mode", "scene-notes");
+      document.body.innerHTML = '<div class="game" tabindex="0"></div><input id="field">';
+      document.getElementById("field").focus();
+      await expect(api._clipboardHandleCanvasPdfInput({
+        blob: new File(["pdf"], "ineligible.pdf", {type: "application/pdf"}),
+      })).resolves.toBe(false);
+
+      globalThis.canvas.ready = false;
+      await expect(api._clipboardHandleCanvasPdfInput({
+        blob: new File(["pdf"], "unready.pdf", {type: "application/pdf"}),
+      })).resolves.toBe(false);
+    });
+
+    it("appends PDFs to selected scene notes and repoints the note", async () => {
+      const entry = env.createJournalEntry({
+        id: "entry-selected-note",
+        name: "Selected Note",
+        pages: [],
+      });
+      const note = env.createPlaceableDocument("Note", {
+        id: "selected-note",
+        entryId: entry.id,
+        text: "Selected Note",
+      });
+      globalThis.canvas.notes.controlled = [{document: note}];
+
+      await expect(api._clipboardHandleCanvasPdfInput({
+        blob: new File(["pdf"], "appendix.pdf", {type: "application/pdf"}),
+      })).resolves.toBe(true);
+
+      expect(entry.createEmbeddedDocuments).toHaveBeenCalledWith("JournalEntryPage", [
+        expect.objectContaining({
+          type: "pdf",
+          src: expect.stringMatching(/^pasted_images\/appendix-\d+\.pdf\?foundry-paste-eater=\d+$/),
+        }),
+      ]);
+      expect(entry.update).not.toHaveBeenCalledWith(expect.objectContaining({
+        ownership: expect.any(Object),
+      }));
+      expect(note.update).toHaveBeenCalledWith(expect.objectContaining({
+        entryId: entry.id,
+        pageId: expect.any(String),
+        text: "appendix",
+      }));
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalledWith("Token", expect.any(Array));
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalledWith("Tile", expect.any(Array));
+    });
+
+    it("fails closed when selected scene notes are not editable for PDF append", async () => {
+      const note = env.createPlaceableDocument("Note", {
+        id: "selected-note-locked",
+        isOwner: false,
+      });
+      globalThis.game.user.isGM = false;
+      globalThis.canvas.notes.controlled = [{document: note}];
+
+      await expect(api._clipboardHandleCanvasPdfInput({
+        blob: new File(["pdf"], "appendix.pdf", {type: "application/pdf"}),
+      })).rejects.toMatchObject({
+        message: "Selected scene notes must be editable before a pasted PDF can be attached to them.",
+        clipboardContentSummary: "a PDF",
+      });
+    });
+
+    it("preflights selected scene note Journal entry updates before uploading PDFs", async () => {
+      const entry = env.createJournalEntry({
+        id: "entry-selected-note-locked",
+        name: "Private Journal",
+        isOwner: false,
+      });
+      const note = env.createPlaceableDocument("Note", {
+        id: "selected-note-linked-locked-entry",
+        entryId: entry.id,
+        text: "Target Note",
+        isOwner: true,
+      });
+      globalThis.game.user.isGM = false;
+      globalThis.canvas.notes.controlled = [{document: note}];
+
+      await expect(api._clipboardHandleCanvasPdfInput({
+        blob: new File(["pdf"], "appendix.pdf", {type: "application/pdf"}),
+      })).rejects.toMatchObject({
+        message: "Selected scene notes must be linked to Journal entries you can update before a pasted PDF can be attached to them.",
+        clipboardContentSummary: "a PDF",
+      });
+
+      expect(env.MockFilePicker.upload).not.toHaveBeenCalled();
+      expect(entry.createEmbeddedDocuments).not.toHaveBeenCalled();
+      expect(note.update).not.toHaveBeenCalled();
+    });
+
+    it("fills focused PDF Journal page src fields from uploaded PDFs", async () => {
+      const root = document.createElement("form");
+      root.id = "JournalEntryPageConfig-2";
+      root.className = "application sheet journal-page";
+      root.innerHTML = '<file-picker name="src"><input type="text" value=""></file-picker>';
+      document.body.append(root);
+      const page = env.createPage({type: "pdf"});
+      page.documentName = "JournalEntryPage";
+      globalThis.foundry.applications.instances = new Map([[root.id, {
+        id: root.id,
+        object: page,
+      }]]);
+      const field = root.querySelector("input");
+
+      await expect(api._clipboardHandlePdfFieldInput({
+        blob: new File(["pdf"], "form.pdf", {type: "application/pdf"}),
+      }, field)).resolves.toBe(true);
+
+      expect(field.value).toMatch(/^pasted_images\/form-\d+\.pdf\?foundry-paste-eater=\d+$/);
+    });
+
+    it("uses the original direct PDF URL for focused PDF fields when download is blocked", async () => {
+      const root = document.createElement("form");
+      root.id = "JournalEntryPageConfig-3";
+      root.className = "application sheet journal-page";
+      root.innerHTML = '<input type="text" name="src" value="">';
+      document.body.append(root);
+      const page = env.createPage({type: "pdf"});
+      page.documentName = "JournalEntryPage";
+      globalThis.foundry.applications.instances = new Map([[root.id, {
+        id: root.id,
+        object: page,
+      }]]);
+      const field = root.querySelector("input");
+      globalThis.fetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+      await expect(api._clipboardHandlePdfFieldInput({
+        url: "https://example.com/form.pdf",
+      }, field)).resolves.toBe(true);
+
+      expect(field.value).toBe("https://example.com/form.pdf");
+    });
+
+    it("returns false for PDF field handling when disabled or unsupported", async () => {
+      await expect(api._clipboardHandlePdfFieldInput({
+        blob: new File(["pdf"], "field.pdf", {type: "application/pdf"}),
+      }, document.createElement("input"))).resolves.toBe(false);
+
+      env.settingsValues.set("foundry-paste-eater.canvas-text-paste-mode", "disabled");
+      await expect(api._clipboardHandlePdfFieldInput({
+        blob: new File(["pdf"], "field.pdf", {type: "application/pdf"}),
+      }, {
+        field: document.createElement("input"),
+      })).resolves.toBe(false);
+    });
+
+    it("annotates focused PDF field handling failures", async () => {
+      const root = document.createElement("form");
+      root.id = "JournalEntryPageConfig-4";
+      root.className = "application sheet journal-page";
+      root.innerHTML = '<input type="text" name="src" value="">';
+      document.body.append(root);
+      const page = env.createPage({type: "pdf"});
+      page.documentName = "JournalEntryPage";
+      globalThis.foundry.applications.instances = new Map([[root.id, {
+        id: root.id,
+        object: page,
+      }]]);
+      const field = root.querySelector("input");
+      globalThis.fetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: () => "text/plain",
+        },
+        blob: async () => new Blob(["x"], {type: "text/plain"}),
+      });
+
+      await expect(api._clipboardHandlePdfFieldInput({
+        url: "https://example.com/not-a-pdf.txt",
+      }, field)).rejects.toMatchObject({
+        clipboardContentSummary: "a PDF",
+      });
+    });
+  });
+
   describe("clipboard-read orchestrators", () => {
     it("warns when no clipboard media exists", async () => {
       window.navigator.clipboard.read.mockResolvedValueOnce([]);
       await expect(api._clipboardReadAndPasteImage({notifyNoImage: true})).resolves.toBe(false);
-      expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith("Foundry Paste Eater: No clipboard media was available.");
+      expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith("Foundry Paste Eater: No clipboard media or PDF was available.");
     });
 
     it("warns when clipboard content has no supported media", async () => {
       window.navigator.clipboard.read.mockResolvedValueOnce([{types: ["text/plain"], getType: async () => ({text: async () => "plain"})}]);
       await expect(api._clipboardReadAndPasteImage({notifyNoImage: true})).resolves.toBe(false);
       expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith(
-        "Foundry Paste Eater: No supported media or media URL was found in the clipboard."
+        "Foundry Paste Eater: No supported media, PDF, or direct URL was found in the clipboard."
       );
     });
 
@@ -1169,7 +1639,7 @@ describe("paste and handler workflows", () => {
       ]);
       await expect(api._clipboardReadAndPasteClipboardContent({notifyNoContent: true})).resolves.toBe(false);
       expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith(
-        "Foundry Paste Eater: No supported media or text was found in the clipboard."
+        "Foundry Paste Eater: No supported media, PDF, or text was found in the clipboard."
       );
     });
   });

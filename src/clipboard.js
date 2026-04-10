@@ -8,8 +8,12 @@ const {
 } = require("./diagnostics");
 const {
   _clipboardCoerceMediaFile,
+  _clipboardCoercePdfFile,
+  _clipboardGetFilenameFromUrl,
   _clipboardGetMediaKind,
+  _clipboardIsPdfMimeType,
   _clipboardIsSupportedMediaBlob,
+  _clipboardLooksLikePdfFilename,
   _clipboardParseSupportedUrl,
 } = require("./media");
 const {
@@ -64,6 +68,20 @@ async function _clipboardExtractImageBlob(clipItems) {
   return null;
 }
 
+async function _clipboardExtractPdfBlob(clipItems) {
+  for (const clipItem of clipItems || []) {
+    for (const fileType of clipItem.types) {
+      if (!_clipboardIsPdfMimeType(fileType)) continue;
+
+      const blob = await clipItem.getType(fileType);
+      const file = _clipboardCoercePdfFile(blob, {mimeType: fileType});
+      if (file) return file;
+    }
+  }
+
+  return null;
+}
+
 async function _clipboardReadClipboardText(clipItems, mimeType) {
   for (const clipItem of clipItems || []) {
     if (!clipItem.types.includes(mimeType)) continue;
@@ -101,12 +119,54 @@ function _clipboardExtractImageUrlFromText(text) {
   return _clipboardParseSupportedUrl(candidate);
 }
 
+function _clipboardLooksLikePdfUrl(value) {
+  const url = _clipboardParseSupportedUrl(value);
+  if (!url) return false;
+  if (/^data:application\/(?:x-)?pdf\b/i.test(url)) return true;
+  return _clipboardLooksLikePdfFilename(_clipboardGetFilenameFromUrl(url) || url);
+}
+
+function _clipboardExtractPdfUrlFromUriList(text) {
+  for (const line of (text || "").split(/\r?\n/)) {
+    const candidate = line.trim();
+    if (!candidate || candidate.startsWith("#")) continue;
+
+    const url = _clipboardParseSupportedUrl(candidate);
+    if (url && _clipboardLooksLikePdfUrl(url)) return url;
+  }
+
+  return null;
+}
+
+function _clipboardExtractPdfUrlFromText(text) {
+  const candidate = text?.trim();
+  if (!candidate || /\s/.test(candidate)) return null;
+  const url = _clipboardParseSupportedUrl(candidate);
+  return url && _clipboardLooksLikePdfUrl(url) ? url : null;
+}
+
 function _clipboardExtractImageUrlFromHtml(html) {
   if (!html?.trim()) return null;
 
   const documentFragment = new DOMParser().parseFromString(html, "text/html");
   const mediaElement = documentFragment.querySelector("img[src], video[src], source[src]");
   return _clipboardParseSupportedUrl(mediaElement?.getAttribute("src")?.trim());
+}
+
+function _clipboardExtractPdfUrlFromHtml(html) {
+  if (!html?.trim()) return null;
+
+  const documentFragment = new DOMParser().parseFromString(html, "text/html");
+  for (const pdfElement of documentFragment.querySelectorAll("a[href], iframe[src], embed[src], object[data]")) {
+    const candidate = pdfElement.getAttribute("href") ||
+      pdfElement.getAttribute("src") ||
+      pdfElement.getAttribute("data") ||
+      "";
+    const url = _clipboardParseSupportedUrl(candidate.trim());
+    if (url && _clipboardLooksLikePdfUrl(url)) return url;
+  }
+
+  return null;
 }
 
 function _clipboardGetUrlBackedImageInputCandidate(
@@ -145,6 +205,51 @@ function _clipboardGetUrlBackedImageInputCandidate(
   if (textUrl) {
     return {
       imageInput: {
+        url: textUrl,
+        text: fallbackText || textUrl,
+      },
+      message: plainTextMessage,
+    };
+  }
+
+  return null;
+}
+
+function _clipboardGetUrlBackedPdfInputCandidate(
+  {uriList = "", html = "", plainText = ""} = {},
+  {
+    uriListMessage,
+    htmlMessage,
+    plainTextMessage,
+  } = {}
+) {
+  const fallbackText = plainText || "";
+  const uriListUrl = _clipboardExtractPdfUrlFromUriList(uriList);
+  if (uriListUrl) {
+    return {
+      pdfInput: {
+        url: uriListUrl,
+        text: fallbackText || uriListUrl,
+      },
+      message: uriListMessage,
+    };
+  }
+
+  const htmlUrl = _clipboardExtractPdfUrlFromHtml(html);
+  if (htmlUrl) {
+    return {
+      pdfInput: {
+        url: htmlUrl,
+        text: fallbackText || htmlUrl,
+      },
+      message: htmlMessage,
+    };
+  }
+
+  const textUrl = _clipboardExtractPdfUrlFromText(fallbackText);
+  if (textUrl) {
+    return {
+      pdfInput: {
         url: textUrl,
         text: fallbackText || textUrl,
       },
@@ -201,6 +306,24 @@ function _clipboardCreateLoggedImageInput(imageInput, message, details = undefin
   return imageInput;
 }
 
+function _clipboardCreateLoggedPdfInput(pdfInput, message, details = undefined) {
+  const logDetails = {
+    pdfInput: pdfInput
+      ? {
+        source: pdfInput.blob ? "blob" : "url",
+        name: pdfInput.blob?.name || null,
+        type: pdfInput.blob?.type || null,
+        size: pdfInput.blob?.size ?? null,
+        url: pdfInput.url || null,
+      }
+      : null,
+  };
+
+  if (details) Object.assign(logDetails, details);
+  _clipboardLog("debug", message, logDetails);
+  return pdfInput;
+}
+
 function _clipboardExtractTextInputFromValues({plainText = "", html = ""} = {}) {
   const normalizedPlainText = _clipboardNormalizePastedText(plainText);
   if (normalizedPlainText) return {text: normalizedPlainText};
@@ -244,6 +367,36 @@ function _clipboardExtractImageInputFromValues(
   return null;
 }
 
+function _clipboardExtractPdfInputFromValues(
+  {blob = null, uriList = "", html = "", plainText = ""} = {},
+  {
+    blobMessage,
+    uriListMessage,
+    htmlMessage,
+    plainTextMessage,
+    details,
+  } = {}
+) {
+  const pdfBlob = _clipboardCoercePdfFile(blob, {
+    filename: blob?.name,
+    mimeType: blob?.type,
+  });
+  if (pdfBlob) return _clipboardCreateLoggedPdfInput({blob: pdfBlob}, blobMessage, details);
+
+  const urlCandidate = _clipboardGetUrlBackedPdfInputCandidate({
+    uriList,
+    html,
+    plainText,
+  }, {
+    uriListMessage,
+    htmlMessage,
+    plainTextMessage,
+  });
+  if (urlCandidate) return _clipboardCreateLoggedPdfInput(urlCandidate.pdfInput, urlCandidate.message, details);
+
+  return null;
+}
+
 async function _clipboardExtractImageInput(clipItems) {
   return _clipboardExtractImageInputFromValues({
     blob: await _clipboardExtractImageBlob(clipItems),
@@ -255,6 +408,20 @@ async function _clipboardExtractImageInput(clipItems) {
     uriListMessage: "Resolved media input from async clipboard uri-list",
     htmlMessage: "Resolved media input from async clipboard HTML",
     plainTextMessage: "Resolved media input from async clipboard plain text",
+  });
+}
+
+async function _clipboardExtractPdfInput(clipItems) {
+  return _clipboardExtractPdfInputFromValues({
+    blob: await _clipboardExtractPdfBlob(clipItems),
+    uriList: await _clipboardReadClipboardText(clipItems, "text/uri-list"),
+    html: await _clipboardReadClipboardText(clipItems, "text/html"),
+    plainText: await _clipboardReadClipboardText(clipItems, "text/plain"),
+  }, {
+    blobMessage: "Resolved PDF input from async clipboard file data",
+    uriListMessage: "Resolved PDF input from async clipboard uri-list",
+    htmlMessage: "Resolved PDF input from async clipboard HTML",
+    plainTextMessage: "Resolved PDF input from async clipboard plain text",
   });
 }
 
@@ -276,6 +443,29 @@ function _clipboardExtractImageBlobFromDataTransfer(dataTransfer) {
       mimeType: file?.type,
     });
     if (typedFile && _clipboardIsSupportedMediaBlob(typedFile)) return typedFile;
+  }
+
+  return null;
+}
+
+function _clipboardExtractPdfBlobFromDataTransfer(dataTransfer) {
+  for (const item of dataTransfer?.items || []) {
+    if (item.kind !== "file") continue;
+
+    const file = item.getAsFile();
+    const typedFile = _clipboardCoercePdfFile(file, {
+      filename: file?.name,
+      mimeType: item.type,
+    });
+    if (typedFile) return typedFile;
+  }
+
+  for (const file of dataTransfer?.files || []) {
+    const typedFile = _clipboardCoercePdfFile(file, {
+      filename: file?.name,
+      mimeType: file?.type,
+    });
+    if (typedFile) return typedFile;
   }
 
   return null;
@@ -303,6 +493,23 @@ function _clipboardExtractImageInputFromDataTransfer(dataTransfer) {
     uriListMessage: "Resolved media input from paste/drop uri-list",
     htmlMessage: "Resolved media input from paste/drop HTML",
     plainTextMessage: "Resolved media input from paste/drop plain text URL",
+    details: {
+      dataTransfer: _clipboardDescribeDataTransfer(dataTransfer),
+    },
+  });
+}
+
+function _clipboardExtractPdfInputFromDataTransfer(dataTransfer) {
+  return _clipboardExtractPdfInputFromValues({
+    blob: _clipboardExtractPdfBlobFromDataTransfer(dataTransfer),
+    uriList: _clipboardReadDataTransferText(dataTransfer, "text/uri-list"),
+    html: _clipboardReadDataTransferText(dataTransfer, "text/html"),
+    plainText: _clipboardReadDataTransferText(dataTransfer, "text/plain"),
+  }, {
+    blobMessage: "Resolved PDF input from paste/drop file data",
+    uriListMessage: "Resolved PDF input from paste/drop uri-list",
+    htmlMessage: "Resolved PDF input from paste/drop HTML",
+    plainTextMessage: "Resolved PDF input from paste/drop plain text URL",
     details: {
       dataTransfer: _clipboardDescribeDataTransfer(dataTransfer),
     },
@@ -403,23 +610,34 @@ function _clipboardInsertTextAtTarget(target, text) {
 module.exports = {
   _clipboardReadClipboardItems,
   _clipboardExtractImageBlob,
+  _clipboardExtractPdfBlob,
   _clipboardReadClipboardText,
   _clipboardExtractTextInput,
   _clipboardExtractImageUrlFromUriList,
   _clipboardExtractImageUrlFromText,
   _clipboardExtractImageUrlFromHtml,
+  _clipboardLooksLikePdfUrl,
+  _clipboardExtractPdfUrlFromUriList,
+  _clipboardExtractPdfUrlFromText,
+  _clipboardExtractPdfUrlFromHtml,
   _clipboardGetUrlBackedImageInputCandidate,
+  _clipboardGetUrlBackedPdfInputCandidate,
   _clipboardIsAnimationCapableUrl,
   _clipboardIsLikelyRasterizedImageBlob,
   _clipboardShouldPreferUrlCandidateOverBlob,
   _clipboardCreateLoggedImageInput,
+  _clipboardCreateLoggedPdfInput,
   _clipboardExtractTextInputFromValues,
   _clipboardExtractImageInputFromValues,
+  _clipboardExtractPdfInputFromValues,
   _clipboardExtractImageInput,
+  _clipboardExtractPdfInput,
   _clipboardExtractImageBlobFromDataTransfer,
+  _clipboardExtractPdfBlobFromDataTransfer,
   _clipboardReadDataTransferText,
   _clipboardExtractTextInputFromDataTransfer,
   _clipboardExtractImageInputFromDataTransfer,
+  _clipboardExtractPdfInputFromDataTransfer,
   _clipboardGetChatRootFromTarget,
   _clipboardIsEditableTarget,
   _clipboardInsertTextAtTarget,

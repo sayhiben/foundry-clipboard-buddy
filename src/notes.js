@@ -14,6 +14,7 @@ const {
   _clipboardConvertTextToHtml,
   _clipboardGetTextPageFormat,
   _clipboardCreateSceneNoteData,
+  _clipboardGetDefaultNoteIcon,
 } = require("./text");
 
 async function _clipboardCreateTextJournalEntry(text, name) {
@@ -28,6 +29,100 @@ async function _clipboardCreateTextJournalEntry(text, name) {
   };
 }
 
+function _clipboardGetDocumentOwnershipLevel(level, fallback) {
+  return CONST?.DOCUMENT_OWNERSHIP_LEVELS?.[level] ?? fallback;
+}
+
+function _clipboardCreateSharedJournalOwnership() {
+  const observer = _clipboardGetDocumentOwnershipLevel("OBSERVER", 2);
+  const owner = _clipboardGetDocumentOwnershipLevel("OWNER", 3);
+  return {
+    default: observer,
+    [game.user.id]: owner,
+  };
+}
+
+function _clipboardMergeSharedJournalOwnership(ownership = {}) {
+  const sharedOwnership = _clipboardCreateSharedJournalOwnership();
+  const currentDefault = Number(ownership.default ?? 0);
+  const currentUserLevel = Number(ownership[game.user.id] ?? 0);
+  return {
+    ...ownership,
+    default: Math.max(currentDefault, sharedOwnership.default),
+    [game.user.id]: Math.max(currentUserLevel, sharedOwnership[game.user.id]),
+  };
+}
+
+async function _clipboardEnsureSharedJournalOwnership(entry) {
+  if (!entry) return null;
+
+  const ownership = _clipboardMergeSharedJournalOwnership(entry.ownership || entry._source?.ownership || {});
+  const unchanged = entry.ownership &&
+    entry.ownership.default === ownership.default &&
+    entry.ownership[game.user.id] === ownership[game.user.id];
+  if (unchanged) return entry;
+
+  if (typeof entry.update === "function") {
+    await entry.update({ownership});
+  } else {
+    entry.ownership = ownership;
+  }
+  return entry;
+}
+
+function _clipboardCreatePdfPageData({src, name = "PDF", previewSrc = "", external = false} = {}) {
+  return {
+    name,
+    type: "pdf",
+    title: {
+      show: true,
+      level: 1,
+    },
+    src,
+    flags: {
+      [CLIPBOARD_IMAGE_MODULE_ID]: {
+        pdfPreview: previewSrc || "",
+        pdfExternal: Boolean(external),
+      },
+    },
+  };
+}
+
+function _clipboardGetJournalPageUuid(entry, page) {
+  if (page?.uuid) return page.uuid;
+  if (entry?.uuid && page?.id) return `${entry.uuid}.JournalEntryPage.${page.id}`;
+  if (entry?.id && page?.id) return `JournalEntry.${entry.id}.JournalEntryPage.${page.id}`;
+  if (entry?.uuid) return entry.uuid;
+  return entry?.id ? `JournalEntry.${entry.id}` : "";
+}
+
+async function _clipboardCreatePdfJournalEntry({src, name = "Pasted PDF", previewSrc = "", external = false} = {}) {
+  const journalEntry = await foundry.documents.JournalEntry.create({
+    name,
+    ownership: _clipboardCreateSharedJournalOwnership(),
+    pages: [_clipboardCreatePdfPageData({src, name, previewSrc, external})],
+  });
+
+  return {
+    entry: journalEntry,
+    page: journalEntry?.pages?.contents?.[0] || null,
+  };
+}
+
+function _clipboardCreatePdfSceneNoteData({entryId, pageId, position, text, previewSrc = ""}) {
+  return {
+    ..._clipboardCreateSceneNoteData({
+      entryId,
+      pageId,
+      position,
+      text,
+    }),
+    texture: {
+      src: previewSrc || _clipboardGetDefaultNoteIcon(),
+    },
+  };
+}
+
 async function _clipboardAppendTextToPage(page, text) {
   if (!page || page.type !== "text") {
     throw new Error("Cannot append pasted text to a non-text journal page");
@@ -39,6 +134,56 @@ async function _clipboardAppendTextToPage(page, text) {
     "text.format": _clipboardGetTextPageFormat(),
   });
   return page;
+}
+
+async function _clipboardAppendPdfPageToSceneNote(noteDocument, pdfData) {
+  const noteName = pdfData.name || noteDocument?.text || noteDocument?.name || "Pasted PDF";
+  const {entry} = _clipboardGetSceneNoteEntryAndPage(noteDocument);
+  let targetEntry = entry;
+  let page = null;
+
+  if (targetEntry) {
+    const createdPages = await targetEntry.createEmbeddedDocuments("JournalEntryPage", [
+      _clipboardCreatePdfPageData({
+        src: pdfData.src,
+        name: noteName,
+        previewSrc: pdfData.previewSrc,
+        external: pdfData.external,
+      }),
+    ]);
+    page = createdPages[0] || null;
+  } else {
+    const created = await _clipboardCreatePdfJournalEntry({
+      src: pdfData.src,
+      name: noteName,
+      previewSrc: pdfData.previewSrc,
+      external: pdfData.external,
+    });
+    targetEntry = created.entry;
+    page = created.page;
+  }
+
+  if (!targetEntry || !page) {
+    throw new Error("Failed to create a PDF journal page for the selected scene note");
+  }
+
+  await noteDocument.update({
+    entryId: targetEntry.id,
+    pageId: page.id,
+    text: noteName,
+    "texture.src": pdfData.previewSrc || _clipboardGetDefaultNoteIcon(),
+  });
+
+  _clipboardLog("info", "Created or updated a PDF page for a selected scene note", {
+    noteId: noteDocument?.id || null,
+    entryId: targetEntry.id,
+    pageId: page.id,
+    external: Boolean(pdfData.external),
+  });
+  return {
+    entry: targetEntry,
+    page,
+  };
 }
 
 function _clipboardGetAssociatedTextNoteData(document) {
@@ -244,8 +389,46 @@ async function _clipboardCreateStandaloneTextNote(text, context) {
   return true;
 }
 
+async function _clipboardCreateStandalonePdfNote(pdfData, context) {
+  const position = context.mousePos;
+  if (!position) return false;
+
+  canvas?.notes?.activate?.();
+  const {entry, page} = await _clipboardCreatePdfJournalEntry(pdfData);
+  if (!entry || !page) throw new Error("Failed to create a PDF journal page");
+
+  await canvas.scene.createEmbeddedDocuments("Note", [
+    _clipboardCreatePdfSceneNoteData({
+      entryId: entry.id,
+      pageId: page.id,
+      position,
+      text: pdfData.name,
+      previewSrc: pdfData.previewSrc,
+    }),
+  ]);
+
+  _clipboardLog("info", "Created standalone PDF note", {
+    entryId: entry.id,
+    pageId: page.id,
+    position,
+    external: Boolean(pdfData.external),
+  });
+  return {
+    entry,
+    page,
+  };
+}
+
 module.exports = {
   _clipboardCreateTextJournalEntry,
+  _clipboardGetDocumentOwnershipLevel,
+  _clipboardCreateSharedJournalOwnership,
+  _clipboardMergeSharedJournalOwnership,
+  _clipboardEnsureSharedJournalOwnership,
+  _clipboardCreatePdfPageData,
+  _clipboardGetJournalPageUuid,
+  _clipboardCreatePdfJournalEntry,
+  _clipboardCreatePdfSceneNoteData,
   _clipboardAppendTextToPage,
   _clipboardGetAssociatedTextNoteData,
   _clipboardEnsureAssociatedTextPage,
@@ -254,4 +437,6 @@ module.exports = {
   _clipboardEnsureSceneNoteTextPage,
   _clipboardAppendTextToSceneNote,
   _clipboardCreateStandaloneTextNote,
+  _clipboardAppendPdfPageToSceneNote,
+  _clipboardCreateStandalonePdfNote,
 };

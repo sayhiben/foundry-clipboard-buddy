@@ -13,6 +13,7 @@ const CLIPBOARD_IMAGE_SUPPORTED_ART_FIELD_DOCUMENTS = {
   "texture.src": new Set(["Token"]),
   "prototypeToken.texture.src": new Set(["Actor", "Token"]),
 };
+const CLIPBOARD_IMAGE_SUPPORTED_PDF_FIELD_NAMES = new Set(["src"]);
 
 function _clipboardGetApplicationRoot(target) {
   return target?.closest?.("[data-appid], .window-app[id], .app[id], .application[id]") || null;
@@ -80,6 +81,24 @@ function _clipboardGetArtFieldName(target) {
   return null;
 }
 
+function _clipboardGetPdfFieldName(target) {
+  const picker = target?.closest?.("file-picker[name]") || null;
+  const candidates = [
+    target?.name,
+    target?.dataset?.edit,
+    picker?.getAttribute?.("name"),
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const normalized = candidate.trim();
+    if (!normalized) continue;
+    if (CLIPBOARD_IMAGE_SUPPORTED_PDF_FIELD_NAMES.has(normalized)) return normalized;
+  }
+
+  return null;
+}
+
 function _clipboardGetArtFieldMediaKinds(fieldName) {
   if (fieldName === "img") return ["image"];
   return ["image", "video"];
@@ -109,6 +128,31 @@ function _clipboardGetFocusedArtFieldTarget(target = document.activeElement) {
     picker: target.closest?.("file-picker[name]") || null,
     app,
     appRoot,
+    documentName,
+  };
+}
+
+function _clipboardGetFocusedPdfFieldTarget(target = document.activeElement) {
+  const field = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
+    ? target
+    : target?.closest?.("file-picker[name]")?.querySelector?.("input, textarea") || null;
+  if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) return null;
+
+  const fieldName = _clipboardGetPdfFieldName(field) || _clipboardGetPdfFieldName(target);
+  if (!fieldName) return null;
+
+  const {app, appRoot} = _clipboardGetAppFromElement(field);
+  const pageDocument = app?.document || app?.object || null;
+  const documentName = pageDocument?.documentName || null;
+  if (documentName !== "JournalEntryPage" || pageDocument?.type !== "pdf") return null;
+
+  return {
+    field,
+    fieldName,
+    picker: field.closest?.("file-picker[name]") || null,
+    app,
+    appRoot,
+    document: pageDocument,
     documentName,
   };
 }
@@ -183,19 +227,46 @@ function _clipboardPopulateArtFieldTarget(targetInfo, value, imageInput = null) 
   return true;
 }
 
+function _clipboardPopulatePdfFieldTarget(targetInfo, value, pdfInput = null) {
+  if (!targetInfo || !value) return false;
+
+  const updated = _clipboardSetFormFieldValue(targetInfo.field, value);
+  if (!updated) return false;
+
+  _clipboardLog("info", "Populated a focused PDF journal page source field", {
+    documentName: targetInfo.documentName,
+    fieldName: targetInfo.fieldName,
+    value,
+    pdfInput: pdfInput
+      ? {
+        source: pdfInput.blob ? "blob" : "url",
+        name: pdfInput.blob?.name || null,
+        type: pdfInput.blob?.type || null,
+        size: pdfInput.blob?.size ?? null,
+        url: pdfInput.url || null,
+      }
+      : null,
+  });
+  return true;
+}
+
 module.exports = {
   CLIPBOARD_IMAGE_SUPPORTED_ART_FIELD_NAMES,
   CLIPBOARD_IMAGE_SUPPORTED_ART_FIELD_DOCUMENTS,
+  CLIPBOARD_IMAGE_SUPPORTED_PDF_FIELD_NAMES,
   _clipboardGetApplicationRoot,
   _clipboardIterateApplicationInstances,
   _clipboardResolveApplicationForRoot,
   _clipboardGetAppFromElement,
   _clipboardGetArtFieldName,
+  _clipboardGetPdfFieldName,
   _clipboardGetArtFieldMediaKinds,
   _clipboardCanPopulateArtField,
   _clipboardGetFocusedArtFieldTarget,
+  _clipboardGetFocusedPdfFieldTarget,
   _clipboardReloadMediaPreview,
   _clipboardSetFormFieldValue,
   _clipboardUpdateArtFieldPreview,
   _clipboardPopulateArtFieldTarget,
+  _clipboardPopulatePdfFieldTarget,
 };

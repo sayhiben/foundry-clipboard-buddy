@@ -12,6 +12,8 @@ const {
 const {
   _clipboardExtractImageBlobFromDataTransfer,
   _clipboardExtractImageInputFromDataTransfer,
+  _clipboardExtractPdfBlobFromDataTransfer,
+  _clipboardExtractPdfInputFromDataTransfer,
   _clipboardInsertTextAtTarget,
 } = require("../clipboard");
 const {
@@ -20,7 +22,9 @@ const {
 } = require("../settings");
 const {
   _clipboardExecutePasteWorkflow,
+  _clipboardDescribePdfInput,
   _clipboardHandleChatImageInput,
+  _clipboardHandleChatPdfInput,
   _clipboardHandleChatUploadAction,
 } = require("../workflows");
 
@@ -62,7 +66,8 @@ function _clipboardGetChatRoots(element) {
 function _clipboardOnChatDragOver(event) {
   if (!_clipboardCanUseChatMedia()) return;
   const root = event.currentTarget;
-  const blob = _clipboardExtractImageBlobFromDataTransfer(event.dataTransfer);
+  const blob = _clipboardExtractPdfBlobFromDataTransfer(event.dataTransfer) ||
+    _clipboardExtractImageBlobFromDataTransfer(event.dataTransfer);
   if (!blob) return;
 
   event.preventDefault();
@@ -80,6 +85,20 @@ function _clipboardOnChatDrop(event) {
   if (!_clipboardCanUseChatMedia()) return;
   const root = event.currentTarget;
   _clipboardToggleChatDropTarget(root, false);
+
+  const pdfInput = _clipboardExtractPdfInputFromDataTransfer(event.dataTransfer);
+  if (pdfInput) {
+    _clipboardLog("info", "Handling dropped PDF in chat.", {
+      pdfInput: _clipboardDescribePdfInput(pdfInput),
+      dataTransfer: _clipboardDescribeDataTransfer(event.dataTransfer),
+    });
+    event.preventDefault();
+    event.stopPropagation();
+    void _clipboardExecutePasteWorkflow(() => _clipboardHandleChatPdfInput(pdfInput), {
+      respectCopiedObjects: false,
+    });
+    return;
+  }
 
   const mediaInput = _clipboardExtractImageInputFromDataTransfer(event.dataTransfer);
   if (!mediaInput) return;
@@ -126,11 +145,11 @@ function _clipboardSyncChatUploadButton(root) {
 
   const button = ownerDocument.createElement("button");
   button.type = "button";
-  button.className = "ui-control icon fa-solid fa-file-image foundry-paste-eater-chat-upload";
+  button.className = "ui-control icon fa-solid fa-file-arrow-up foundry-paste-eater-chat-upload";
   button.dataset.action = CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION;
   button.dataset.tooltip = "";
-  button.title = "Upload Chat Media";
-  button.ariaLabel = "Upload Chat Media";
+  button.title = "Upload Chat Media or PDF";
+  button.ariaLabel = "Upload Chat Media or PDF";
   button.addEventListener("click", () => _clipboardHandleChatUploadAction());
   mount.append(button);
 }

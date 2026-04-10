@@ -240,6 +240,50 @@ describe("focused art field helpers", () => {
     expect(previewLoads).toBe(1);
   });
 
+  it("detects PDF Journal page src fields and ignores other src fields", () => {
+    const root = document.createElement("form");
+    root.id = "JournalEntryPageConfig-1";
+    root.className = "application sheet journal-page";
+    root.innerHTML = `
+      <file-picker name="src">
+        <input type="text" value="">
+      </file-picker>
+    `;
+    document.body.append(root);
+
+    const pdfPage = env.createPage({
+      id: "page-pdf",
+      type: "pdf",
+      src: "",
+    });
+    pdfPage.documentName = "JournalEntryPage";
+    const app = {
+      id: root.id,
+      object: pdfPage,
+    };
+    globalThis.foundry.applications.instances = new Map([[root.id, app]]);
+    globalThis.ui.activeWindow = app;
+
+    const picker = root.querySelector("file-picker");
+    const field = picker.querySelector("input");
+    const target = api._clipboardGetFocusedPdfFieldTarget(picker);
+
+    expect(target).toMatchObject({
+      app,
+      appRoot: root,
+      documentName: "JournalEntryPage",
+      fieldName: "src",
+      field,
+      picker,
+    });
+    expect(api._clipboardPopulatePdfFieldTarget(target, "folder/handout.pdf")).toBe(true);
+    expect(field.value).toBe("folder/handout.pdf");
+    expect(picker.value).toBe("folder/handout.pdf");
+
+    pdfPage.type = "text";
+    expect(api._clipboardGetFocusedPdfFieldTarget(field)).toBeNull();
+  });
+
   it("skips jsdom's unimplemented native media reload helper", () => {
     const video = document.createElement("video");
     expect(() => api._clipboardReloadMediaPreview(video)).not.toThrow();

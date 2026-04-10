@@ -207,6 +207,42 @@ test("posts chat media on image paste without creating canvas content", async ({
   }
 });
 
+test("posts chat PDFs as Journal PDF cards without creating canvas content", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const chatSelector = await focusChatInput(page);
+    const before = await getStateSnapshot(page);
+
+    await dispatchFilePaste(page, {
+      targetSelector: chatSelector,
+      fixtureFilename: "test-document.pdf",
+      filename: `${run.prefix} test-document.pdf`,
+      mimeType: "application/pdf",
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).messages.length).toBe(before.messages.length + 1);
+    await expect.poll(async () => (await getStateSnapshot(page)).journals.length).toBe(before.journals.length + 1);
+    const observerLevel = await page.evaluate(() => CONST.DOCUMENT_OWNERSHIP_LEVELS?.OBSERVER ?? 2);
+    const after = await getStateSnapshot(page);
+    const [message] = getNewDocuments(before, after, "messages");
+    const [journal] = getNewDocuments(before, after, "journals");
+    const [pdfPage] = journal.pages;
+
+    expect(message.content).toContain("foundry-paste-eater-chat-pdf-message");
+    expect(message.content).toContain("data-type=\"JournalEntryPage\"");
+    expect(message.content).toContain("test-document");
+    expect(Number(journal.ownership.default)).toBeGreaterThanOrEqual(observerLevel);
+    expect(pdfPage.type).toBe("pdf");
+    expect(pdfPage.src).toContain(run.uploadFolder);
+    expect(pdfPage.src).toMatch(/test-document.*\.pdf/i);
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.notes.length).toBe(before.notes.length);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
 test("returns paste targeting to the canvas after clicking back into the board", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {

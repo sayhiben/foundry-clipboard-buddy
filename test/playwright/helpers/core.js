@@ -750,7 +750,18 @@ async function cleanupClipboardRun(page, run) {
       }
 
       const journalIds = game.journal.contents
-        .filter(entry => (entry.name || "").includes(run.prefix))
+        .filter(entry => {
+          if ((entry.name || "").includes(run.prefix)) return true;
+          return entry.pages.contents.some(page => {
+            const flags = page.flags?.[moduleId] || {};
+            return (
+              (page.src || "").includes(run.uploadFolder) ||
+              (page.text?.content || "").includes(run.prefix) ||
+              (page.text?.content || "").includes(run.uploadFolder) ||
+              (flags.pdfPreview || "").includes(run.uploadFolder)
+            );
+          });
+        })
         .map(entry => entry.id);
 
       const noteIds = canvas.scene.notes.contents
@@ -1493,8 +1504,8 @@ async function readFixtureBytes(filename) {
   return Array.from(await fs.promises.readFile(getFixturePath(filename)));
 }
 
-async function dispatchFilePaste(page, {targetSelector, filename, mimeType}) {
-  const bytes = await readFixtureBytes(filename);
+async function dispatchFilePaste(page, {targetSelector, filename, mimeType, fixtureFilename = filename}) {
+  const bytes = await readFixtureBytes(fixtureFilename);
   await page.evaluate(({targetSelector, bytes, filename, mimeType}) => {
     const target = document.querySelector(targetSelector);
     if (!target) throw new Error(`Could not find paste target ${targetSelector}.`);
@@ -1703,11 +1714,14 @@ async function getStateSnapshot(page) {
     journals: game.journal.contents.map(entry => ({
       id: entry.id,
       name: entry.name,
+      ownership: foundry.utils.deepClone(entry.ownership || {}),
       pages: entry.pages.contents.map(page => ({
         id: page.id,
         name: page.name,
         type: page.type,
+        src: page.src || "",
         content: page.text?.content || "",
+        flags: foundry.utils.deepClone(page.flags || {}),
       })),
     })),
     messages: game.messages.contents.map(message => ({
@@ -1757,11 +1771,14 @@ async function getJournalEntry(page, id) {
     return {
       id: entry.id,
       name: entry.name,
+      ownership: foundry.utils.deepClone(entry.ownership || {}),
       pages: entry.pages.contents.map(page => ({
         id: page.id,
         name: page.name,
         type: page.type,
+        src: page.src || "",
         content: page.text?.content || "",
+        flags: foundry.utils.deepClone(page.flags || {}),
       })),
     };
   }, id);

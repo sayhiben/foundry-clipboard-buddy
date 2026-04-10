@@ -1,5 +1,52 @@
 const NATIVE_PASTE_ROUTE_SCENARIOS = Object.freeze([
   {
+    name: "prefers focused PDF fields over all other PDF routes",
+    input: {
+      hasPdfInput: true,
+      hasPdfFieldTarget: true,
+      isChatTarget: true,
+      isEditableTarget: true,
+      canUseChatMedia: false,
+      canvasContextEligible: false,
+    },
+    expected: "pdf-field",
+  },
+  {
+    name: "routes PDFs into chat when chat is focused and enabled",
+    input: {
+      hasPdfInput: true,
+      isChatTarget: true,
+      canUseChatMedia: true,
+      canvasContextEligible: true,
+    },
+    expected: "chat-pdf",
+  },
+  {
+    name: "ignores PDFs in unsupported editable targets",
+    input: {
+      hasPdfInput: true,
+      isEditableTarget: true,
+      canvasContextEligible: true,
+    },
+    expected: "ignore-editable-pdf",
+  },
+  {
+    name: "routes PDFs to the canvas when no higher-priority target exists",
+    input: {
+      hasPdfInput: true,
+      canvasContextEligible: true,
+    },
+    expected: "canvas-pdf",
+  },
+  {
+    name: "does not route PDFs to canvas when the context is ineligible",
+    input: {
+      hasPdfInput: true,
+      canvasContextEligible: false,
+    },
+    expected: "ignore-pdf-ineligible",
+  },
+  {
     name: "prefers focused art fields over all other media routes",
     input: {
       hasMediaInput: true,

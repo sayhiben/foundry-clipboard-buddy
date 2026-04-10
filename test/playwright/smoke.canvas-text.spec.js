@@ -219,6 +219,71 @@ test("creates a standalone note when plain text is pasted on open canvas", async
   }
 });
 
+test("creates and opens a PDF Journal note when a PDF is pasted on canvas", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 6);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => {
+      canvas.tiles.activate();
+      canvas.tokens.releaseAll();
+      canvas.tiles.releaseAll();
+      canvas.notes.releaseAll();
+    });
+
+    const before = await getStateSnapshot(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      fixtureFilename: "test-document.pdf",
+      filename: `${run.prefix} test-document.pdf`,
+      mimeType: "application/pdf",
+    });
+
+    await expect.poll(async () => (await getStateSnapshot(page)).notes.length).toBe(before.notes.length + 1);
+    await expect.poll(async () => (await getStateSnapshot(page)).journals.length).toBe(before.journals.length + 1);
+    const after = await getStateSnapshot(page);
+    const [note] = getNewDocuments(before, after, "notes");
+    const [journal] = getNewDocuments(before, after, "journals");
+    const [pdfPage] = journal.pages;
+
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(note.entryId).toBe(journal.id);
+    expect(note.pageId).toBe(pdfPage.id);
+    expect(pdfPage.type).toBe("pdf");
+    expect(pdfPage.src).toContain(run.uploadFolder);
+    expect(pdfPage.src).toMatch(/test-document.*\.pdf/i);
+
+    await page.evaluate(async ({entryId, pageId}) => {
+      const pageDocument = game.journal.get(entryId)?.pages.get(pageId);
+      if (!pageDocument?.sheet) throw new Error("Could not find the PDF Journal page sheet.");
+      await pageDocument.sheet.render(true);
+    }, {entryId: journal.id, pageId: pdfPage.id});
+
+    await expect.poll(() => page.evaluate(({entryId, pageId}) => {
+      const pageDocument = game.journal.get(entryId)?.pages.get(pageId);
+      const sheet = pageDocument?.sheet;
+      const element = sheet?.element instanceof HTMLElement ? sheet.element : sheet?.element?.[0] || null;
+      return {
+        rendered: Boolean(sheet?.rendered || element?.isConnected),
+        documentId: sheet?.document?.id || null,
+        pageType: pageDocument?.type || "",
+      };
+    }, {entryId: journal.id, pageId: pdfPage.id})).toEqual({
+      rendered: true,
+      documentId: pdfPage.id,
+      pageType: "pdf",
+    });
+
+    await page.evaluate(({entryId, pageId}) => {
+      game.journal.get(entryId)?.pages.get(pageId)?.sheet?.close?.();
+    }, {entryId: journal.id, pageId: pdfPage.id});
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
 test("creates a standalone note when a non-media URL is pasted on canvas", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {

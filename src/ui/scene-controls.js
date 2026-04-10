@@ -6,7 +6,13 @@ const {
   CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_ALWAYS,
   CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_NEVER,
 } = require("../constants");
-const {_clipboardExtractImageInput, _clipboardExtractImageInputFromDataTransfer, _clipboardReadClipboardItems} = require("../clipboard");
+const {
+  _clipboardExtractImageInput,
+  _clipboardExtractImageInputFromDataTransfer,
+  _clipboardExtractPdfInput,
+  _clipboardExtractPdfInputFromDataTransfer,
+  _clipboardReadClipboardItems,
+} = require("../clipboard");
 const {_clipboardLog} = require("../diagnostics");
 const {
   _clipboardCanUseScenePasteTool,
@@ -15,6 +21,7 @@ const {
 } = require("../settings");
 const {
   _clipboardExecutePasteWorkflow,
+  _clipboardHandleCanvasPdfInput,
   _clipboardHandleImageInput,
   _clipboardHandleScenePasteAction,
   _clipboardHandleSceneUploadAction,
@@ -56,7 +63,7 @@ function _clipboardAddSceneControlButtons(controls) {
     const onUploadClick = () => _clipboardHandleSceneUploadAction();
     _clipboardUpsertSceneControlTool(control, CLIPBOARD_IMAGE_TOOL_PASTE, {
       name: CLIPBOARD_IMAGE_TOOL_PASTE,
-      title: "Paste Media",
+      title: "Paste Media or PDF",
       icon: "fa-solid fa-paste",
       order,
       button: true,
@@ -66,8 +73,8 @@ function _clipboardAddSceneControlButtons(controls) {
     });
     _clipboardUpsertSceneControlTool(control, CLIPBOARD_IMAGE_TOOL_UPLOAD, {
       name: CLIPBOARD_IMAGE_TOOL_UPLOAD,
-      title: "Upload Media",
-      icon: "fa-solid fa-file-image",
+      title: "Upload Media or PDF",
+      icon: "fa-solid fa-file-arrow-up",
       order: order + 1,
       button: true,
       visible: _clipboardCanUseSceneUploadTool(),
@@ -106,18 +113,37 @@ function _clipboardFocusScenePastePrompt(prompt = _clipboardGetScenePastePrompt(
 
 function _clipboardGetScenePastePromptFallbackMessage(clipItems) {
   if (clipItems?.length && clipItems.every(item => !item?.types?.length)) {
-    return "This clipboard content is not exposed to direct clipboard reads here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media.";
+    return "This clipboard content is not exposed to direct clipboard reads here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.";
   }
 
-  return "Direct clipboard read did not return usable media. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media.";
+  return "Direct clipboard read did not return usable media or PDF. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.";
 }
 
 async function _clipboardOnScenePastePromptPaste(event) {
   const prompt = event.currentTarget?.closest?.(`#${CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_ID}`);
+  const pdfInput = _clipboardExtractPdfInputFromDataTransfer(event.clipboardData);
+  if (pdfInput) {
+    _clipboardConsumePasteEvent(event);
+    const handled = await _clipboardExecutePasteWorkflow(() => _clipboardHandleCanvasPdfInput(pdfInput, {
+      contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS,
+    }), {
+      respectCopiedObjects: false,
+    });
+
+    if (handled) {
+      _clipboardCloseScenePastePrompt(prompt);
+      return;
+    }
+
+    _clipboardSetScenePastePromptMessage(prompt, "Paste did not create a PDF note. Try again, or use Upload Media/PDF.");
+    _clipboardFocusScenePastePrompt(prompt);
+    return;
+  }
+
   const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
   if (!imageInput) {
-    ui.notifications.warn("Foundry Paste Eater: No supported media was found in that paste.");
-    _clipboardSetScenePastePromptMessage(prompt, "No supported media was found in that paste. Try again, or use Upload Media.");
+    ui.notifications.warn("Foundry Paste Eater: No supported media or PDF was found in that paste.");
+    _clipboardSetScenePastePromptMessage(prompt, "No supported media or PDF was found in that paste. Try again, or use Upload Media/PDF.");
     return;
   }
 
@@ -133,7 +159,7 @@ async function _clipboardOnScenePastePromptPaste(event) {
     return;
   }
 
-  _clipboardSetScenePastePromptMessage(prompt, "Paste did not create media. Try again, or use Upload Media.");
+  _clipboardSetScenePastePromptMessage(prompt, "Paste did not create media. Try again, or use Upload Media/PDF.");
   _clipboardFocusScenePastePrompt(prompt);
 }
 
@@ -149,8 +175,8 @@ function _clipboardOpenScenePastePrompt() {
   prompt.className = "foundry-paste-eater-scene-paste-prompt";
   prompt.innerHTML = `
     <div class="foundry-paste-eater-scene-paste-panel" role="dialog" aria-modal="true" aria-labelledby="foundry-paste-eater-scene-paste-title">
-      <h2 id="foundry-paste-eater-scene-paste-title">Paste Media</h2>
-      <p data-role="message">Trying direct clipboard read. If nothing happens, press Cmd+V / Ctrl+V in the field below.</p>
+      <h2 id="foundry-paste-eater-scene-paste-title">Paste Media or PDF</h2>
+      <p data-role="message">Trying direct clipboard read for media or PDFs. If nothing happens, press Cmd+V / Ctrl+V in the field below.</p>
       <textarea
         id="${CLIPBOARD_IMAGE_SCENE_PASTE_TARGET_ID}"
         class="foundry-paste-eater-scene-paste-target"
@@ -158,7 +184,7 @@ function _clipboardOpenScenePastePrompt() {
         placeholder="Press Cmd+V / Ctrl+V here if direct clipboard read does not complete."
       ></textarea>
       <div class="foundry-paste-eater-scene-paste-actions">
-        ${_clipboardCanUseSceneUploadTool() ? '<button type="button" data-action="upload">Upload Media</button>' : ""}
+        ${_clipboardCanUseSceneUploadTool() ? '<button type="button" data-action="upload">Upload Media/PDF</button>' : ""}
         <button type="button" data-action="cancel">Cancel</button>
       </div>
     </div>
@@ -225,7 +251,7 @@ function _clipboardResolveScenePasteToolPlan({
 
 async function _clipboardTryScenePastePromptDirectRead(prompt) {
   if (!navigator.clipboard?.read) {
-    _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard reads are unavailable here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media.");
+    _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard reads are unavailable here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.");
     return false;
   }
 
@@ -235,6 +261,28 @@ async function _clipboardTryScenePastePromptDirectRead(prompt) {
   if (!clipItems?.length) {
     _clipboardSetScenePastePromptMessage(prompt, _clipboardGetScenePastePromptFallbackMessage(clipItems));
     _clipboardFocusScenePastePrompt(prompt);
+    return false;
+  }
+
+  const pdfInput = await _clipboardExtractPdfInput(clipItems);
+  if (!_clipboardScenePastePromptIsOpen(prompt)) return false;
+
+  if (pdfInput) {
+    const handled = await _clipboardExecutePasteWorkflow(() => _clipboardHandleCanvasPdfInput(pdfInput, {
+      contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS,
+    }), {
+      respectCopiedObjects: false,
+    });
+
+    if (handled) {
+      _clipboardCloseScenePastePrompt(prompt);
+      return true;
+    }
+
+    if (_clipboardScenePastePromptIsOpen(prompt)) {
+      _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create a PDF note. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.");
+      _clipboardFocusScenePastePrompt(prompt);
+    }
     return false;
   }
 
@@ -259,7 +307,7 @@ async function _clipboardTryScenePastePromptDirectRead(prompt) {
   }
 
   if (_clipboardScenePastePromptIsOpen(prompt)) {
-    _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create media. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media.");
+    _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create media. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.");
     _clipboardFocusScenePastePrompt(prompt);
   }
   return false;

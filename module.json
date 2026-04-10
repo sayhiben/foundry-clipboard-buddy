@@ -12,7 +12,7 @@
 			"discord": "JeansenVaars#2857"
 		}
 	],
-	"description": "Paste media, URLs, and contextual text into tiles, tokens, notes, and chat.",
+	"description": "Paste media, PDFs, URLs, and contextual text into tiles, tokens, notes, Journal pages, and chat.",
 	"version": "1.3.1",
 	"compatibility": {
 		"minimum": "13",

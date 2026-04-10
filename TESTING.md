@@ -54,7 +54,9 @@ Prepare these sample inputs:
 - An animated `.gif`
 - An animated `.webp`
 - Browser-supported video media such as `.webm`, `.mp4`, `.m4v`, or `.ogg`
+- A small `.pdf`
 - A direct media URL
+- A direct PDF URL
 - A plain non-media URL
 - One-line plain text
 - Multi-line plain text with blank lines
@@ -72,7 +74,7 @@ These flows should stay true across the test matrix:
 1. Chat-targeted paste should not also create scene content.
 2. Canvas-targeted media paste should create or replace scene content, not chat content.
 3. When `Canvas text paste mode` is enabled, canvas-targeted plain text should create or update Journal-backed scene notes.
-4. Scene-control `Paste Media` and `Upload Media` actions are media-only tools.
+4. Scene-control `Paste Media or PDF` and `Upload Media or PDF` actions are media/PDF-only tools.
 5. Existing token or tile replacements must preserve position and dimensions.
 6. New uploads should respect the configured upload destination.
 7. Failed clipboard or remote-download paths should fail clearly without leaving partial scene state behind.
@@ -187,6 +189,10 @@ Leave the default `Canvas text paste mode = Scene notes` setting enabled before 
    Expected: the same linked note is reused and its scene note position stays in sync with the placeable update flow.
 9. Paste a plain non-media URL onto the canvas.
    Expected: it is treated as text for note creation rather than media.
+10. Select a scene note linked to an updateable Journal entry and paste a PDF.
+    Expected: the PDF is uploaded, a PDF page is added to that existing Journal entry, the note points at the new page, and the Journal entry's existing ownership is preserved.
+11. As a non-GM, select a scene note linked to a Journal entry the user cannot update and paste a PDF.
+    Expected: the workflow fails before upload, no PDF page is created, and the scene note is unchanged.
 
 ### 6. Focused Document Art Fields
 
@@ -213,8 +219,12 @@ Leave the default `Canvas text paste mode = Scene notes` setting enabled before 
    Expected: no broken or empty media message is created, and the original URL text remains in the chat input.
 6. Drag and drop image or video media onto the chat input.
    Expected: the dropped file is uploaded and posted as chat media.
-7. Use the chat `Upload Chat Media` button.
-   Expected: the file picker accepts image and video files and posts the selected media.
+7. Paste a direct PDF URL into chat.
+   Expected: it creates a Journal PDF page and posts a chat PDF reference; if browser download is blocked for a clearly PDF-like URL, the Journal page uses the original URL.
+8. Drag and drop image, video, or PDF files onto the chat input.
+   Expected: the dropped file is uploaded and posted as chat media or a PDF reference.
+9. Use the chat `Upload Chat Media or PDF` button.
+   Expected: the file picker accepts image, video, and PDF files and posts the selected content.
 
 ### 8. Chat Plain Text
 
@@ -227,18 +237,20 @@ Leave the default `Canvas text paste mode = Scene notes` setting enabled before 
 
 ### 9. Scene Controls And Fallback Paths
 
-1. Use the scene-control `Paste Media` button with image data in the clipboard.
+1. Use the scene-control `Paste Media or PDF` button with image data in the clipboard.
    Expected: it creates or replaces media without depending on keyboard shortcuts.
-2. Use the scene-control `Paste Media` button when direct clipboard reads cannot expose the media payload.
+2. Use the scene-control `Paste Media or PDF` button with PDF data in the clipboard.
+   Expected: it creates a Journal PDF page and a scene Note reference.
+3. Use the scene-control `Paste Media or PDF` button when direct clipboard reads cannot expose the media or PDF payload.
    Expected: a focused paste prompt opens instead of creating broken content.
-3. With that prompt open, use `Cmd+V` or `Ctrl+V` with copied local media.
-   Expected: the prompt captures the native paste event, creates or replaces media, and closes itself.
-4. Use the scene-control `Paste Media` button when no reliable mouse position is available.
+4. With that prompt open, use `Cmd+V` or `Ctrl+V` with copied local media or PDF data.
+   Expected: the prompt captures the native paste event, creates or replaces media or creates a PDF Note, and closes itself.
+5. Use the scene-control `Paste Media or PDF` button when no reliable mouse position is available.
    Expected: fallback placement uses canvas center when appropriate.
-5. Use the scene-control `Upload Media` button.
-   Expected: the selected file is uploaded and created with the same placement logic as pasted media.
-6. Confirm that scene-control `Paste Media` and `Upload Media` do not create Journal notes from plain text.
-   Expected: those tools stay media-only.
+6. Use the scene-control `Upload Media or PDF` button.
+   Expected: the selected file is uploaded and created with the same placement logic as pasted media or PDF notes.
+7. Confirm that scene-control `Paste Media or PDF` and `Upload Media or PDF` do not create Journal notes from plain text.
+   Expected: those tools stay media/PDF-only.
 
 ### 10. Upload Destination
 
@@ -303,8 +315,8 @@ Leave the default `Canvas text paste mode = Scene notes` setting enabled before 
    Expected: no token or tile is created or replaced.
 2. Raise `Minimum role for canvas text paste` above the current user's role and try canvas text paste.
    Expected: no Journal note is created or updated.
-3. Raise `Minimum role for chat media paste` above the current user's role and try chat media paste and chat upload.
-   Expected: no chat media post is created and the chat upload button is hidden if chat media handling is disabled.
+3. Raise `Minimum role for chat media paste` above the current user's role and try chat media/PDF paste and chat upload.
+   Expected: no chat media or PDF post is created and the chat upload button is hidden if chat media/PDF handling is disabled.
 4. Disable token creation and paste media with no selection while token creation would otherwise be targeted.
    Expected: the paste is ignored rather than silently creating a tile.
 5. Disable tile creation and paste media with no selection while tile creation would otherwise be targeted.

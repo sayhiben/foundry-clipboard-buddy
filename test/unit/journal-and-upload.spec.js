@@ -361,6 +361,146 @@ describe("journal, note, and upload workflows", () => {
         text: "Loose Note",
       });
     });
+
+    it("creates shared PDF journal entries and PDF page data", async () => {
+      const created = await api._clipboardCreatePdfJournalEntry({
+        src: "pasted_images/pdf/user-1/2026-04/handout.pdf",
+        name: "Handout",
+        previewSrc: "pasted_images/pdf/user-1/2026-04/handout-preview.png",
+      });
+
+      expect(created.entry.ownership).toMatchObject({
+        default: 2,
+        "user-1": 3,
+      });
+      expect(created.page).toMatchObject({
+        type: "pdf",
+        name: "Handout",
+        src: "pasted_images/pdf/user-1/2026-04/handout.pdf",
+      });
+      expect(created.page.flags["foundry-paste-eater"]).toMatchObject({
+        pdfPreview: "pasted_images/pdf/user-1/2026-04/handout-preview.png",
+        pdfExternal: false,
+      });
+      expect(api._clipboardGetJournalPageUuid(created.entry, created.page)).toBe(`${created.entry.uuid}.JournalEntryPage.${created.page.id}`);
+    });
+
+    it("keeps shared Journal ownership helpers explicit and non-destructive", async () => {
+      expect(api._clipboardMergeSharedJournalOwnership({
+        default: 1,
+        "user-1": 0,
+        "other-user": 3,
+      })).toEqual({
+        default: 2,
+        "user-1": 3,
+        "other-user": 3,
+      });
+
+      const widened = env.createJournalEntry({
+        id: "entry-share-helper",
+        ownership: {
+          default: 3,
+          "user-1": 1,
+        },
+      });
+      await expect(api._clipboardEnsureSharedJournalOwnership(widened)).resolves.toBe(widened);
+      expect(widened.update).toHaveBeenCalledWith({
+        ownership: {
+          default: 3,
+          "user-1": 3,
+        },
+      });
+
+      const unchanged = env.createJournalEntry({
+        id: "entry-share-helper-unchanged",
+        ownership: {
+          default: 2,
+          "user-1": 3,
+        },
+      });
+      await expect(api._clipboardEnsureSharedJournalOwnership(unchanged)).resolves.toBe(unchanged);
+      expect(unchanged.update).not.toHaveBeenCalled();
+
+      const entryWithoutUpdate = {
+        ownership: {
+          default: 0,
+        },
+      };
+      await expect(api._clipboardEnsureSharedJournalOwnership(entryWithoutUpdate)).resolves.toBe(entryWithoutUpdate);
+      expect(entryWithoutUpdate.ownership).toEqual({
+        default: 2,
+        "user-1": 3,
+      });
+      await expect(api._clipboardEnsureSharedJournalOwnership(null)).resolves.toBeNull();
+    });
+
+    it("appends a PDF page to a selected scene note and repoints the note", async () => {
+      const entry = env.createJournalEntry({
+        id: "entry-note-pdf",
+        name: "Scene Note",
+        ownership: {default: 0},
+        pages: [],
+      });
+      const note = env.createPlaceableDocument("Note", {
+        id: "note-pdf",
+        entryId: entry.id,
+        text: "Target Note",
+      });
+
+      const result = await api._clipboardAppendPdfPageToSceneNote(note, {
+        src: "folder/handout.pdf",
+        name: "Handout",
+        previewSrc: "folder/handout-preview.png",
+        external: false,
+      });
+
+      expect(entry.update).not.toHaveBeenCalledWith(expect.objectContaining({
+        ownership: expect.any(Object),
+      }));
+      expect(entry.ownership).toEqual({default: 0});
+      expect(entry.createEmbeddedDocuments).toHaveBeenCalledWith("JournalEntryPage", [
+        expect.objectContaining({
+          type: "pdf",
+          src: "folder/handout.pdf",
+          name: "Handout",
+        }),
+      ]);
+      expect(note.update).toHaveBeenCalledWith(expect.objectContaining({
+        entryId: entry.id,
+        pageId: result.page.id,
+        text: "Handout",
+        "texture.src": "folder/handout-preview.png",
+      }));
+    });
+
+    it("creates a standalone PDF note with a Journal PDF page", async () => {
+      await expect(api._clipboardCreateStandalonePdfNote({
+        src: "folder/handout.pdf",
+        name: "Handout",
+        previewSrc: "",
+        external: false,
+      }, {
+        mousePos: {x: 100, y: 200},
+      })).resolves.toMatchObject({
+        entry: expect.any(Object),
+        page: expect.objectContaining({
+          type: "pdf",
+          src: "folder/handout.pdf",
+        }),
+      });
+
+      expect(globalThis.canvas.notes.activate).toHaveBeenCalled();
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("Note", [
+        expect.objectContaining({
+          text: "Handout",
+          x: 100,
+          y: 200,
+          texture: {
+            src: "icons/svg/book.svg",
+          },
+        }),
+      ]);
+    });
   });
 
   describe("upload and fetch helpers", () => {
@@ -382,6 +522,22 @@ describe("journal, note, and upload workflows", () => {
         bucket: "",
       });
       expect(uploadPath).toMatch(/^folder\/upload-\d+\.png$/);
+    });
+
+    it("creates and uploads PDF files without media coercion", async () => {
+      const uploadFile = api._clipboardCreatePdfUploadFile(
+        new File(["pdf"], "handout.pdf", {type: "application/pdf"}),
+        123
+      );
+      expect(uploadFile.name).toBe("handout-123.pdf");
+      expect(uploadFile.type).toBe("application/pdf");
+
+      const uploadPath = await api._clipboardUploadPdfBlob(new File(["pdf"], "handout.pdf", {type: "application/pdf"}), {
+        source: "data",
+        target: "folder",
+        bucket: "",
+      });
+      expect(uploadPath).toMatch(/^folder\/handout-\d+\.pdf$/);
     });
 
     it("normalizes uploaded SVG files before sending them to the FilePicker", async () => {
@@ -453,6 +609,35 @@ describe("journal, note, and upload workflows", () => {
       const fetched = await api._clipboardFetchImageUrl("https://example.com/file.png");
       expect(fetched).toBeInstanceOf(File);
       expect(fetched.name).toBe("file.png");
+    });
+
+    it("downloads and wraps PDF urls", async () => {
+      globalThis.fetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: () => "application/pdf",
+        },
+        blob: async () => new Blob(["pdf"], {type: "application/pdf"}),
+      });
+
+      const fetched = await api._clipboardFetchPdfUrl("https://example.com/handout.pdf");
+      expect(fetched).toBeInstanceOf(File);
+      expect(fetched.name).toBe("handout.pdf");
+      expect(fetched.type).toBe("application/pdf");
+    });
+
+    it("rejects downloaded direct PDF URLs that do not resolve to PDF content", async () => {
+      globalThis.fetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: () => "text/plain",
+        },
+        blob: async () => new Blob(["x"], {type: "text/plain"}),
+      });
+
+      await expect(api._clipboardFetchPdfUrl("https://example.com/handout.txt")).rejects.toMatchObject({
+        clipboardPdfUrlNotPdf: true,
+      });
     });
 
     it("throws when a download cannot be started", async () => {

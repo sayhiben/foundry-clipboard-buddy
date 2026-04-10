@@ -348,13 +348,29 @@ describe("support and readiness helpers", () => {
       speaker: {alias: "GM"},
       content: api._clipboardCreateChatMediaContent("audit-root/chat/user-1/2026-04/chat.png"),
     });
+    env.createJournalEntry({
+      id: "entry-pdf-audit",
+      name: "PDF Handout",
+      pages: [{
+        id: "page-pdf-audit",
+        type: "pdf",
+        name: "Handout",
+        src: "audit-root/pdf/user-1/2026-04/handout.pdf",
+        flags: {
+          "foundry-paste-eater": {
+            pdfPreview: "audit-root/pdf/user-1/2026-04/handout-preview.png",
+          },
+        },
+      }],
+    });
 
     const report = api._clipboardCollectMediaAuditReport();
-    expect(report.summary.referenceCount).toBe(6);
+    expect(report.summary.referenceCount).toBe(8);
     expect(report.groups.map(group => group.context)).toEqual(expect.arrayContaining([
       "canvas",
       "chat",
       "document-art",
+      "pdf",
     ]));
     expect(report.references).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -369,6 +385,11 @@ describe("support and readiness helpers", () => {
       expect.objectContaining({
         documentType: "Token",
         context: "canvas",
+      }),
+      expect.objectContaining({
+        documentType: "JournalEntryPage",
+        field: "src",
+        context: "pdf",
       }),
     ]));
   });

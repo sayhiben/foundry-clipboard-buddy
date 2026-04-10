@@ -171,7 +171,7 @@ const CLIPBOARD_IMAGE_SETTINGS_SCHEMA = Object.freeze([
   {
     key: CLIPBOARD_IMAGE_MINIMUM_ROLE_CANVAS_TEXT_SETTING,
     name: "Minimum role for canvas text paste",
-    hint: "Lowest Foundry role allowed to create or update Journal-backed scene notes from pasted text.",
+    hint: "Lowest Foundry role allowed to create or update Journal-backed scene notes from pasted text or PDFs.",
     scope: "world",
     config: true,
     type: String,
@@ -180,7 +180,7 @@ const CLIPBOARD_IMAGE_SETTINGS_SCHEMA = Object.freeze([
   {
     key: CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING,
     name: "Minimum role for chat media paste",
-    hint: "Lowest Foundry role allowed to post pasted/uploaded media into chat.",
+    hint: "Lowest Foundry role allowed to post pasted/uploaded media or PDFs into chat.",
     scope: "world",
     config: true,
     type: String,
@@ -198,8 +198,8 @@ const CLIPBOARD_IMAGE_SETTINGS_SCHEMA = Object.freeze([
   },
   {
     key: CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING,
-    name: "Enable chat media handling",
-    hint: "Allow pasted, dropped, and uploaded media in chat.",
+    name: "Enable chat media and PDF handling",
+    hint: "Allow pasted, dropped, and uploaded media or PDFs in chat.",
     scope: "world",
     config: true,
     type: Boolean,
@@ -208,7 +208,7 @@ const CLIPBOARD_IMAGE_SETTINGS_SCHEMA = Object.freeze([
   {
     key: CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING,
     name: "Enable chat upload button",
-    hint: "Show the Upload Chat Media button next to the chat input when chat media handling is enabled.",
+    hint: "Show the Upload Chat Media or PDF button next to the chat input when chat media handling is enabled.",
     scope: "world",
     config: true,
     type: Boolean,
@@ -248,8 +248,8 @@ const CLIPBOARD_IMAGE_SETTINGS_SCHEMA = Object.freeze([
   },
   {
     key: CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING,
-    name: "Enable scene Paste Media tool",
-    hint: "Show the Paste Media scene control button.",
+    name: "Enable scene Paste Media or PDF tool",
+    hint: "Show the Paste Media or PDF scene control button.",
     scope: "world",
     config: true,
     type: Boolean,
@@ -257,8 +257,8 @@ const CLIPBOARD_IMAGE_SETTINGS_SCHEMA = Object.freeze([
   },
   {
     key: CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING,
-    name: "Enable scene Upload Media tool",
-    hint: "Show the Upload Media scene control button.",
+    name: "Enable scene Upload Media or PDF tool",
+    hint: "Show the Upload Media or PDF scene control button.",
     scope: "world",
     config: true,
     type: Boolean,
@@ -330,7 +330,7 @@ const CLIPBOARD_IMAGE_SETTINGS_SCHEMA = Object.freeze([
   {
     key: CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING,
     name: "Scene Paste Media prompt mode",
-    hint: "Control whether the scene Paste Media tool uses direct clipboard reads, the manual paste prompt, or the current browser-dependent auto behavior.",
+    hint: "Control whether the scene Paste Media or PDF tool uses direct clipboard reads, the manual paste prompt, or the current browser-dependent auto behavior.",
     scope: "world",
     config: true,
     type: String,
@@ -356,7 +356,7 @@ const CLIPBOARD_IMAGE_SETTINGS_SCHEMA = Object.freeze([
   {
     key: CLIPBOARD_IMAGE_UPLOAD_PATH_ORGANIZATION_SETTING,
     name: "Upload path organization",
-    hint: "Optionally append context, user, and month folders under the configured base destination to separate chat, canvas, and document-art uploads.",
+    hint: "Optionally append context, user, and month folders under the configured base destination to separate chat, canvas, document-art, and PDF uploads.",
     scope: "world",
     config: true,
     type: String,

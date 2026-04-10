@@ -57,7 +57,7 @@ async function _clipboardHandleChatImageInput(imageInput) {
 
 function _clipboardHandleChatUploadAction() {
   if (!_clipboardCanUseChatMedia()) return false;
-  _clipboardLog("info", "Invoked chat Upload Media action.");
+  _clipboardLog("info", "Invoked chat Upload Media/PDF action.");
   void _clipboardExecutePasteWorkflow(() => _clipboardOpenChatUploadPicker(), {
     respectCopiedObjects: false,
   });

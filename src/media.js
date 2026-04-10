@@ -69,12 +69,21 @@ function _clipboardLooksLikeVideoFilename(filename) {
   return CLIPBOARD_IMAGE_VIDEO_EXTENSIONS.has(extension);
 }
 
+function _clipboardLooksLikePdfFilename(filename) {
+  return _clipboardGetFilenameExtension(filename) === "pdf";
+}
+
 function _clipboardIsImageMimeType(mimeType) {
   return _clipboardNormalizeMimeType(mimeType).startsWith("image/");
 }
 
 function _clipboardIsVideoMimeType(mimeType) {
   return _clipboardNormalizeMimeType(mimeType).startsWith("video/");
+}
+
+function _clipboardIsPdfMimeType(mimeType) {
+  const normalized = _clipboardNormalizeMimeType(mimeType);
+  return normalized === "application/pdf" || normalized === "application/x-pdf";
 }
 
 function _clipboardIsMediaMimeType(mimeType) {
@@ -94,6 +103,12 @@ function _clipboardGetMediaKind({blob, filename, mimeType, src} = {}) {
 
 function _clipboardIsSupportedMediaBlob(blob) {
   return Boolean(blob && _clipboardGetMediaKind({blob, filename: blob.name}));
+}
+
+function _clipboardIsPdfBlob(blob, {filename = "", mimeType = ""} = {}) {
+  if (!blob) return false;
+  return _clipboardIsPdfMimeType(mimeType || blob.type) ||
+    _clipboardLooksLikePdfFilename(filename || blob.name);
 }
 
 function _clipboardIsGifMedia({blob, filename, mimeType, src} = {}) {
@@ -127,6 +142,30 @@ function _clipboardCoerceMediaFile(blob, {filename = "", mimeType = ""} = {}) {
     ? blob
     : new Blob([blob], {type: resolvedMimeType});
   const resolvedFilename = _clipboardEnsureFilenameExtension(candidateFilename, typedBlob);
+
+  if (blob instanceof File &&
+      blob.name === resolvedFilename &&
+      normalizedBlobType === resolvedMimeType) {
+    return blob;
+  }
+
+  return new File([typedBlob], resolvedFilename, {type: resolvedMimeType});
+}
+
+function _clipboardCoercePdfFile(blob, {filename = "", mimeType = ""} = {}) {
+  if (!blob || !_clipboardIsPdfBlob(blob, {filename, mimeType})) return null;
+
+  const candidateFilename = filename || (blob instanceof File ? blob.name : "") || "pasted_pdf.pdf";
+  const resolvedFilename = _clipboardLooksLikePdfFilename(candidateFilename)
+    ? candidateFilename
+    : `${candidateFilename.replace(/\.[^./]+$/, "") || "pasted_pdf"}.pdf`;
+  const normalizedBlobType = _clipboardNormalizeMimeType(blob.type);
+  const resolvedMimeType = _clipboardIsPdfMimeType(normalizedBlobType)
+    ? normalizedBlobType
+    : "application/pdf";
+  const typedBlob = normalizedBlobType === resolvedMimeType
+    ? blob
+    : new Blob([blob], {type: resolvedMimeType});
 
   if (blob instanceof File &&
       blob.name === resolvedFilename &&
@@ -172,6 +211,8 @@ function _clipboardGetMimeTypeFromFilename(filename) {
       return "video/ogg";
     case "webm":
       return "video/webm";
+    case "pdf":
+      return "application/pdf";
     default:
       return "image/png";
   }
@@ -500,13 +541,17 @@ module.exports = {
   _clipboardGetFilenameFromUrl,
   _clipboardLooksLikeImageFilename,
   _clipboardLooksLikeVideoFilename,
+  _clipboardLooksLikePdfFilename,
   _clipboardIsImageMimeType,
   _clipboardIsVideoMimeType,
+  _clipboardIsPdfMimeType,
   _clipboardIsMediaMimeType,
   _clipboardGetMediaKind,
   _clipboardIsSupportedMediaBlob,
+  _clipboardIsPdfBlob,
   _clipboardIsGifMedia,
   _clipboardCoerceMediaFile,
+  _clipboardCoercePdfFile,
   _clipboardGetMimeTypeFromFilename,
   _clipboardEnsureFilenameExtension,
   _clipboardGetTileVideoData,

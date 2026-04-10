@@ -4,6 +4,8 @@ const {
   CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS,
   CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT,
   CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
+  CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF,
+  CLIPBOARD_IMAGE_MODULE_ID,
 } = require("../constants");
 const {_clipboardGetKnownUploadRoots} = require("./known-roots");
 
@@ -49,7 +51,8 @@ function _clipboardInferAuditContext(path, uploadRoot, fallbackContext) {
   if (
     leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS ||
     leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT ||
-    leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART
+    leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART ||
+    leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF
   ) {
     return leadingSegment;
   }
@@ -113,6 +116,39 @@ function _clipboardCollectDocumentMediaReferences(document, uploadRoots, options
     ...options,
   });
   return reference ? [reference] : [];
+}
+
+function _clipboardCollectJournalPdfPageReferences(entry, page, uploadRoots) {
+  if (page?.type !== "pdf") return [];
+
+  const references = [];
+  const pdfPath = page.src || "";
+  const pdfRoot = _clipboardMatchUploadRoot(pdfPath, uploadRoots);
+  const pdfReference = _clipboardCreateAuditReference({
+    path: pdfPath,
+    documentType: "JournalEntryPage",
+    documentId: page.id,
+    documentName: page.name || entry?.name || page.id,
+    field: "src",
+    uploadRoot: pdfRoot,
+    fallbackContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF,
+  });
+  if (pdfReference) references.push(pdfReference);
+
+  const previewPath = page.flags?.[CLIPBOARD_IMAGE_MODULE_ID]?.pdfPreview || "";
+  const previewRoot = _clipboardMatchUploadRoot(previewPath, uploadRoots);
+  const previewReference = _clipboardCreateAuditReference({
+    path: previewPath,
+    documentType: "JournalEntryPage",
+    documentId: page.id,
+    documentName: page.name || entry?.name || page.id,
+    field: "flags.foundry-paste-eater.pdfPreview",
+    uploadRoot: previewRoot,
+    fallbackContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF,
+  });
+  if (previewReference) references.push(previewReference);
+
+  return references;
 }
 
 /**
@@ -181,6 +217,12 @@ function _clipboardCollectMediaAuditReport() {
         sceneId: scene.id || null,
         sceneName: scene.name || null,
       }));
+    }
+  }
+
+  for (const entry of game?.journal?.contents || []) {
+    for (const page of entry?.pages?.contents || []) {
+      references.push(..._clipboardCollectJournalPdfPageReferences(entry, page, uploadRoots));
     }
   }
 
@@ -275,6 +317,7 @@ module.exports = {
   _clipboardCollectChatMessagePaths,
   _clipboardCreateAuditReference,
   _clipboardCollectDocumentMediaReferences,
+  _clipboardCollectJournalPdfPageReferences,
   _clipboardCollectMediaAuditReport,
   _clipboardCreateMediaAuditFile,
   _clipboardDownloadMediaAuditReport,
