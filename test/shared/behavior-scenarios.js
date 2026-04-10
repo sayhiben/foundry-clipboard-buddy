@@ -47,6 +47,74 @@ const NATIVE_PASTE_ROUTE_SCENARIOS = Object.freeze([
     expected: "ignore-pdf-ineligible",
   },
   {
+    name: "prefers focused audio fields over all other audio routes",
+    input: {
+      hasAudioInput: true,
+      hasAudioFieldTarget: true,
+      isChatTarget: true,
+      isEditableTarget: true,
+      hasPlaylistTarget: true,
+      canUseChatMedia: false,
+      canvasAudioEligible: false,
+    },
+    expected: "audio-field",
+  },
+  {
+    name: "routes audio into chat when chat is focused and enabled",
+    input: {
+      hasAudioInput: true,
+      isChatTarget: true,
+      canUseChatMedia: true,
+      canvasAudioEligible: true,
+    },
+    expected: "chat-audio",
+  },
+  {
+    name: "leaves audio alone when chat is focused but chat media is disabled",
+    input: {
+      hasAudioInput: true,
+      isChatTarget: true,
+      canUseChatMedia: false,
+      canvasAudioEligible: true,
+    },
+    expected: "ignore-chat-media-disabled",
+  },
+  {
+    name: "ignores audio in unsupported editable targets",
+    input: {
+      hasAudioInput: true,
+      isEditableTarget: true,
+      hasPlaylistTarget: true,
+      canvasAudioEligible: true,
+    },
+    expected: "ignore-editable-audio",
+  },
+  {
+    name: "routes audio into a playlist UI target before canvas",
+    input: {
+      hasAudioInput: true,
+      hasPlaylistTarget: true,
+      canvasAudioEligible: true,
+    },
+    expected: "playlist-audio",
+  },
+  {
+    name: "routes audio to canvas AmbientSound when no higher-priority target exists",
+    input: {
+      hasAudioInput: true,
+      canvasAudioEligible: true,
+    },
+    expected: "canvas-audio",
+  },
+  {
+    name: "does not route audio to canvas when the context is ineligible",
+    input: {
+      hasAudioInput: true,
+      canvasAudioEligible: false,
+    },
+    expected: "ignore-audio-ineligible",
+  },
+  {
     name: "prefers focused art fields over all other media routes",
     input: {
       hasMediaInput: true,

@@ -680,6 +680,7 @@ describe("diagnostics and settings helpers", () => {
     it("normalizes organized upload path helpers", () => {
       expect(api._clipboardGetUploadContextSegment("chat")).toBe("chat");
       expect(api._clipboardGetUploadContextSegment("document-art")).toBe("document-art");
+      expect(api._clipboardGetUploadContextSegment("audio")).toBe("audio");
       expect(api._clipboardGetUploadContextSegment("weird")).toBe("canvas");
       expect(api._clipboardNormalizeUploadPathSegment("\\nested//folder\\", "fallback")).toBe("nested/folder");
       expect(api._clipboardNormalizeUploadPathSegment("", "fallback")).toBe("fallback");

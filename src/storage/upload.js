@@ -10,6 +10,7 @@ const {
 } = require("../diagnostics");
 const {
   _clipboardCoerceMediaFile,
+  _clipboardCoerceAudioFile,
   _clipboardEnsureFilenameExtension,
   _clipboardGetFileExtension,
   _clipboardGetMimeTypeFromFilename,
@@ -154,10 +155,34 @@ function _clipboardCreatePdfUploadFile(blob, version = Date.now()) {
   });
 }
 
+function _clipboardCreateAudioUploadFile(blob, version = Date.now()) {
+  const normalizedFile = _clipboardCoerceAudioFile(blob, {
+    filename: blob instanceof File ? blob.name : "",
+    mimeType: blob?.type,
+    explicitAudioContext: true,
+  });
+  return _clipboardCreateUploadFile(normalizedFile || blob, version, {
+    coerceMedia: false,
+    fallbackBaseName: "pasted_audio",
+  });
+}
+
 async function _clipboardUploadPdfBlob(blob, targetFolder) {
   return _clipboardUploadBlob(blob, targetFolder, {
     coerceMedia: false,
     fallbackBaseName: "pasted_pdf",
+  });
+}
+
+async function _clipboardUploadAudioBlob(blob, targetFolder) {
+  const normalizedFile = _clipboardCoerceAudioFile(blob, {
+    filename: blob instanceof File ? blob.name : "",
+    mimeType: blob?.type,
+    explicitAudioContext: true,
+  });
+  return _clipboardUploadBlob(normalizedFile || blob, targetFolder, {
+    coerceMedia: false,
+    fallbackBaseName: "pasted_audio",
   });
 }
 
@@ -166,7 +191,9 @@ module.exports = {
   _clipboardCreateVersionedFilename,
   _clipboardCreateUploadFile,
   _clipboardCreatePdfUploadFile,
+  _clipboardCreateAudioUploadFile,
   _clipboardCreateFreshMediaPath,
   _clipboardUploadBlob,
   _clipboardUploadPdfBlob,
+  _clipboardUploadAudioBlob,
 };

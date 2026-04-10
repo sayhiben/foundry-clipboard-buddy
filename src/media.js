@@ -1,6 +1,7 @@
 // @ts-nocheck
 
 const {
+  CLIPBOARD_IMAGE_AUDIO_EXTENSIONS,
   CLIPBOARD_IMAGE_IMAGE_EXTENSIONS,
   CLIPBOARD_IMAGE_VIDEO_EXTENSIONS,
 } = require("./constants");
@@ -11,15 +12,30 @@ function _clipboardNormalizeMimeType(value) {
 }
 
 function _clipboardGetFilenameExtension(filename) {
-  return filename?.split(/[?#]/).shift()?.split(".").pop()?.trim()?.toLowerCase() || "";
+  const value = String(filename || "").split(/[?#]/).shift()?.trim() || "";
+  const leaf = value.split("/").pop() || value;
+  const dotIndex = leaf.lastIndexOf(".");
+  if (dotIndex <= 0 || dotIndex === leaf.length - 1) return "";
+  return leaf.slice(dotIndex + 1).trim().toLowerCase();
+}
+
+function _clipboardNormalizeAudioExtension(extension) {
+  const normalized = String(extension || "").trim().toLowerCase().replace(/^\./, "");
+  if (normalized === "midi") return "mid";
+  return normalized;
 }
 
 function _clipboardGetFileExtension(blob) {
   if (blob instanceof File && blob.name.includes(".")) {
-    return blob.name.split(".").pop().toLowerCase();
+    const extension = blob.name.split(".").pop().toLowerCase();
+    return _clipboardNormalizeAudioExtension(extension) || extension;
   }
 
-  const mimeType = _clipboardNormalizeMimeType(blob.type).split("/").pop()?.toLowerCase() || "png";
+  const normalizedMimeType = _clipboardNormalizeMimeType(blob.type);
+  const audioExtension = _clipboardGetAudioExtensionFromMimeType(normalizedMimeType);
+  if (audioExtension) return audioExtension;
+
+  const mimeType = normalizedMimeType.split("/").pop()?.toLowerCase() || "png";
   return mimeType
     .replace("jpeg", "jpg")
     .replace("svg+xml", "svg")
@@ -69,6 +85,48 @@ function _clipboardLooksLikeVideoFilename(filename) {
   return CLIPBOARD_IMAGE_VIDEO_EXTENSIONS.has(extension);
 }
 
+function _clipboardGetFoundryAudioHelper() {
+  return globalThis.foundry?.audio?.AudioHelper ||
+    globalThis.AudioHelper ||
+    null;
+}
+
+function _clipboardFoundryAudioHelperHasAudioExtension(filename) {
+  const audioHelper = _clipboardGetFoundryAudioHelper();
+  if (typeof audioHelper?.hasAudioExtension !== "function") return false;
+
+  try {
+    return Boolean(audioHelper.hasAudioExtension(filename));
+  } catch {
+    return false;
+  }
+}
+
+function _clipboardGetRuntimeAudioExtensions() {
+  const runtimeExtensions = globalThis.CONST?.AUDIO_FILE_EXTENSIONS;
+  if (!runtimeExtensions) return CLIPBOARD_IMAGE_AUDIO_EXTENSIONS;
+
+  const values = Array.isArray(runtimeExtensions)
+    ? runtimeExtensions
+    : Object.values(runtimeExtensions);
+  const normalizedValues = values
+    .map(value => _clipboardNormalizeAudioExtension(value))
+    .filter(Boolean);
+  return normalizedValues.length
+    ? new Set([...normalizedValues, "midi"])
+    : CLIPBOARD_IMAGE_AUDIO_EXTENSIONS;
+}
+
+function _clipboardLooksLikeAudioFilename(filename, {explicitAudioContext = false} = {}) {
+  const extension = _clipboardNormalizeAudioExtension(_clipboardGetFilenameExtension(filename));
+  if (!extension) return false;
+  if (extension === "webm" && !explicitAudioContext) return false;
+
+  if (_clipboardFoundryAudioHelperHasAudioExtension(filename)) return true;
+  return _clipboardGetRuntimeAudioExtensions().has(extension) ||
+    CLIPBOARD_IMAGE_AUDIO_EXTENSIONS.has(extension);
+}
+
 function _clipboardLooksLikePdfFilename(filename) {
   return _clipboardGetFilenameExtension(filename) === "pdf";
 }
@@ -86,6 +144,10 @@ function _clipboardIsPdfMimeType(mimeType) {
   return normalized === "application/pdf" || normalized === "application/x-pdf";
 }
 
+function _clipboardIsAudioMimeType(mimeType) {
+  return _clipboardNormalizeMimeType(mimeType).startsWith("audio/");
+}
+
 function _clipboardIsMediaMimeType(mimeType) {
   return _clipboardIsImageMimeType(mimeType) || _clipboardIsVideoMimeType(mimeType);
 }
@@ -101,6 +163,19 @@ function _clipboardGetMediaKind({blob, filename, mimeType, src} = {}) {
   return null;
 }
 
+/**
+ * @param {{blob?: Blob | File | null, filename?: string, mimeType?: string, src?: string, explicitAudioContext?: boolean}} [options]
+ * @returns {"audio" | null}
+ */
+function _clipboardGetAudioKind({blob, filename, mimeType, src, explicitAudioContext = false} = {}) {
+  const normalizedMimeType = _clipboardNormalizeMimeType(mimeType || blob?.type);
+  if (_clipboardIsAudioMimeType(normalizedMimeType)) return "audio";
+
+  const candidate = filename || blob?.name || (src ? (_clipboardGetFilenameFromUrl(src) || src) : "");
+  if (_clipboardLooksLikeAudioFilename(candidate, {explicitAudioContext})) return "audio";
+  return null;
+}
+
 function _clipboardIsSupportedMediaBlob(blob) {
   return Boolean(blob && _clipboardGetMediaKind({blob, filename: blob.name}));
 }
@@ -109,6 +184,16 @@ function _clipboardIsPdfBlob(blob, {filename = "", mimeType = ""} = {}) {
   if (!blob) return false;
   return _clipboardIsPdfMimeType(mimeType || blob.type) ||
     _clipboardLooksLikePdfFilename(filename || blob.name);
+}
+
+function _clipboardIsAudioBlob(blob, {filename = "", mimeType = "", explicitAudioContext = false} = {}) {
+  if (!blob) return false;
+  return Boolean(_clipboardGetAudioKind({
+    blob,
+    filename: filename || blob.name,
+    mimeType: mimeType || blob.type,
+    explicitAudioContext,
+  }));
 }
 
 function _clipboardIsGifMedia({blob, filename, mimeType, src} = {}) {
@@ -176,6 +261,92 @@ function _clipboardCoercePdfFile(blob, {filename = "", mimeType = ""} = {}) {
   return new File([typedBlob], resolvedFilename, {type: resolvedMimeType});
 }
 
+function _clipboardCoerceAudioFile(blob, {filename = "", mimeType = "", explicitAudioContext = false} = {}) {
+  if (!blob || !_clipboardIsAudioBlob(blob, {filename, mimeType, explicitAudioContext})) return null;
+
+  const candidateFilename = filename || (blob instanceof File ? blob.name : "") || "pasted_audio";
+  const candidateExtension = _clipboardNormalizeAudioExtension(_clipboardGetFilenameExtension(candidateFilename));
+  const resolvedFilename = CLIPBOARD_IMAGE_AUDIO_EXTENSIONS.has(candidateExtension)
+    ? candidateFilename.replace(/\.(midi)(?=$|[?#])/i, ".mid")
+    : `${candidateFilename.replace(/\.[^./]+$/, "") || "pasted_audio"}.mp3`;
+  const normalizedBlobType = _clipboardNormalizeMimeType(blob.type);
+  let resolvedMimeType = _clipboardIsAudioMimeType(normalizedBlobType)
+    ? normalizedBlobType
+    : _clipboardNormalizeMimeType(mimeType);
+  if (!_clipboardIsAudioMimeType(resolvedMimeType)) {
+    resolvedMimeType = _clipboardGetAudioMimeTypeFromFilename(resolvedFilename);
+  }
+  const typedBlob = normalizedBlobType === resolvedMimeType
+    ? blob
+    : new Blob([blob], {type: resolvedMimeType});
+
+  if (blob instanceof File &&
+      blob.name === resolvedFilename &&
+      normalizedBlobType === resolvedMimeType) {
+    return blob;
+  }
+
+  return new File([typedBlob], resolvedFilename, {type: resolvedMimeType});
+}
+
+function _clipboardGetAudioExtensionFromMimeType(mimeType) {
+  switch (_clipboardNormalizeMimeType(mimeType)) {
+    case "audio/aac":
+      return "aac";
+    case "audio/flac":
+    case "audio/x-flac":
+      return "flac";
+    case "audio/m4a":
+    case "audio/mp4":
+    case "audio/x-m4a":
+      return "m4a";
+    case "audio/mid":
+    case "audio/midi":
+    case "audio/x-midi":
+      return "mid";
+    case "audio/mp3":
+    case "audio/mpeg":
+      return "mp3";
+    case "audio/ogg":
+      return "ogg";
+    case "audio/opus":
+      return "opus";
+    case "audio/wav":
+    case "audio/wave":
+    case "audio/x-wav":
+      return "wav";
+    case "audio/webm":
+      return "webm";
+    default:
+      return "";
+  }
+}
+
+function _clipboardGetAudioMimeTypeFromFilename(filename) {
+  switch (_clipboardNormalizeAudioExtension(_clipboardGetFilenameExtension(filename))) {
+    case "aac":
+      return "audio/aac";
+    case "flac":
+      return "audio/flac";
+    case "m4a":
+      return "audio/mp4";
+    case "mid":
+      return "audio/midi";
+    case "mp3":
+      return "audio/mpeg";
+    case "ogg":
+      return "audio/ogg";
+    case "opus":
+      return "audio/opus";
+    case "wav":
+      return "audio/wav";
+    case "webm":
+      return "audio/webm";
+    default:
+      return "audio/mpeg";
+  }
+}
+
 function _clipboardGetMimeTypeFromFilename(filename) {
   switch (_clipboardGetFilenameExtension(filename)) {
     case "apng":
@@ -206,13 +377,22 @@ function _clipboardGetMimeTypeFromFilename(filename) {
     case "mpeg":
     case "mpg":
       return "video/mpeg";
-    case "ogg":
     case "ogv":
       return "video/ogg";
     case "webm":
       return "video/webm";
     case "pdf":
       return "application/pdf";
+    case "aac":
+    case "flac":
+    case "m4a":
+    case "mid":
+    case "midi":
+    case "mp3":
+    case "ogg":
+    case "opus":
+    case "wav":
+      return _clipboardGetAudioMimeTypeFromFilename(filename);
     default:
       return "image/png";
   }
@@ -539,19 +719,30 @@ module.exports = {
   _clipboardGetFileExtension,
   _clipboardParseSupportedUrl,
   _clipboardGetFilenameFromUrl,
+  _clipboardNormalizeAudioExtension,
   _clipboardLooksLikeImageFilename,
   _clipboardLooksLikeVideoFilename,
+  _clipboardGetFoundryAudioHelper,
+  _clipboardFoundryAudioHelperHasAudioExtension,
+  _clipboardGetRuntimeAudioExtensions,
+  _clipboardLooksLikeAudioFilename,
   _clipboardLooksLikePdfFilename,
   _clipboardIsImageMimeType,
   _clipboardIsVideoMimeType,
   _clipboardIsPdfMimeType,
+  _clipboardIsAudioMimeType,
   _clipboardIsMediaMimeType,
   _clipboardGetMediaKind,
+  _clipboardGetAudioKind,
   _clipboardIsSupportedMediaBlob,
   _clipboardIsPdfBlob,
+  _clipboardIsAudioBlob,
   _clipboardIsGifMedia,
   _clipboardCoerceMediaFile,
   _clipboardCoercePdfFile,
+  _clipboardCoerceAudioFile,
+  _clipboardGetAudioExtensionFromMimeType,
+  _clipboardGetAudioMimeTypeFromFilename,
   _clipboardGetMimeTypeFromFilename,
   _clipboardEnsureFilenameExtension,
   _clipboardGetTileVideoData,

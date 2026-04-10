@@ -626,6 +626,43 @@ describe("journal, note, and upload workflows", () => {
       expect(fetched.type).toBe("application/pdf");
     });
 
+    it("downloads and wraps audio urls", async () => {
+      globalThis.fetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: () => "audio/wav",
+        },
+        blob: async () => new Blob(["audio"], {type: "audio/wav"}),
+      });
+
+      const fetched = await api._clipboardFetchAudioUrl("https://example.com/theme");
+      expect(fetched).toBeInstanceOf(File);
+      expect(fetched.name).toBe("theme.wav");
+      expect(fetched.type).toBe("audio/wav");
+    });
+
+    it("rejects downloaded direct audio URLs that do not resolve to audio content", async () => {
+      globalThis.fetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: () => "text/plain",
+        },
+        blob: async () => new Blob(["x"], {type: "text/plain"}),
+      });
+
+      await expect(api._clipboardFetchAudioUrl("https://example.com/theme.txt")).rejects.toMatchObject({
+        clipboardAudioUrlNotAudio: true,
+      });
+    });
+
+    it("creates audio upload files with normalized audio extensions", () => {
+      const uploadFile = api._clipboardCreateAudioUploadFile(new File(["audio"], "theme.midi", {
+        type: "audio/midi",
+      }), 123);
+      expect(uploadFile.name).toBe("theme-123.mid");
+      expect(uploadFile.type).toBe("audio/midi");
+    });
+
     it("rejects downloaded direct PDF URLs that do not resolve to PDF content", async () => {
       globalThis.fetch.mockResolvedValueOnce({
         ok: true,

@@ -12,6 +12,8 @@ const {
 const {
   _clipboardExtractImageBlobFromDataTransfer,
   _clipboardExtractImageInputFromDataTransfer,
+  _clipboardExtractAudioBlobFromDataTransfer,
+  _clipboardExtractAudioInputFromDataTransfer,
   _clipboardExtractPdfBlobFromDataTransfer,
   _clipboardExtractPdfInputFromDataTransfer,
   _clipboardInsertTextAtTarget,
@@ -23,7 +25,9 @@ const {
 const {
   _clipboardExecutePasteWorkflow,
   _clipboardDescribePdfInput,
+  _clipboardDescribeAudioInput,
   _clipboardHandleChatImageInput,
+  _clipboardHandleChatAudioInput,
   _clipboardHandleChatPdfInput,
   _clipboardHandleChatUploadAction,
 } = require("../workflows");
@@ -67,6 +71,7 @@ function _clipboardOnChatDragOver(event) {
   if (!_clipboardCanUseChatMedia()) return;
   const root = event.currentTarget;
   const blob = _clipboardExtractPdfBlobFromDataTransfer(event.dataTransfer) ||
+    _clipboardExtractAudioBlobFromDataTransfer(event.dataTransfer) ||
     _clipboardExtractImageBlobFromDataTransfer(event.dataTransfer);
   if (!blob) return;
 
@@ -95,6 +100,20 @@ function _clipboardOnChatDrop(event) {
     event.preventDefault();
     event.stopPropagation();
     void _clipboardExecutePasteWorkflow(() => _clipboardHandleChatPdfInput(pdfInput), {
+      respectCopiedObjects: false,
+    });
+    return;
+  }
+
+  const audioInput = _clipboardExtractAudioInputFromDataTransfer(event.dataTransfer);
+  if (audioInput) {
+    _clipboardLog("info", "Handling dropped audio in chat.", {
+      audioInput: _clipboardDescribeAudioInput(audioInput),
+      dataTransfer: _clipboardDescribeDataTransfer(event.dataTransfer),
+    });
+    event.preventDefault();
+    event.stopPropagation();
+    void _clipboardExecutePasteWorkflow(() => _clipboardHandleChatAudioInput(audioInput), {
       respectCopiedObjects: false,
     });
     return;
@@ -148,8 +167,8 @@ function _clipboardSyncChatUploadButton(root) {
   button.className = "ui-control icon fa-solid fa-file-arrow-up foundry-paste-eater-chat-upload";
   button.dataset.action = CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION;
   button.dataset.tooltip = "";
-  button.title = "Upload Chat Media or PDF";
-  button.ariaLabel = "Upload Chat Media or PDF";
+  button.title = "Upload Chat Media, PDF, or Audio";
+  button.ariaLabel = "Upload Chat Media, PDF, or Audio";
   button.addEventListener("click", () => _clipboardHandleChatUploadAction());
   mount.append(button);
 }

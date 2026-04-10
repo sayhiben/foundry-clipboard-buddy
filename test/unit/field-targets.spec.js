@@ -284,6 +284,136 @@ describe("focused art field helpers", () => {
     expect(api._clipboardGetFocusedPdfFieldTarget(field)).toBeNull();
   });
 
+  it("detects focused audio document fields without hijacking arbitrary path fields", () => {
+    const root = document.createElement("form");
+    root.id = "AmbientSoundConfig-1";
+    root.className = "application sheet ambient-sound";
+    root.innerHTML = `
+      <file-picker name="path">
+        <input type="text" value="">
+      </file-picker>
+      <audio data-edit="path" src=""></audio>
+    `;
+    document.body.append(root);
+
+    const ambientSound = env.createPlaceableDocument("AmbientSound", {id: "sound-1", path: ""});
+    const app = {
+      id: root.id,
+      object: ambientSound,
+    };
+    globalThis.foundry.applications.instances = new Map([[root.id, app]]);
+    globalThis.ui.activeWindow = app;
+
+    const picker = root.querySelector("file-picker");
+    const field = picker.querySelector("input");
+    const preview = root.querySelector("audio");
+    let previewLoads = 0;
+    preview.load = () => {
+      previewLoads += 1;
+    };
+
+    const target = api._clipboardGetFocusedAudioFieldTarget(picker);
+    expect(target).toMatchObject({
+      app,
+      appRoot: root,
+      documentName: "AmbientSound",
+      fieldName: "path",
+      field,
+      picker,
+    });
+    expect(api._clipboardPopulateAudioFieldTarget(target, "folder/theme.mp3")).toBe(true);
+    expect(field.value).toBe("folder/theme.mp3");
+    expect(picker.value).toBe("folder/theme.mp3");
+    expect(preview.src).toContain("folder/theme.mp3");
+    expect(previewLoads).toBe(1);
+
+    const sourceRoot = document.createElement("form");
+    sourceRoot.id = "AmbientSoundConfig-source";
+    sourceRoot.className = "application sheet ambient-sound";
+    sourceRoot.innerHTML = `
+      <input type="text" name="path" value="">
+      <audio data-edit="path"><source data-edit="path" src=""></audio>
+    `;
+    document.body.append(sourceRoot);
+    const sourceAmbientSound = env.createPlaceableDocument("AmbientSound", {id: "sound-source", path: ""});
+    globalThis.foundry.applications.instances.set(sourceRoot.id, {
+      id: sourceRoot.id,
+      object: sourceAmbientSound,
+    });
+    const sourceTarget = api._clipboardGetFocusedAudioFieldTarget(sourceRoot.querySelector("input"));
+    expect(api._clipboardPopulateAudioFieldTarget(sourceTarget, "folder/source.ogg")).toBe(true);
+    expect(sourceRoot.querySelector("source").src).toContain("folder/source.ogg");
+
+    globalThis.ui.windows["actor-path"] = {object: {documentName: "Actor"}};
+    const unsupportedRoot = document.createElement("section");
+    unsupportedRoot.dataset.appid = "actor-path";
+    unsupportedRoot.innerHTML = '<input type="text" name="path">';
+    document.body.append(unsupportedRoot);
+    expect(api._clipboardGetFocusedAudioFieldTarget(unsupportedRoot.querySelector("input"))).toBeNull();
+  });
+
+  it("resolves playlist targets from playlist documents and playlist UI elements", () => {
+    const playlist = env.createPlaylist({id: "playlist-audio", name: "Audio"});
+    const root = document.createElement("section");
+    root.dataset.appid = "playlist-app";
+    root.innerHTML = '<input type="text" name="path">';
+    document.body.append(root);
+    globalThis.ui.windows["playlist-app"] = {object: playlist};
+
+    expect(api._clipboardGetPlaylistTargetFromElement(root.querySelector("input"))).toMatchObject({
+      playlist,
+      inPlaylistUi: true,
+    });
+
+    const directoryRow = document.createElement("div");
+    directoryRow.id = "playlists";
+    directoryRow.innerHTML = '<div data-playlist-id="playlist-audio"><span>Audio</span></div>';
+    document.body.append(directoryRow);
+    expect(api._clipboardGetPlaylistTargetFromElement(directoryRow.querySelector("span"))).toMatchObject({
+      playlist,
+      inPlaylistUi: true,
+    });
+
+    const playlistFromContents = env.createPlaylist({id: "playlist-contents", name: "Contents Playlist"});
+    const savedPlaylists = globalThis.game.playlists;
+    globalThis.game.playlists = {
+      contents: [playlistFromContents],
+    };
+    const contentsRow = document.createElement("div");
+    contentsRow.innerHTML = '<div data-id="playlist-contents"><span>Contents</span></div>';
+    document.body.append(contentsRow);
+    expect(api._clipboardGetPlaylistTargetFromElement(contentsRow.querySelector("span"))).toMatchObject({
+      playlist: playlistFromContents,
+      inPlaylistUi: true,
+    });
+    globalThis.game.playlists = savedPlaylists;
+
+    const orphanSound = env.createPlaylistSound({
+      id: "orphan-sound",
+    });
+    orphanSound.playlistId = "playlist-audio";
+    const soundRoot = document.createElement("section");
+    soundRoot.dataset.appid = "playlist-sound-app";
+    soundRoot.innerHTML = '<input type="text" name="path">';
+    document.body.append(soundRoot);
+    globalThis.ui.windows["playlist-sound-app"] = {object: orphanSound};
+    expect(api._clipboardGetPlaylistTargetFromElement(soundRoot.querySelector("input"))).toMatchObject({
+      playlist,
+      playlistSound: orphanSound,
+      inPlaylistUi: true,
+    });
+
+    const genericPlaylistUi = document.createElement("div");
+    genericPlaylistUi.id = "playlists";
+    genericPlaylistUi.innerHTML = "<span>No specific playlist</span>";
+    document.body.append(genericPlaylistUi);
+    expect(api._clipboardGetPlaylistTargetFromElement(genericPlaylistUi.querySelector("span"))).toMatchObject({
+      playlist: null,
+      playlistSound: null,
+      inPlaylistUi: true,
+    });
+  });
+
   it("skips jsdom's unimplemented native media reload helper", () => {
     const video = document.createElement("video");
     expect(() => api._clipboardReloadMediaPreview(video)).not.toThrow();

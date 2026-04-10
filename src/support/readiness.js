@@ -74,7 +74,7 @@ function _clipboardEvaluateClientCapabilitySection() {
       browserContext.clipboardReadAvailable
         ? "This browser exposes navigator.clipboard.read for richer scene-paste flows."
         : "This browser does not expose navigator.clipboard.read here. Native paste events and upload fallbacks still work where enabled.",
-      "Use a Chromium-based browser on a secure/trusted origin if you want the scene Paste Media or PDF tool to try direct clipboard reads first.",
+      "Use a Chromium-based browser on a secure/trusted origin if you want the scene Paste Media, PDF, or Audio tool to try direct clipboard reads first.",
       browserContext
     )
   );
@@ -189,14 +189,14 @@ function _clipboardEvaluatePlayerUploadSection() {
   section.items.push(
     _clipboardCreateReadinessItem(
       "chat-role-gate",
-      "Chat media/PDF role gate",
+      "Chat media, PDF, and audio role gate",
       chatEnabled ? (chatRoleHasUploadPermissions ? "pass" : "fail") : "warn",
       chatEnabled
-        ? `Chat media/PDF posting requires ${_clipboardGetRoleLabel(chatRole)} and above. That role ${chatRoleHasUploadPermissions ? "has" : "does not have"} Use File Browser plus Upload Files in Foundry core permissions.`
-        : "Chat media/PDF handling is disabled in this world, so players will keep normal chat text behavior only.",
+        ? `Chat media, PDF, and audio posting requires ${_clipboardGetRoleLabel(chatRole)} and above. That role ${chatRoleHasUploadPermissions ? "has" : "does not have"} Use File Browser plus Upload Files in Foundry core permissions.`
+        : "Chat media, PDF, and audio handling is disabled in this world, so players will keep normal chat text behavior only.",
       chatEnabled
-        ? `Open Game Settings -> Configure Permissions and enable Use File Browser plus Upload Files for ${_clipboardGetRoleLabel(chatRole)} if players at that role should post pasted media or PDFs to chat.`
-        : "Enable chat media/PDF handling if you want players to paste or upload media or PDFs into chat.",
+        ? `Open Game Settings -> Configure Permissions and enable Use File Browser plus Upload Files for ${_clipboardGetRoleLabel(chatRole)} if players at that role should post pasted media, PDFs, or audio to chat.`
+        : "Enable chat media, PDF, and audio handling if you want players to paste or upload media, PDFs, or audio into chat.",
       {
         role: chatRole,
         chatEnabled,

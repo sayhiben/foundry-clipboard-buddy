@@ -5,6 +5,7 @@ const {
   CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT,
   CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
   CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF,
+  CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO,
   CLIPBOARD_IMAGE_MODULE_ID,
 } = require("../constants");
 const {_clipboardGetKnownUploadRoots} = require("./known-roots");
@@ -52,7 +53,8 @@ function _clipboardInferAuditContext(path, uploadRoot, fallbackContext) {
     leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS ||
     leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT ||
     leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART ||
-    leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF
+    leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF ||
+    leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO
   ) {
     return leadingSegment;
   }
@@ -65,7 +67,7 @@ function _clipboardCollectChatMessagePaths(message) {
 
   const container = document.createElement("div");
   container.innerHTML = content;
-  const elements = Array.from(container.querySelectorAll("img[src], video[src], a[href]"));
+  const elements = Array.from(container.querySelectorAll("img[src], video[src], audio[src], source[src], a[href]"));
   const paths = new Set();
   for (const element of elements) {
     const value = element.getAttribute("src") || element.getAttribute("href") || "";
@@ -218,6 +220,40 @@ function _clipboardCollectMediaAuditReport() {
         sceneName: scene.name || null,
       }));
     }
+
+    for (const sound of scene?.sounds?.contents || []) {
+      const soundPath = sound?.path || "";
+      const soundRoot = _clipboardMatchUploadRoot(soundPath, uploadRoots);
+      const soundReference = _clipboardCreateAuditReference({
+        path: soundPath,
+        documentType: "AmbientSound",
+        documentId: sound.id,
+        documentName: sound.name || sound.id,
+        field: "path",
+        uploadRoot: soundRoot,
+        fallbackContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO,
+        sceneId: scene.id || null,
+        sceneName: scene.name || null,
+      });
+      if (soundReference) references.push(soundReference);
+    }
+  }
+
+  for (const playlist of game?.playlists?.contents || []) {
+    for (const sound of playlist?.sounds?.contents || []) {
+      const soundPath = sound?.path || "";
+      const soundRoot = _clipboardMatchUploadRoot(soundPath, uploadRoots);
+      const soundReference = _clipboardCreateAuditReference({
+        path: soundPath,
+        documentType: "PlaylistSound",
+        documentId: sound.id,
+        documentName: sound.name || playlist?.name || sound.id,
+        field: "path",
+        uploadRoot: soundRoot,
+        fallbackContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO,
+      });
+      if (soundReference) references.push(soundReference);
+    }
   }
 
   for (const entry of game?.journal?.contents || []) {
@@ -227,6 +263,20 @@ function _clipboardCollectMediaAuditReport() {
   }
 
   for (const message of game?.messages?.contents || []) {
+    const messageSound = message?.sound || "";
+    const messageSoundRoot = _clipboardMatchUploadRoot(messageSound, uploadRoots);
+    const messageSoundReference = _clipboardCreateAuditReference({
+      path: messageSound,
+      documentType: "ChatMessage",
+      documentId: message.id,
+      documentName: message.speaker?.alias || message.id,
+      field: "sound",
+      uploadRoot: messageSoundRoot,
+      fallbackContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO,
+      messageId: message.id,
+    });
+    if (messageSoundReference) references.push(messageSoundReference);
+
     for (const path of _clipboardCollectChatMessagePaths(message)) {
       const uploadRoot = _clipboardMatchUploadRoot(path, uploadRoots);
       const reference = _clipboardCreateAuditReference({

@@ -9,6 +9,7 @@ const {
 } = require("../diagnostics");
 const {
   _clipboardExtractImageInputFromDataTransfer,
+  _clipboardExtractAudioInputFromDataTransfer,
   _clipboardExtractPdfInputFromDataTransfer,
   _clipboardExtractTextInputFromDataTransfer,
   _clipboardGetChatRootFromTarget,
@@ -16,7 +17,9 @@ const {
 } = require("../clipboard");
 const {
   _clipboardGetFocusedArtFieldTarget,
+  _clipboardGetFocusedAudioFieldTarget,
   _clipboardGetFocusedPdfFieldTarget,
+  _clipboardGetPlaylistTargetFromElement,
 } = require("../field-targets");
 const {_clipboardResolvePasteContext, _clipboardCanPasteToContext} = require("../context");
 const {
@@ -28,6 +31,11 @@ const {
   _clipboardHandleCanvasPdfInput,
   _clipboardHandleChatPdfInput,
   _clipboardHandlePdfFieldInput,
+  _clipboardHandleAudioFieldInput,
+  _clipboardHandleCanvasAudioInput,
+  _clipboardHandleChatAudioInput,
+  _clipboardHandlePlaylistAudioInput,
+  _clipboardCanPasteAudioToCanvasContext,
   _clipboardCanPastePdfToCanvasContext,
   _clipboardGetControlledSceneNoteDocuments,
   _clipboardHandleTextInput,
@@ -71,6 +79,7 @@ function _clipboardShouldRestoreGameFocus(target) {
   if (!(target instanceof HTMLElement)) return false;
   if (_clipboardGetChatRootFromTarget(target)) return false;
   if (_clipboardGetFocusedPdfFieldTarget(target)) return false;
+  if (_clipboardGetFocusedAudioFieldTarget(target)) return false;
   if (_clipboardIsEditableTarget(target)) return false;
   if (_clipboardGetFocusedArtFieldTarget(target)) return false;
   return Boolean(target.closest("#board, #scene-controls"));
@@ -93,13 +102,17 @@ function _clipboardBindEventDocument(eventDocument = document) {
 
 function _clipboardResolveNativePasteRoute({
   hasPdfInput = false,
+  hasAudioInput = false,
   hasMediaInput = false,
   hasTextInput = false,
   hasPdfFieldTarget = false,
+  hasAudioFieldTarget = false,
   hasArtFieldTarget = false,
+  hasPlaylistTarget = false,
   isChatTarget = false,
   isEditableTarget = false,
   canUseChatMedia = _clipboardCanUseChatMedia(),
+  canvasAudioEligible = false,
   canvasContextEligible = false,
 } = {}) {
   if (hasPdfInput) {
@@ -109,6 +122,16 @@ function _clipboardResolveNativePasteRoute({
     }
     if (isEditableTarget) return {route: "ignore-editable-pdf"};
     return {route: canvasContextEligible ? "canvas-pdf" : "ignore-pdf-ineligible"};
+  }
+
+  if (hasAudioInput) {
+    if (hasAudioFieldTarget) return {route: "audio-field"};
+    if (isChatTarget) {
+      return {route: canUseChatMedia ? "chat-audio" : "ignore-chat-media-disabled"};
+    }
+    if (isEditableTarget) return {route: "ignore-editable-audio"};
+    if (hasPlaylistTarget) return {route: "playlist-audio"};
+    return {route: canvasAudioEligible ? "canvas-audio" : "ignore-audio-ineligible"};
   }
 
   if (hasMediaInput) {
@@ -139,7 +162,6 @@ function _clipboardOnPaste(event) {
     dataTransfer: _clipboardDescribeDataTransfer(event.clipboardData),
   });
 
-  const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
   const pdfInput = _clipboardExtractPdfInputFromDataTransfer(event.clipboardData);
   const context = _clipboardResolvePasteContext();
   const isChatTarget = Boolean(_clipboardGetChatRootFromTarget(event.target));
@@ -198,6 +220,80 @@ function _clipboardOnPaste(event) {
     return;
   }
 
+  const audioFieldTarget = _clipboardGetFocusedAudioFieldTarget(event.target);
+  const playlistAudioTarget = _clipboardGetPlaylistTargetFromElement(event.target);
+  const explicitAudioContext = Boolean(audioFieldTarget || playlistAudioTarget || canvas?.activeLayer === canvas?.sounds);
+  const audioInput = _clipboardExtractAudioInputFromDataTransfer(event.clipboardData, {
+    explicitAudioContext,
+  });
+  if (audioInput) {
+    const route = _clipboardResolveNativePasteRoute({
+      hasAudioInput: true,
+      hasAudioFieldTarget: Boolean(audioFieldTarget),
+      hasPlaylistTarget: Boolean(playlistAudioTarget),
+      isChatTarget,
+      isEditableTarget,
+      canUseChatMedia: _clipboardCanUseChatMedia(),
+      canvasAudioEligible: _clipboardCanPasteAudioToCanvasContext(context),
+    });
+
+    if (route.route === "audio-field") {
+      if (_clipboardHasPasteConflict({respectCopiedObjects: false})) return;
+
+      _clipboardConsumePasteEvent(event);
+      void _clipboardExecutePasteWorkflow(() => _clipboardHandleAudioFieldInput(audioInput, audioFieldTarget), {
+        respectCopiedObjects: false,
+      });
+      return;
+    }
+
+    if (route.route === "chat-audio") {
+      if (_clipboardHasPasteConflict({respectCopiedObjects: false})) return;
+
+      _clipboardConsumePasteEvent(event);
+      void _clipboardExecutePasteWorkflow(() => _clipboardHandleChatAudioInput(audioInput), {
+        respectCopiedObjects: false,
+      });
+      return;
+    }
+
+    if (route.route === "ignore-chat-media-disabled") return;
+
+    if (route.route === "ignore-editable-audio") {
+      _clipboardLog("info", "Ignoring pasted audio in an unsupported editable target.", {
+        targetTagName: event.target?.tagName || null,
+        targetName: event.target?.name || event.target?.dataset?.edit || null,
+      });
+      return;
+    }
+
+    if (route.route === "playlist-audio") {
+      if (_clipboardHasPasteConflict({respectCopiedObjects: false})) return;
+
+      _clipboardConsumePasteEvent(event);
+      void _clipboardExecutePasteWorkflow(() => _clipboardHandlePlaylistAudioInput(audioInput, playlistAudioTarget), {
+        respectCopiedObjects: false,
+      });
+      return;
+    }
+
+    if (route.route === "ignore-audio-ineligible") {
+      _clipboardLog("info", "Ignoring pasted audio because the canvas context is not eligible.", {
+        context: _clipboardDescribePasteContext(context),
+      });
+      return;
+    }
+
+    if (_clipboardHasPasteConflict()) return;
+
+    _clipboardConsumePasteEvent(event);
+    void _clipboardExecutePasteWorkflow(() => _clipboardHandleCanvasAudioInput(audioInput, {context}), {
+      respectCopiedObjects: false,
+    });
+    return;
+  }
+
+  const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
   if (imageInput) {
     const artFieldTarget = _clipboardGetFocusedArtFieldTarget(event.target);
     const route = _clipboardResolveNativePasteRoute({

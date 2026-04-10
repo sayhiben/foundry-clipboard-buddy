@@ -258,6 +258,40 @@ test("pastes an image as a tile on the Tiles layer", async ({foundryPage: page},
   }
 });
 
+test("pastes audio as an AmbientSound on the canvas", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const mouse = await getSafeCanvasPoint(page, 10);
+    await focusCanvas(page);
+    await setCanvasMousePosition(page, mouse);
+    await page.evaluate(() => canvas.sounds.activate());
+
+    const before = await getStateSnapshot(page);
+    await dispatchFilePaste(page, {
+      targetSelector: ".game",
+      fixtureFilename: "test-audio.wav",
+      filename: `${run.prefix} test-audio.wav`,
+      mimeType: "audio/wav",
+    });
+    await page.getByRole("button", {name: "Ambient sound", exact: true}).click();
+
+    await expect.poll(async () => (await getStateSnapshot(page)).sounds.length).toBe(before.sounds.length + 1);
+    const after = await getStateSnapshot(page);
+    const [sound] = getNewDocuments(before, after, "sounds");
+
+    expect(sound.path).toContain(run.uploadFolder);
+    expect(sound.path).toMatch(/test-audio.*\.wav/i);
+    expect(sound.repeat).toBe(false);
+    expect(sound.x).toBeCloseTo(mouse.x, 0);
+    expect(sound.y).toBeCloseTo(mouse.y, 0);
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.notes.length).toBe(before.notes.length);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
 test("uses the intrinsic square SVG size for tile pastes", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {

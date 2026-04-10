@@ -57,6 +57,7 @@ Prepare these sample inputs:
 - A small `.pdf`
 - A direct media URL
 - A direct PDF URL
+- One small supported audio file, such as `.mp3`, `.wav`, or `.ogg`
 - A plain non-media URL
 - One-line plain text
 - Multi-line plain text with blank lines
@@ -74,7 +75,7 @@ These flows should stay true across the test matrix:
 1. Chat-targeted paste should not also create scene content.
 2. Canvas-targeted media paste should create or replace scene content, not chat content.
 3. When `Canvas text paste mode` is enabled, canvas-targeted plain text should create or update Journal-backed scene notes.
-4. Scene-control `Paste Media or PDF` and `Upload Media or PDF` actions are media/PDF-only tools.
+4. Scene-control `Paste Media, PDF, or Audio` and `Upload Media, PDF, or Audio` actions are media, PDF, and audio-only tools.
 5. Existing token or tile replacements must preserve position and dimensions.
 6. New uploads should respect the configured upload destination.
 7. Failed clipboard or remote-download paths should fail clearly without leaving partial scene state behind.
@@ -194,7 +195,7 @@ Leave the default `Canvas text paste mode = Scene notes` setting enabled before 
 11. As a non-GM, select a scene note linked to a Journal entry the user cannot update and paste a PDF.
     Expected: the workflow fails before upload, no PDF page is created, and the scene note is unchanged.
 
-### 6. Focused Document Art Fields
+### 6. Focused Document Fields
 
 1. Open an Actor or Item sheet and focus the portrait field.
    Expected: pasting image media updates the focused art field instead of creating canvas or chat content.
@@ -204,6 +205,23 @@ Leave the default `Canvas text paste mode = Scene notes` setting enabled before 
    Expected: the remote file is downloaded, uploaded, and the field value is updated to the uploaded path.
 4. Paste a remote media URL into a focused art field from a host that blocks browser-side downloads.
    Expected: the original direct media URL is inserted into the field instead of creating broken canvas content.
+5. Focus a known audio document field such as `PlaylistSound.path`, `AmbientSound.path`, or `ChatMessage.sound`, then paste audio.
+   Expected: the field receives an uploaded audio path and no canvas or chat content is created.
+6. Focus an unrelated `path` or `src` input and paste audio.
+   Expected: the module ignores the field so native Foundry form behavior is preserved.
+
+### 6B. Canvas And Playlist Audio
+
+1. Activate the Sounds layer, clear selection, and paste audio onto the canvas.
+   Expected: a prompt offers `Ambient sound` and `Ambient loop`; the default creates a non-repeating AmbientSound at the paste position.
+2. Repeat that paste and choose `Ambient loop`.
+   Expected: the created AmbientSound has repeat/loop behavior enabled and otherwise uses Foundry palette defaults when available.
+3. Paste a direct audio URL onto the canvas from a host that blocks browser-side downloads.
+   Expected: if the URL is clearly audio-like, the AmbientSound can use the original URL instead of creating broken visual scene content.
+4. Paste audio into a specific Playlist or PlaylistSound UI context.
+   Expected: the targeted playlist receives a new sound, or the targeted PlaylistSound path is updated.
+5. Paste audio inside the playlist UI when no playlist can be confidently inferred.
+   Expected: a `Pasted Audio` playlist is created or reused, the new sound is added there, and playback does not start automatically.
 
 ### 7. Chat Media
 
@@ -223,8 +241,12 @@ Leave the default `Canvas text paste mode = Scene notes` setting enabled before 
    Expected: it creates a Journal PDF page and posts a chat PDF reference; if browser download is blocked for a clearly PDF-like URL, the Journal page uses the original URL.
 8. Drag and drop image, video, or PDF files onto the chat input.
    Expected: the dropped file is uploaded and posted as chat media or a PDF reference.
-9. Use the chat `Upload Chat Media or PDF` button.
-   Expected: the file picker accepts image, video, and PDF files and posts the selected content.
+9. Paste or drop an audio file into chat.
+   Expected: a prompt offers `Audio card only` and `Use as message sound`; the default audio card posts without creating canvas content.
+10. Paste a direct audio URL into chat from a host that blocks browser-side downloads.
+   Expected: if the URL is clearly audio-like, the chat audio card can use the original URL instead of creating an empty message.
+11. Use the chat `Upload Chat Media, PDF, or Audio` button.
+   Expected: the file picker accepts image, video, PDF, and audio files and posts the selected content.
 
 ### 8. Chat Plain Text
 
@@ -237,20 +259,22 @@ Leave the default `Canvas text paste mode = Scene notes` setting enabled before 
 
 ### 9. Scene Controls And Fallback Paths
 
-1. Use the scene-control `Paste Media or PDF` button with image data in the clipboard.
+1. Use the scene-control `Paste Media, PDF, or Audio` button with image data in the clipboard.
    Expected: it creates or replaces media without depending on keyboard shortcuts.
-2. Use the scene-control `Paste Media or PDF` button with PDF data in the clipboard.
+2. Use the scene-control `Paste Media, PDF, or Audio` button with PDF data in the clipboard.
    Expected: it creates a Journal PDF page and a scene Note reference.
-3. Use the scene-control `Paste Media or PDF` button when direct clipboard reads cannot expose the media or PDF payload.
+3. Use the scene-control `Paste Media, PDF, or Audio` button with audio data in the clipboard.
+   Expected: it prompts for a normal AmbientSound or ambient loop and creates the selected sound without starting playback elsewhere.
+4. Use the scene-control `Paste Media, PDF, or Audio` button when direct clipboard reads cannot expose the media, PDF, or audio payload.
    Expected: a focused paste prompt opens instead of creating broken content.
-4. With that prompt open, use `Cmd+V` or `Ctrl+V` with copied local media or PDF data.
-   Expected: the prompt captures the native paste event, creates or replaces media or creates a PDF Note, and closes itself.
-5. Use the scene-control `Paste Media or PDF` button when no reliable mouse position is available.
+5. With that prompt open, use `Cmd+V` or `Ctrl+V` with copied local media, PDF, or audio data.
+   Expected: the prompt captures the native paste event, creates or replaces media, creates a PDF Note, or creates an AmbientSound, and closes itself.
+6. Use the scene-control `Paste Media, PDF, or Audio` button when no reliable mouse position is available.
    Expected: fallback placement uses canvas center when appropriate.
-6. Use the scene-control `Upload Media or PDF` button.
-   Expected: the selected file is uploaded and created with the same placement logic as pasted media or PDF notes.
-7. Confirm that scene-control `Paste Media or PDF` and `Upload Media or PDF` do not create Journal notes from plain text.
-   Expected: those tools stay media/PDF-only.
+7. Use the scene-control `Upload Media, PDF, or Audio` button.
+   Expected: the selected file is uploaded and created with the same placement logic as pasted media, PDF notes, or AmbientSounds.
+8. Confirm that scene-control `Paste Media, PDF, or Audio` and `Upload Media, PDF, or Audio` do not create Journal notes from plain text.
+   Expected: those tools stay media, PDF, and audio-only.
 
 ### 10. Upload Destination
 
@@ -258,8 +282,8 @@ Leave the default `Canvas text paste mode = Scene notes` setting enabled before 
    Expected: uploads land beneath `pasted_images/<context>/<user-id>/<YYYY-MM>/`.
 2. Change the upload destination to a world-scoped folder such as `worlds/<world-name>/pasted_images`.
    Expected: new uploads are created in that folder.
-3. Enable `Upload path organization` and paste one canvas image, one chat image, and one focused art-field image.
-   Expected: uploads land under context-specific subfolders such as `canvas/<user-id>/<YYYY-MM>/`, `chat/<user-id>/<YYYY-MM>/`, and `document-art/<user-id>/<YYYY-MM>/` beneath the configured base folder.
+3. Enable `Upload path organization` and paste one canvas image, one chat image, one focused art-field image, one PDF, and one audio file.
+   Expected: uploads land under context-specific subfolders such as `canvas/<user-id>/<YYYY-MM>/`, `chat/<user-id>/<YYYY-MM>/`, `document-art/<user-id>/<YYYY-MM>/`, `pdf/<user-id>/<YYYY-MM>/`, and `audio/<user-id>/<YYYY-MM>/` beneath the configured base folder.
 3. If your deployment uses The Forge or S3, switch to that source and paste media.
    Expected: directory creation and upload respect the configured FilePicker source.
 4. For S3-compatible storage, confirm the upload-destination config shows the expected endpoint or base URL from Foundry's server configuration.
@@ -315,8 +339,8 @@ Leave the default `Canvas text paste mode = Scene notes` setting enabled before 
    Expected: no token or tile is created or replaced.
 2. Raise `Minimum role for canvas text paste` above the current user's role and try canvas text paste.
    Expected: no Journal note is created or updated.
-3. Raise `Minimum role for chat media paste` above the current user's role and try chat media/PDF paste and chat upload.
-   Expected: no chat media or PDF post is created and the chat upload button is hidden if chat media/PDF handling is disabled.
+3. Raise `Minimum role for chat media paste` above the current user's role and try chat media, PDF, or audio paste and chat upload.
+   Expected: no chat media, PDF, or audio post is created and the chat upload button is hidden if chat media, PDF, and audio handling is disabled.
 4. Disable token creation and paste media with no selection while token creation would otherwise be targeted.
    Expected: the paste is ignored rather than silently creating a tile.
 5. Disable tile creation and paste media with no selection while tile creation would otherwise be targeted.

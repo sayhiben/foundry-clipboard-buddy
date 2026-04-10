@@ -20,7 +20,7 @@ var FoundryPasteEaterRuntime = (() => {
       var CLIPBOARD_IMAGE_FILE_PICKER = foundry.applications.apps.FilePicker.implementation;
       var CLIPBOARD_IMAGE_KEYBOARD_MANAGER = foundry.helpers.interaction.KeyboardManager;
       var CLIPBOARD_IMAGE_FORM_APPLICATION = foundry.appv1.api.FormApplication;
-      var CLIPBOARD_IMAGE_SCENE_CONTROLS = ["tiles", "tokens"];
+      var CLIPBOARD_IMAGE_SCENE_CONTROLS = ["tiles", "tokens", "sounds"];
       var CLIPBOARD_IMAGE_TOOL_PASTE = "foundry-paste-eater-paste";
       var CLIPBOARD_IMAGE_TOOL_UPLOAD = "foundry-paste-eater-upload";
       var CLIPBOARD_IMAGE_CHAT_ROOT_ATTRIBUTE = "data-foundry-paste-eater-chat-root";
@@ -77,9 +77,11 @@ var FoundryPasteEaterRuntime = (() => {
       var CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT = "chat";
       var CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART = "document-art";
       var CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF = "pdf";
-      var CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT = "image/*,video/*,application/pdf,.pdf";
+      var CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO = "audio";
+      var CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT = "image/*,video/*,application/pdf,audio/*,.pdf,.aac,.flac,.m4a,.mid,.midi,.mp3,.ogg,.opus,.wav,.webm";
       var CLIPBOARD_IMAGE_IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["apng", "avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "tif", "tiff", "webp"]);
-      var CLIPBOARD_IMAGE_VIDEO_EXTENSIONS = /* @__PURE__ */ new Set(["m4v", "mp4", "mpeg", "mpg", "ogg", "ogv", "webm"]);
+      var CLIPBOARD_IMAGE_VIDEO_EXTENSIONS = /* @__PURE__ */ new Set(["m4v", "mp4", "mpeg", "mpg", "ogv", "webm"]);
+      var CLIPBOARD_IMAGE_AUDIO_EXTENSIONS = /* @__PURE__ */ new Set(["aac", "flac", "m4a", "mid", "midi", "mp3", "ogg", "opus", "wav", "webm"]);
       var CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS = Object.freeze({
         fallbackToCenter: true,
         requireCanvasFocus: false
@@ -153,9 +155,11 @@ var FoundryPasteEaterRuntime = (() => {
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT,
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF,
+        CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO,
         CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT,
         CLIPBOARD_IMAGE_IMAGE_EXTENSIONS,
         CLIPBOARD_IMAGE_VIDEO_EXTENSIONS,
+        CLIPBOARD_IMAGE_AUDIO_EXTENSIONS,
         CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS
       };
     }
@@ -472,7 +476,7 @@ var FoundryPasteEaterRuntime = (() => {
         {
           key: CLIPBOARD_IMAGE_MINIMUM_ROLE_CHAT_MEDIA_SETTING,
           name: "Minimum role for chat media paste",
-          hint: "Lowest Foundry role allowed to post pasted/uploaded media or PDFs into chat.",
+          hint: "Lowest Foundry role allowed to post pasted/uploaded media, PDFs, or audio into chat.",
           scope: "world",
           config: true,
           type: String,
@@ -490,8 +494,8 @@ var FoundryPasteEaterRuntime = (() => {
         },
         {
           key: CLIPBOARD_IMAGE_ENABLE_CHAT_MEDIA_SETTING,
-          name: "Enable chat media and PDF handling",
-          hint: "Allow pasted, dropped, and uploaded media or PDFs in chat.",
+          name: "Enable chat media, PDF, and audio handling",
+          hint: "Allow pasted, dropped, and uploaded media, PDFs, or audio in chat.",
           scope: "world",
           config: true,
           type: Boolean,
@@ -500,7 +504,7 @@ var FoundryPasteEaterRuntime = (() => {
         {
           key: CLIPBOARD_IMAGE_ENABLE_CHAT_UPLOAD_BUTTON_SETTING,
           name: "Enable chat upload button",
-          hint: "Show the Upload Chat Media or PDF button next to the chat input when chat media handling is enabled.",
+          hint: "Show the Upload Chat Media, PDF, or Audio button next to the chat input when chat media handling is enabled.",
           scope: "world",
           config: true,
           type: Boolean,
@@ -540,8 +544,8 @@ var FoundryPasteEaterRuntime = (() => {
         },
         {
           key: CLIPBOARD_IMAGE_ENABLE_SCENE_PASTE_TOOL_SETTING,
-          name: "Enable scene Paste Media or PDF tool",
-          hint: "Show the Paste Media or PDF scene control button.",
+          name: "Enable scene Paste Media, PDF, or Audio tool",
+          hint: "Show the Paste Media, PDF, or Audio scene control button.",
           scope: "world",
           config: true,
           type: Boolean,
@@ -549,8 +553,8 @@ var FoundryPasteEaterRuntime = (() => {
         },
         {
           key: CLIPBOARD_IMAGE_ENABLE_SCENE_UPLOAD_TOOL_SETTING,
-          name: "Enable scene Upload Media or PDF tool",
-          hint: "Show the Upload Media or PDF scene control button.",
+          name: "Enable scene Upload Media, PDF, or Audio tool",
+          hint: "Show the Upload Media, PDF, or Audio scene control button.",
           scope: "world",
           config: true,
           type: Boolean,
@@ -622,7 +626,7 @@ var FoundryPasteEaterRuntime = (() => {
         {
           key: CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_MODE_SETTING,
           name: "Scene Paste Media prompt mode",
-          hint: "Control whether the scene Paste Media or PDF tool uses direct clipboard reads, the manual paste prompt, or the current browser-dependent auto behavior.",
+          hint: "Control whether the scene Paste Media, PDF, or Audio tool uses direct clipboard reads, the manual paste prompt, or the current browser-dependent auto behavior.",
           scope: "world",
           config: true,
           type: String,
@@ -1070,7 +1074,8 @@ var FoundryPasteEaterRuntime = (() => {
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS,
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT,
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
-        CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF
+        CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF,
+        CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO
       } = require_constants();
       function _clipboardUsingTheForge() {
         return typeof ForgeVTT != "undefined" && ForgeVTT.usingTheForge;
@@ -1143,6 +1148,8 @@ var FoundryPasteEaterRuntime = (() => {
             return CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART;
           case CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF:
             return CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF;
+          case CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO:
+            return CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO;
           case CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS:
           default:
             return CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS;
@@ -1318,6 +1325,7 @@ var FoundryPasteEaterRuntime = (() => {
   var require_media = __commonJS({
     "src/media.js"(exports, module) {
       var {
+        CLIPBOARD_IMAGE_AUDIO_EXTENSIONS,
         CLIPBOARD_IMAGE_IMAGE_EXTENSIONS,
         CLIPBOARD_IMAGE_VIDEO_EXTENSIONS
       } = require_constants();
@@ -1326,13 +1334,26 @@ var FoundryPasteEaterRuntime = (() => {
         return value?.split(";").shift()?.trim()?.toLowerCase() || "";
       }
       function _clipboardGetFilenameExtension(filename) {
-        return filename?.split(/[?#]/).shift()?.split(".").pop()?.trim()?.toLowerCase() || "";
+        const value = String(filename || "").split(/[?#]/).shift()?.trim() || "";
+        const leaf = value.split("/").pop() || value;
+        const dotIndex = leaf.lastIndexOf(".");
+        if (dotIndex <= 0 || dotIndex === leaf.length - 1) return "";
+        return leaf.slice(dotIndex + 1).trim().toLowerCase();
+      }
+      function _clipboardNormalizeAudioExtension(extension) {
+        const normalized = String(extension || "").trim().toLowerCase().replace(/^\./, "");
+        if (normalized === "midi") return "mid";
+        return normalized;
       }
       function _clipboardGetFileExtension(blob) {
         if (blob instanceof File && blob.name.includes(".")) {
-          return blob.name.split(".").pop().toLowerCase();
+          const extension = blob.name.split(".").pop().toLowerCase();
+          return _clipboardNormalizeAudioExtension(extension) || extension;
         }
-        const mimeType = _clipboardNormalizeMimeType(blob.type).split("/").pop()?.toLowerCase() || "png";
+        const normalizedMimeType = _clipboardNormalizeMimeType(blob.type);
+        const audioExtension = _clipboardGetAudioExtensionFromMimeType(normalizedMimeType);
+        if (audioExtension) return audioExtension;
+        const mimeType = normalizedMimeType.split("/").pop()?.toLowerCase() || "png";
         return mimeType.replace("jpeg", "jpg").replace("svg+xml", "svg").replace("x-icon", "ico").split("+")[0];
       }
       function _clipboardParseSupportedUrl(value) {
@@ -1367,6 +1388,32 @@ var FoundryPasteEaterRuntime = (() => {
         if (foundryVideoHelper?.hasVideoExtension?.(filename)) return true;
         return CLIPBOARD_IMAGE_VIDEO_EXTENSIONS.has(extension);
       }
+      function _clipboardGetFoundryAudioHelper() {
+        return globalThis.foundry?.audio?.AudioHelper || globalThis.AudioHelper || null;
+      }
+      function _clipboardFoundryAudioHelperHasAudioExtension(filename) {
+        const audioHelper = _clipboardGetFoundryAudioHelper();
+        if (typeof audioHelper?.hasAudioExtension !== "function") return false;
+        try {
+          return Boolean(audioHelper.hasAudioExtension(filename));
+        } catch {
+          return false;
+        }
+      }
+      function _clipboardGetRuntimeAudioExtensions() {
+        const runtimeExtensions = globalThis.CONST?.AUDIO_FILE_EXTENSIONS;
+        if (!runtimeExtensions) return CLIPBOARD_IMAGE_AUDIO_EXTENSIONS;
+        const values = Array.isArray(runtimeExtensions) ? runtimeExtensions : Object.values(runtimeExtensions);
+        const normalizedValues = values.map((value) => _clipboardNormalizeAudioExtension(value)).filter(Boolean);
+        return normalizedValues.length ? /* @__PURE__ */ new Set([...normalizedValues, "midi"]) : CLIPBOARD_IMAGE_AUDIO_EXTENSIONS;
+      }
+      function _clipboardLooksLikeAudioFilename(filename, { explicitAudioContext = false } = {}) {
+        const extension = _clipboardNormalizeAudioExtension(_clipboardGetFilenameExtension(filename));
+        if (!extension) return false;
+        if (extension === "webm" && !explicitAudioContext) return false;
+        if (_clipboardFoundryAudioHelperHasAudioExtension(filename)) return true;
+        return _clipboardGetRuntimeAudioExtensions().has(extension) || CLIPBOARD_IMAGE_AUDIO_EXTENSIONS.has(extension);
+      }
       function _clipboardLooksLikePdfFilename(filename) {
         return _clipboardGetFilenameExtension(filename) === "pdf";
       }
@@ -1380,6 +1427,9 @@ var FoundryPasteEaterRuntime = (() => {
         const normalized = _clipboardNormalizeMimeType(mimeType);
         return normalized === "application/pdf" || normalized === "application/x-pdf";
       }
+      function _clipboardIsAudioMimeType(mimeType) {
+        return _clipboardNormalizeMimeType(mimeType).startsWith("audio/");
+      }
       function _clipboardIsMediaMimeType(mimeType) {
         return _clipboardIsImageMimeType(mimeType) || _clipboardIsVideoMimeType(mimeType);
       }
@@ -1392,12 +1442,28 @@ var FoundryPasteEaterRuntime = (() => {
         if (_clipboardLooksLikeImageFilename(candidate)) return "image";
         return null;
       }
+      function _clipboardGetAudioKind({ blob, filename, mimeType, src, explicitAudioContext = false } = {}) {
+        const normalizedMimeType = _clipboardNormalizeMimeType(mimeType || blob?.type);
+        if (_clipboardIsAudioMimeType(normalizedMimeType)) return "audio";
+        const candidate = filename || blob?.name || (src ? _clipboardGetFilenameFromUrl(src) || src : "");
+        if (_clipboardLooksLikeAudioFilename(candidate, { explicitAudioContext })) return "audio";
+        return null;
+      }
       function _clipboardIsSupportedMediaBlob(blob) {
         return Boolean(blob && _clipboardGetMediaKind({ blob, filename: blob.name }));
       }
       function _clipboardIsPdfBlob(blob, { filename = "", mimeType = "" } = {}) {
         if (!blob) return false;
         return _clipboardIsPdfMimeType(mimeType || blob.type) || _clipboardLooksLikePdfFilename(filename || blob.name);
+      }
+      function _clipboardIsAudioBlob(blob, { filename = "", mimeType = "", explicitAudioContext = false } = {}) {
+        if (!blob) return false;
+        return Boolean(_clipboardGetAudioKind({
+          blob,
+          filename: filename || blob.name,
+          mimeType: mimeType || blob.type,
+          explicitAudioContext
+        }));
       }
       function _clipboardIsGifMedia({ blob, filename, mimeType, src } = {}) {
         const normalizedMimeType = _clipboardNormalizeMimeType(mimeType || blob?.type);
@@ -1438,6 +1504,78 @@ var FoundryPasteEaterRuntime = (() => {
         }
         return new File([typedBlob], resolvedFilename, { type: resolvedMimeType });
       }
+      function _clipboardCoerceAudioFile(blob, { filename = "", mimeType = "", explicitAudioContext = false } = {}) {
+        if (!blob || !_clipboardIsAudioBlob(blob, { filename, mimeType, explicitAudioContext })) return null;
+        const candidateFilename = filename || (blob instanceof File ? blob.name : "") || "pasted_audio";
+        const candidateExtension = _clipboardNormalizeAudioExtension(_clipboardGetFilenameExtension(candidateFilename));
+        const resolvedFilename = CLIPBOARD_IMAGE_AUDIO_EXTENSIONS.has(candidateExtension) ? candidateFilename.replace(/\.(midi)(?=$|[?#])/i, ".mid") : `${candidateFilename.replace(/\.[^./]+$/, "") || "pasted_audio"}.mp3`;
+        const normalizedBlobType = _clipboardNormalizeMimeType(blob.type);
+        let resolvedMimeType = _clipboardIsAudioMimeType(normalizedBlobType) ? normalizedBlobType : _clipboardNormalizeMimeType(mimeType);
+        if (!_clipboardIsAudioMimeType(resolvedMimeType)) {
+          resolvedMimeType = _clipboardGetAudioMimeTypeFromFilename(resolvedFilename);
+        }
+        const typedBlob = normalizedBlobType === resolvedMimeType ? blob : new Blob([blob], { type: resolvedMimeType });
+        if (blob instanceof File && blob.name === resolvedFilename && normalizedBlobType === resolvedMimeType) {
+          return blob;
+        }
+        return new File([typedBlob], resolvedFilename, { type: resolvedMimeType });
+      }
+      function _clipboardGetAudioExtensionFromMimeType(mimeType) {
+        switch (_clipboardNormalizeMimeType(mimeType)) {
+          case "audio/aac":
+            return "aac";
+          case "audio/flac":
+          case "audio/x-flac":
+            return "flac";
+          case "audio/m4a":
+          case "audio/mp4":
+          case "audio/x-m4a":
+            return "m4a";
+          case "audio/mid":
+          case "audio/midi":
+          case "audio/x-midi":
+            return "mid";
+          case "audio/mp3":
+          case "audio/mpeg":
+            return "mp3";
+          case "audio/ogg":
+            return "ogg";
+          case "audio/opus":
+            return "opus";
+          case "audio/wav":
+          case "audio/wave":
+          case "audio/x-wav":
+            return "wav";
+          case "audio/webm":
+            return "webm";
+          default:
+            return "";
+        }
+      }
+      function _clipboardGetAudioMimeTypeFromFilename(filename) {
+        switch (_clipboardNormalizeAudioExtension(_clipboardGetFilenameExtension(filename))) {
+          case "aac":
+            return "audio/aac";
+          case "flac":
+            return "audio/flac";
+          case "m4a":
+            return "audio/mp4";
+          case "mid":
+            return "audio/midi";
+          case "mp3":
+            return "audio/mpeg";
+          case "ogg":
+            return "audio/ogg";
+          case "opus":
+            return "audio/opus";
+          case "wav":
+            return "audio/wav";
+          case "webm":
+            return "audio/webm";
+          default:
+            return "audio/mpeg";
+        }
+      }
       function _clipboardGetMimeTypeFromFilename(filename) {
         switch (_clipboardGetFilenameExtension(filename)) {
           case "apng":
@@ -1468,13 +1606,22 @@ var FoundryPasteEaterRuntime = (() => {
           case "mpeg":
           case "mpg":
             return "video/mpeg";
-          case "ogg":
           case "ogv":
             return "video/ogg";
           case "webm":
             return "video/webm";
           case "pdf":
             return "application/pdf";
+          case "aac":
+          case "flac":
+          case "m4a":
+          case "mid":
+          case "midi":
+          case "mp3":
+          case "ogg":
+          case "opus":
+          case "wav":
+            return _clipboardGetAudioMimeTypeFromFilename(filename);
           default:
             return "image/png";
         }
@@ -1736,19 +1883,30 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardGetFileExtension,
         _clipboardParseSupportedUrl,
         _clipboardGetFilenameFromUrl,
+        _clipboardNormalizeAudioExtension,
         _clipboardLooksLikeImageFilename,
         _clipboardLooksLikeVideoFilename,
+        _clipboardGetFoundryAudioHelper,
+        _clipboardFoundryAudioHelperHasAudioExtension,
+        _clipboardGetRuntimeAudioExtensions,
+        _clipboardLooksLikeAudioFilename,
         _clipboardLooksLikePdfFilename,
         _clipboardIsImageMimeType,
         _clipboardIsVideoMimeType,
         _clipboardIsPdfMimeType,
+        _clipboardIsAudioMimeType,
         _clipboardIsMediaMimeType,
         _clipboardGetMediaKind,
+        _clipboardGetAudioKind,
         _clipboardIsSupportedMediaBlob,
         _clipboardIsPdfBlob,
+        _clipboardIsAudioBlob,
         _clipboardIsGifMedia,
         _clipboardCoerceMediaFile,
         _clipboardCoercePdfFile,
+        _clipboardCoerceAudioFile,
+        _clipboardGetAudioExtensionFromMimeType,
+        _clipboardGetAudioMimeTypeFromFilename,
         _clipboardGetMimeTypeFromFilename,
         _clipboardEnsureFilenameExtension,
         _clipboardGetTileVideoData,
@@ -1786,6 +1944,7 @@ var FoundryPasteEaterRuntime = (() => {
       } = require_diagnostics();
       var {
         _clipboardCoerceMediaFile,
+        _clipboardCoerceAudioFile,
         _clipboardEnsureFilenameExtension,
         _clipboardGetFileExtension,
         _clipboardGetMimeTypeFromFilename,
@@ -1908,10 +2067,32 @@ var FoundryPasteEaterRuntime = (() => {
           fallbackBaseName: "pasted_pdf"
         });
       }
+      function _clipboardCreateAudioUploadFile(blob, version = Date.now()) {
+        const normalizedFile = _clipboardCoerceAudioFile(blob, {
+          filename: blob instanceof File ? blob.name : "",
+          mimeType: blob?.type,
+          explicitAudioContext: true
+        });
+        return _clipboardCreateUploadFile(normalizedFile || blob, version, {
+          coerceMedia: false,
+          fallbackBaseName: "pasted_audio"
+        });
+      }
       async function _clipboardUploadPdfBlob(blob, targetFolder) {
         return _clipboardUploadBlob(blob, targetFolder, {
           coerceMedia: false,
           fallbackBaseName: "pasted_pdf"
+        });
+      }
+      async function _clipboardUploadAudioBlob(blob, targetFolder) {
+        const normalizedFile = _clipboardCoerceAudioFile(blob, {
+          filename: blob instanceof File ? blob.name : "",
+          mimeType: blob?.type,
+          explicitAudioContext: true
+        });
+        return _clipboardUploadBlob(normalizedFile || blob, targetFolder, {
+          coerceMedia: false,
+          fallbackBaseName: "pasted_audio"
         });
       }
       module.exports = {
@@ -1919,9 +2100,11 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardCreateVersionedFilename,
         _clipboardCreateUploadFile,
         _clipboardCreatePdfUploadFile,
+        _clipboardCreateAudioUploadFile,
         _clipboardCreateFreshMediaPath,
         _clipboardUploadBlob,
-        _clipboardUploadPdfBlob
+        _clipboardUploadPdfBlob,
+        _clipboardUploadAudioBlob
       };
     }
   });
@@ -1932,8 +2115,12 @@ var FoundryPasteEaterRuntime = (() => {
       var { _clipboardLog } = require_diagnostics();
       var {
         _clipboardNormalizeMimeType,
+        _clipboardCoerceAudioFile,
         _clipboardGetMimeTypeFromFilename,
+        _clipboardGetAudioKind,
+        _clipboardGetAudioMimeTypeFromFilename,
         _clipboardGetMediaKind,
+        _clipboardIsAudioMimeType,
         _clipboardIsMediaMimeType,
         _clipboardIsPdfMimeType,
         _clipboardLooksLikePdfFilename,
@@ -2018,11 +2205,58 @@ var FoundryPasteEaterRuntime = (() => {
         if (pdfInput.url) return _clipboardFetchPdfUrl(pdfInput.url);
         return null;
       }
+      async function _clipboardFetchAudioUrl(url, { explicitAudioContext = false } = {}) {
+        let response;
+        try {
+          _clipboardLog("info", "Downloading pasted audio URL", { url });
+          response = await fetch(url);
+        } catch (error) {
+          throw new Error(`Failed to download pasted audio URL from ${url}`);
+        }
+        if (!response.ok) {
+          throw new Error(`Failed to download pasted audio URL (${response.status} ${response.statusText})`);
+        }
+        const blob = await response.blob();
+        const filename = _clipboardGetFilenameFromUrl(url) || "pasted_audio.mp3";
+        const contentType = _clipboardNormalizeMimeType(response.headers.get("content-type"));
+        const blobType = _clipboardNormalizeMimeType(blob.type);
+        const audioKind = _clipboardGetAudioKind({ mimeType: contentType, explicitAudioContext }) || _clipboardGetAudioKind({ mimeType: blobType, explicitAudioContext }) || _clipboardGetAudioKind({ filename, explicitAudioContext });
+        if (!audioKind) {
+          throw Object.assign(new Error("Pasted URL did not resolve to supported audio content"), {
+            clipboardAudioUrlNotAudio: true
+          });
+        }
+        const typedBlob = _clipboardIsAudioMimeType(contentType) || _clipboardIsAudioMimeType(blobType) ? blob : new Blob([blob], { type: _clipboardGetAudioMimeTypeFromFilename(filename) });
+        const resolvedFilename = _clipboardEnsureFilenameExtension(filename, typedBlob);
+        const resolvedMimeType = _clipboardNormalizeMimeType(typedBlob.type) || _clipboardGetAudioMimeTypeFromFilename(resolvedFilename);
+        const file = _clipboardCoerceAudioFile(new File([typedBlob], resolvedFilename, { type: resolvedMimeType }), {
+          filename: resolvedFilename,
+          mimeType: resolvedMimeType,
+          explicitAudioContext: true
+        });
+        _clipboardLog("info", "Downloaded pasted audio URL", {
+          url,
+          responseContentType: contentType || null,
+          blobType: blobType || null,
+          resolvedFilename: file?.name || resolvedFilename,
+          resolvedMimeType: file?.type || resolvedMimeType,
+          size: typedBlob.size
+        });
+        return file || new File([typedBlob], resolvedFilename, { type: resolvedMimeType });
+      }
+      async function _clipboardResolveAudioInputBlob(audioInput, options = {}) {
+        if (!audioInput) return null;
+        if (audioInput.blob) return audioInput.blob;
+        if (audioInput.url) return _clipboardFetchAudioUrl(audioInput.url, options);
+        return null;
+      }
       module.exports = {
         _clipboardFetchImageUrl,
         _clipboardResolveImageInputBlob,
         _clipboardFetchPdfUrl,
-        _clipboardResolvePdfInputBlob
+        _clipboardResolvePdfInputBlob,
+        _clipboardFetchAudioUrl,
+        _clipboardResolveAudioInputBlob
       };
     }
   });
@@ -2352,7 +2586,7 @@ var FoundryPasteEaterRuntime = (() => {
             "Direct clipboard reads",
             browserContext.clipboardReadAvailable ? "pass" : "warn",
             browserContext.clipboardReadAvailable ? "This browser exposes navigator.clipboard.read for richer scene-paste flows." : "This browser does not expose navigator.clipboard.read here. Native paste events and upload fallbacks still work where enabled.",
-            "Use a Chromium-based browser on a secure/trusted origin if you want the scene Paste Media or PDF tool to try direct clipboard reads first.",
+            "Use a Chromium-based browser on a secure/trusted origin if you want the scene Paste Media, PDF, or Audio tool to try direct clipboard reads first.",
             browserContext
           )
         );
@@ -2441,10 +2675,10 @@ var FoundryPasteEaterRuntime = (() => {
         section.items.push(
           _clipboardCreateReadinessItem(
             "chat-role-gate",
-            "Chat media/PDF role gate",
+            "Chat media, PDF, and audio role gate",
             chatEnabled ? chatRoleHasUploadPermissions ? "pass" : "fail" : "warn",
-            chatEnabled ? `Chat media/PDF posting requires ${_clipboardGetRoleLabel(chatRole)} and above. That role ${chatRoleHasUploadPermissions ? "has" : "does not have"} Use File Browser plus Upload Files in Foundry core permissions.` : "Chat media/PDF handling is disabled in this world, so players will keep normal chat text behavior only.",
-            chatEnabled ? `Open Game Settings -> Configure Permissions and enable Use File Browser plus Upload Files for ${_clipboardGetRoleLabel(chatRole)} if players at that role should post pasted media or PDFs to chat.` : "Enable chat media/PDF handling if you want players to paste or upload media or PDFs into chat.",
+            chatEnabled ? `Chat media, PDF, and audio posting requires ${_clipboardGetRoleLabel(chatRole)} and above. That role ${chatRoleHasUploadPermissions ? "has" : "does not have"} Use File Browser plus Upload Files in Foundry core permissions.` : "Chat media, PDF, and audio handling is disabled in this world, so players will keep normal chat text behavior only.",
+            chatEnabled ? `Open Game Settings -> Configure Permissions and enable Use File Browser plus Upload Files for ${_clipboardGetRoleLabel(chatRole)} if players at that role should post pasted media, PDFs, or audio to chat.` : "Enable chat media, PDF, and audio handling if you want players to paste or upload media, PDFs, or audio into chat.",
             {
               role: chatRole,
               chatEnabled
@@ -2687,6 +2921,7 @@ var FoundryPasteEaterRuntime = (() => {
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT,
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF,
+        CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO,
         CLIPBOARD_IMAGE_MODULE_ID
       } = require_constants();
       var { _clipboardGetKnownUploadRoots } = require_known_roots();
@@ -2710,7 +2945,7 @@ var FoundryPasteEaterRuntime = (() => {
         if (!normalizedPath || !uploadRoot) return fallbackContext;
         const relativePath = normalizedPath.slice(uploadRoot.target.length).replace(/^\/+/, "");
         const leadingSegment = relativePath.split("/")[0];
-        if (leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS || leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT || leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART || leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF) {
+        if (leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS || leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT || leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART || leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF || leadingSegment === CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO) {
           return leadingSegment;
         }
         return fallbackContext;
@@ -2720,7 +2955,7 @@ var FoundryPasteEaterRuntime = (() => {
         if (!content.includes("foundry-paste-eater-chat-message")) return [];
         const container = document.createElement("div");
         container.innerHTML = content;
-        const elements = Array.from(container.querySelectorAll("img[src], video[src], a[href]"));
+        const elements = Array.from(container.querySelectorAll("img[src], video[src], audio[src], source[src], a[href]"));
         const paths = /* @__PURE__ */ new Set();
         for (const element of elements) {
           const value = element.getAttribute("src") || element.getAttribute("href") || "";
@@ -2856,6 +3091,38 @@ var FoundryPasteEaterRuntime = (() => {
               sceneName: scene.name || null
             }));
           }
+          for (const sound of scene?.sounds?.contents || []) {
+            const soundPath = sound?.path || "";
+            const soundRoot = _clipboardMatchUploadRoot(soundPath, uploadRoots);
+            const soundReference = _clipboardCreateAuditReference({
+              path: soundPath,
+              documentType: "AmbientSound",
+              documentId: sound.id,
+              documentName: sound.name || sound.id,
+              field: "path",
+              uploadRoot: soundRoot,
+              fallbackContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO,
+              sceneId: scene.id || null,
+              sceneName: scene.name || null
+            });
+            if (soundReference) references.push(soundReference);
+          }
+        }
+        for (const playlist of game?.playlists?.contents || []) {
+          for (const sound of playlist?.sounds?.contents || []) {
+            const soundPath = sound?.path || "";
+            const soundRoot = _clipboardMatchUploadRoot(soundPath, uploadRoots);
+            const soundReference = _clipboardCreateAuditReference({
+              path: soundPath,
+              documentType: "PlaylistSound",
+              documentId: sound.id,
+              documentName: sound.name || playlist?.name || sound.id,
+              field: "path",
+              uploadRoot: soundRoot,
+              fallbackContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO
+            });
+            if (soundReference) references.push(soundReference);
+          }
         }
         for (const entry of game?.journal?.contents || []) {
           for (const page of entry?.pages?.contents || []) {
@@ -2863,6 +3130,19 @@ var FoundryPasteEaterRuntime = (() => {
           }
         }
         for (const message of game?.messages?.contents || []) {
+          const messageSound = message?.sound || "";
+          const messageSoundRoot = _clipboardMatchUploadRoot(messageSound, uploadRoots);
+          const messageSoundReference = _clipboardCreateAuditReference({
+            path: messageSound,
+            documentType: "ChatMessage",
+            documentId: message.id,
+            documentName: message.speaker?.alias || message.id,
+            field: "sound",
+            uploadRoot: messageSoundRoot,
+            fallbackContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO,
+            messageId: message.id
+          });
+          if (messageSoundReference) references.push(messageSoundReference);
           for (const path of _clipboardCollectChatMessagePaths(message)) {
             const uploadRoot = _clipboardMatchUploadRoot(path, uploadRoots);
             const reference = _clipboardCreateAuditReference({
@@ -4433,12 +4713,16 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardSerializeError
       } = require_diagnostics();
       var {
+        _clipboardCoerceAudioFile,
         _clipboardCoerceMediaFile,
         _clipboardCoercePdfFile,
+        _clipboardGetAudioKind,
         _clipboardGetFilenameFromUrl,
         _clipboardGetMediaKind,
+        _clipboardIsAudioMimeType,
         _clipboardIsPdfMimeType,
         _clipboardIsSupportedMediaBlob,
+        _clipboardLooksLikeAudioFilename,
         _clipboardLooksLikePdfFilename,
         _clipboardParseSupportedUrl
       } = require_media();
@@ -4498,6 +4782,20 @@ var FoundryPasteEaterRuntime = (() => {
         }
         return null;
       }
+      async function _clipboardExtractAudioBlob(clipItems, { explicitAudioContext = false } = {}) {
+        for (const clipItem of clipItems || []) {
+          for (const fileType of clipItem.types) {
+            if (!_clipboardIsAudioMimeType(fileType)) continue;
+            const blob = await clipItem.getType(fileType);
+            const file = _clipboardCoerceAudioFile(blob, {
+              mimeType: fileType,
+              explicitAudioContext
+            });
+            if (file) return file;
+          }
+        }
+        return null;
+      }
       async function _clipboardReadClipboardText(clipItems, mimeType) {
         for (const clipItem of clipItems || []) {
           if (!clipItem.types.includes(mimeType)) continue;
@@ -4533,6 +4831,14 @@ var FoundryPasteEaterRuntime = (() => {
         if (/^data:application\/(?:x-)?pdf\b/i.test(url)) return true;
         return _clipboardLooksLikePdfFilename(_clipboardGetFilenameFromUrl(url) || url);
       }
+      function _clipboardLooksLikeAudioUrl(value, { explicitAudioContext = false } = {}) {
+        const url = _clipboardParseSupportedUrl(value);
+        if (!url) return false;
+        if (/^data:audio\//i.test(url)) return true;
+        return _clipboardLooksLikeAudioFilename(_clipboardGetFilenameFromUrl(url) || url, {
+          explicitAudioContext
+        });
+      }
       function _clipboardExtractPdfUrlFromUriList(text) {
         for (const line of (text || "").split(/\r?\n/)) {
           const candidate = line.trim();
@@ -4548,6 +4854,21 @@ var FoundryPasteEaterRuntime = (() => {
         const url = _clipboardParseSupportedUrl(candidate);
         return url && _clipboardLooksLikePdfUrl(url) ? url : null;
       }
+      function _clipboardExtractAudioUrlFromUriList(text, { explicitAudioContext = false } = {}) {
+        for (const line of (text || "").split(/\r?\n/)) {
+          const candidate = line.trim();
+          if (!candidate || candidate.startsWith("#")) continue;
+          const url = _clipboardParseSupportedUrl(candidate);
+          if (url && _clipboardLooksLikeAudioUrl(url, { explicitAudioContext })) return url;
+        }
+        return null;
+      }
+      function _clipboardExtractAudioUrlFromText(text, { explicitAudioContext = false } = {}) {
+        const candidate = text?.trim();
+        if (!candidate || /\s/.test(candidate)) return null;
+        const url = _clipboardParseSupportedUrl(candidate);
+        return url && _clipboardLooksLikeAudioUrl(url, { explicitAudioContext }) ? url : null;
+      }
       function _clipboardExtractImageUrlFromHtml(html) {
         if (!html?.trim()) return null;
         const documentFragment = new DOMParser().parseFromString(html, "text/html");
@@ -4561,6 +4882,16 @@ var FoundryPasteEaterRuntime = (() => {
           const candidate = pdfElement.getAttribute("href") || pdfElement.getAttribute("src") || pdfElement.getAttribute("data") || "";
           const url = _clipboardParseSupportedUrl(candidate.trim());
           if (url && _clipboardLooksLikePdfUrl(url)) return url;
+        }
+        return null;
+      }
+      function _clipboardExtractAudioUrlFromHtml(html, { explicitAudioContext = false } = {}) {
+        if (!html?.trim()) return null;
+        const documentFragment = new DOMParser().parseFromString(html, "text/html");
+        for (const audioElement of documentFragment.querySelectorAll("audio[src], audio source[src], a[href]")) {
+          const candidate = audioElement.getAttribute("src") || audioElement.getAttribute("href") || "";
+          const url = _clipboardParseSupportedUrl(candidate.trim());
+          if (url && _clipboardLooksLikeAudioUrl(url, { explicitAudioContext })) return url;
         }
         return null;
       }
@@ -4641,6 +4972,45 @@ var FoundryPasteEaterRuntime = (() => {
         }
         return null;
       }
+      function _clipboardGetUrlBackedAudioInputCandidate({ uriList = "", html = "", plainText = "" } = {}, {
+        uriListMessage,
+        htmlMessage,
+        plainTextMessage,
+        explicitAudioContext = false
+      } = {}) {
+        const fallbackText = plainText || "";
+        const uriListUrl = _clipboardExtractAudioUrlFromUriList(uriList, { explicitAudioContext });
+        if (uriListUrl) {
+          return {
+            audioInput: {
+              url: uriListUrl,
+              text: fallbackText || uriListUrl
+            },
+            message: uriListMessage
+          };
+        }
+        const htmlUrl = _clipboardExtractAudioUrlFromHtml(html, { explicitAudioContext });
+        if (htmlUrl) {
+          return {
+            audioInput: {
+              url: htmlUrl,
+              text: fallbackText || htmlUrl
+            },
+            message: htmlMessage
+          };
+        }
+        const textUrl = _clipboardExtractAudioUrlFromText(fallbackText, { explicitAudioContext });
+        if (textUrl) {
+          return {
+            audioInput: {
+              url: textUrl,
+              text: fallbackText || textUrl
+            },
+            message: plainTextMessage
+          };
+        }
+        return null;
+      }
       function _clipboardIsAnimationCapableUrl(url) {
         return Boolean(url && /\.(?:apng|avif|gif|webp|m4v|mp4|mpeg|mpg|ogg|ogv|webm)(?:$|[?#])/i.test(url));
       }
@@ -4692,6 +5062,20 @@ var FoundryPasteEaterRuntime = (() => {
         if (details) Object.assign(logDetails, details);
         _clipboardLog("debug", message, logDetails);
         return pdfInput;
+      }
+      function _clipboardCreateLoggedAudioInput(audioInput, message, details = void 0) {
+        const logDetails = {
+          audioInput: audioInput ? {
+            source: audioInput.blob ? "blob" : "url",
+            name: audioInput.blob?.name || null,
+            type: audioInput.blob?.type || null,
+            size: audioInput.blob?.size ?? null,
+            url: audioInput.url || null
+          } : null
+        };
+        if (details) Object.assign(logDetails, details);
+        _clipboardLog("debug", message, logDetails);
+        return audioInput;
       }
       function _clipboardExtractTextInputFromValues({ plainText = "", html = "" } = {}) {
         const normalizedPlainText = _clipboardNormalizePastedText(plainText);
@@ -4750,6 +5134,33 @@ var FoundryPasteEaterRuntime = (() => {
         if (urlCandidate) return _clipboardCreateLoggedPdfInput(urlCandidate.pdfInput, urlCandidate.message, details);
         return null;
       }
+      function _clipboardExtractAudioInputFromValues({ blob = null, uriList = "", html = "", plainText = "" } = {}, {
+        blobMessage,
+        uriListMessage,
+        htmlMessage,
+        plainTextMessage,
+        details,
+        explicitAudioContext = false
+      } = {}) {
+        const audioBlob = _clipboardCoerceAudioFile(blob, {
+          filename: blob?.name,
+          mimeType: blob?.type,
+          explicitAudioContext
+        });
+        if (audioBlob) return _clipboardCreateLoggedAudioInput({ blob: audioBlob }, blobMessage, details);
+        const urlCandidate = _clipboardGetUrlBackedAudioInputCandidate({
+          uriList,
+          html,
+          plainText
+        }, {
+          uriListMessage,
+          htmlMessage,
+          plainTextMessage,
+          explicitAudioContext
+        });
+        if (urlCandidate) return _clipboardCreateLoggedAudioInput(urlCandidate.audioInput, urlCandidate.message, details);
+        return null;
+      }
       async function _clipboardExtractImageInput(clipItems) {
         return _clipboardExtractImageInputFromValues({
           blob: await _clipboardExtractImageBlob(clipItems),
@@ -4761,6 +5172,20 @@ var FoundryPasteEaterRuntime = (() => {
           uriListMessage: "Resolved media input from async clipboard uri-list",
           htmlMessage: "Resolved media input from async clipboard HTML",
           plainTextMessage: "Resolved media input from async clipboard plain text"
+        });
+      }
+      async function _clipboardExtractAudioInput(clipItems, { explicitAudioContext = false } = {}) {
+        return _clipboardExtractAudioInputFromValues({
+          blob: await _clipboardExtractAudioBlob(clipItems, { explicitAudioContext }),
+          uriList: await _clipboardReadClipboardText(clipItems, "text/uri-list"),
+          html: await _clipboardReadClipboardText(clipItems, "text/html"),
+          plainText: await _clipboardReadClipboardText(clipItems, "text/plain")
+        }, {
+          blobMessage: "Resolved audio input from async clipboard file data",
+          uriListMessage: "Resolved audio input from async clipboard uri-list",
+          htmlMessage: "Resolved audio input from async clipboard HTML",
+          plainTextMessage: "Resolved audio input from async clipboard plain text URL",
+          explicitAudioContext
         });
       }
       async function _clipboardExtractPdfInput(clipItems) {
@@ -4814,6 +5239,35 @@ var FoundryPasteEaterRuntime = (() => {
         }
         return null;
       }
+      function _clipboardExtractAudioBlobFromDataTransfer(dataTransfer, { explicitAudioContext = false } = {}) {
+        for (const item of dataTransfer?.items || []) {
+          if (item.kind !== "file") continue;
+          const file = item.getAsFile();
+          const typedFile = _clipboardCoerceAudioFile(file, {
+            filename: file?.name,
+            mimeType: item.type,
+            explicitAudioContext
+          });
+          if (typedFile && _clipboardGetAudioKind({
+            blob: typedFile,
+            filename: typedFile.name,
+            explicitAudioContext
+          })) return typedFile;
+        }
+        for (const file of dataTransfer?.files || []) {
+          const typedFile = _clipboardCoerceAudioFile(file, {
+            filename: file?.name,
+            mimeType: file?.type,
+            explicitAudioContext
+          });
+          if (typedFile && _clipboardGetAudioKind({
+            blob: typedFile,
+            filename: typedFile.name,
+            explicitAudioContext
+          })) return typedFile;
+        }
+        return null;
+      }
       function _clipboardReadDataTransferText(dataTransfer, mimeType) {
         return dataTransfer?.getData?.(mimeType) || "";
       }
@@ -4850,6 +5304,23 @@ var FoundryPasteEaterRuntime = (() => {
           uriListMessage: "Resolved PDF input from paste/drop uri-list",
           htmlMessage: "Resolved PDF input from paste/drop HTML",
           plainTextMessage: "Resolved PDF input from paste/drop plain text URL",
+          details: {
+            dataTransfer: _clipboardDescribeDataTransfer(dataTransfer)
+          }
+        });
+      }
+      function _clipboardExtractAudioInputFromDataTransfer(dataTransfer, { explicitAudioContext = false } = {}) {
+        return _clipboardExtractAudioInputFromValues({
+          blob: _clipboardExtractAudioBlobFromDataTransfer(dataTransfer, { explicitAudioContext }),
+          uriList: _clipboardReadDataTransferText(dataTransfer, "text/uri-list"),
+          html: _clipboardReadDataTransferText(dataTransfer, "text/html"),
+          plainText: _clipboardReadDataTransferText(dataTransfer, "text/plain")
+        }, {
+          blobMessage: "Resolved audio input from paste/drop file data",
+          uriListMessage: "Resolved audio input from paste/drop uri-list",
+          htmlMessage: "Resolved audio input from paste/drop HTML",
+          plainTextMessage: "Resolved audio input from paste/drop plain text URL",
+          explicitAudioContext,
           details: {
             dataTransfer: _clipboardDescribeDataTransfer(dataTransfer)
           }
@@ -4928,33 +5399,44 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardReadClipboardItems,
         _clipboardExtractImageBlob,
         _clipboardExtractPdfBlob,
+        _clipboardExtractAudioBlob,
         _clipboardReadClipboardText,
         _clipboardExtractTextInput,
         _clipboardExtractImageUrlFromUriList,
         _clipboardExtractImageUrlFromText,
         _clipboardExtractImageUrlFromHtml,
         _clipboardLooksLikePdfUrl,
+        _clipboardLooksLikeAudioUrl,
         _clipboardExtractPdfUrlFromUriList,
         _clipboardExtractPdfUrlFromText,
         _clipboardExtractPdfUrlFromHtml,
+        _clipboardExtractAudioUrlFromUriList,
+        _clipboardExtractAudioUrlFromText,
+        _clipboardExtractAudioUrlFromHtml,
         _clipboardGetUrlBackedImageInputCandidate,
         _clipboardGetUrlBackedPdfInputCandidate,
+        _clipboardGetUrlBackedAudioInputCandidate,
         _clipboardIsAnimationCapableUrl,
         _clipboardIsLikelyRasterizedImageBlob,
         _clipboardShouldPreferUrlCandidateOverBlob,
         _clipboardCreateLoggedImageInput,
         _clipboardCreateLoggedPdfInput,
+        _clipboardCreateLoggedAudioInput,
         _clipboardExtractTextInputFromValues,
         _clipboardExtractImageInputFromValues,
         _clipboardExtractPdfInputFromValues,
+        _clipboardExtractAudioInputFromValues,
         _clipboardExtractImageInput,
         _clipboardExtractPdfInput,
+        _clipboardExtractAudioInput,
         _clipboardExtractImageBlobFromDataTransfer,
         _clipboardExtractPdfBlobFromDataTransfer,
+        _clipboardExtractAudioBlobFromDataTransfer,
         _clipboardReadDataTransferText,
         _clipboardExtractTextInputFromDataTransfer,
         _clipboardExtractImageInputFromDataTransfer,
         _clipboardExtractPdfInputFromDataTransfer,
+        _clipboardExtractAudioInputFromDataTransfer,
         _clipboardGetChatRootFromTarget,
         _clipboardIsEditableTarget,
         _clipboardInsertTextAtTarget
@@ -4980,6 +5462,11 @@ var FoundryPasteEaterRuntime = (() => {
         "prototypeToken.texture.src": /* @__PURE__ */ new Set(["Actor", "Token"])
       };
       var CLIPBOARD_IMAGE_SUPPORTED_PDF_FIELD_NAMES = /* @__PURE__ */ new Set(["src"]);
+      var CLIPBOARD_IMAGE_SUPPORTED_AUDIO_FIELD_NAMES = /* @__PURE__ */ new Set(["path", "sound"]);
+      var CLIPBOARD_IMAGE_SUPPORTED_AUDIO_FIELD_DOCUMENTS = {
+        path: /* @__PURE__ */ new Set(["PlaylistSound", "AmbientSound"]),
+        sound: /* @__PURE__ */ new Set(["ChatMessage"])
+      };
       function _clipboardGetApplicationRoot(target) {
         return target?.closest?.("[data-appid], .window-app[id], .app[id], .application[id]") || null;
       }
@@ -5049,12 +5536,35 @@ var FoundryPasteEaterRuntime = (() => {
         }
         return null;
       }
+      function _clipboardGetAudioFieldName(target) {
+        const picker = target?.closest?.("file-picker[name]") || null;
+        const candidates = [
+          target?.name,
+          target?.dataset?.edit,
+          picker?.getAttribute?.("name")
+        ];
+        for (const candidate of candidates) {
+          if (typeof candidate !== "string") continue;
+          const normalized = candidate.trim();
+          if (!normalized) continue;
+          if (CLIPBOARD_IMAGE_SUPPORTED_AUDIO_FIELD_NAMES.has(normalized)) return normalized;
+        }
+        return null;
+      }
       function _clipboardGetArtFieldMediaKinds(fieldName) {
         if (fieldName === "img") return ["image"];
         return ["image", "video"];
       }
+      function _clipboardGetAudioDocumentFromApp(app) {
+        return app?.document || app?.object || app?.message || null;
+      }
       function _clipboardCanPopulateArtField(documentName, fieldName) {
         const allowedDocuments = CLIPBOARD_IMAGE_SUPPORTED_ART_FIELD_DOCUMENTS[fieldName];
+        if (!allowedDocuments) return false;
+        return allowedDocuments.has(documentName);
+      }
+      function _clipboardCanPopulateAudioField(documentName, fieldName) {
+        const allowedDocuments = CLIPBOARD_IMAGE_SUPPORTED_AUDIO_FIELD_DOCUMENTS[fieldName];
         if (!allowedDocuments) return false;
         return allowedDocuments.has(documentName);
       }
@@ -5094,6 +5604,84 @@ var FoundryPasteEaterRuntime = (() => {
           documentName
         };
       }
+      function _clipboardGetFocusedAudioFieldTarget(target = document.activeElement) {
+        const field = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement ? target : target?.closest?.("file-picker[name]")?.querySelector?.("input, textarea") || null;
+        if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) return null;
+        const fieldName = _clipboardGetAudioFieldName(field) || _clipboardGetAudioFieldName(target);
+        if (!fieldName) return null;
+        const { app, appRoot } = _clipboardGetAppFromElement(field);
+        const audioDocument = _clipboardGetAudioDocumentFromApp(app);
+        const documentName = audioDocument?.documentName || audioDocument?.constructor?.documentName || null;
+        if (!_clipboardCanPopulateAudioField(documentName, fieldName)) return null;
+        return {
+          field,
+          fieldName,
+          picker: field.closest?.("file-picker[name]") || null,
+          app,
+          appRoot,
+          document: audioDocument,
+          documentName
+        };
+      }
+      function _clipboardGetPlaylistCollection() {
+        return game?.playlists || null;
+      }
+      function _clipboardGetPlaylistById(id) {
+        if (!id) return null;
+        const playlists = _clipboardGetPlaylistCollection();
+        return playlists?.get?.(id) || playlists?.contents?.find?.((playlist) => playlist?.id === id) || null;
+      }
+      function _clipboardResolvePlaylistFromDocument(document2) {
+        const documentName = document2?.documentName || document2?.constructor?.documentName || null;
+        if (documentName === "Playlist") return document2;
+        if (documentName === "PlaylistSound") {
+          return document2.parent || _clipboardGetPlaylistById(document2.parent?.id || document2.playlistId) || null;
+        }
+        return null;
+      }
+      function _clipboardGetPlaylistTargetFromElement(target = document.activeElement) {
+        const { app, appRoot } = _clipboardGetAppFromElement(target);
+        const appDocument = _clipboardGetAudioDocumentFromApp(app);
+        const playlistFromApp = _clipboardResolvePlaylistFromDocument(appDocument);
+        if (playlistFromApp) {
+          return {
+            playlist: playlistFromApp,
+            playlistSound: (appDocument?.documentName || appDocument?.constructor?.documentName) === "PlaylistSound" ? appDocument : null,
+            inPlaylistUi: true,
+            app,
+            appRoot
+          };
+        }
+        const playlistElement = target?.closest?.("[data-playlist-id], [data-document-id], [data-entry-id], [data-id]") || null;
+        const candidateIds = [
+          playlistElement?.dataset?.playlistId,
+          playlistElement?.dataset?.documentId,
+          playlistElement?.dataset?.entryId,
+          playlistElement?.dataset?.id
+        ].filter(Boolean);
+        for (const candidateId of candidateIds) {
+          const playlist = _clipboardGetPlaylistById(candidateId);
+          if (playlist) {
+            return {
+              playlist,
+              playlistSound: null,
+              inPlaylistUi: true,
+              app,
+              appRoot
+            };
+          }
+        }
+        const inPlaylistUi = Boolean(
+          target?.closest?.("#playlists, .directory.playlists, [data-tab='playlists'], [data-application-part='playlists']") || appRoot?.querySelector?.("#playlists, .directory.playlists, [data-tab='playlists'], [data-application-part='playlists']")
+        );
+        return inPlaylistUi ? {
+          playlist: null,
+          playlistSound: null,
+          inPlaylistUi: true,
+          app,
+          appRoot
+        } : null;
+      }
       function _clipboardReloadMediaPreview(element) {
         if (!element?.load) return;
         if (/jsdom/i.test(globalThis.navigator?.userAgent || "") && element.load === globalThis.HTMLMediaElement?.prototype?.load) {
@@ -5102,6 +5690,26 @@ var FoundryPasteEaterRuntime = (() => {
         try {
           element.load();
         } catch {
+        }
+      }
+      function _clipboardUpdateAudioFieldPreview(targetInfo, value) {
+        const previewSelector = `[data-edit="${targetInfo.fieldName}"]`;
+        for (const element of targetInfo.appRoot?.querySelectorAll?.(previewSelector) || []) {
+          if (element === targetInfo.field) continue;
+          if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+            element.value = value;
+            continue;
+          }
+          if (element instanceof HTMLAudioElement || element instanceof HTMLSourceElement) {
+            element.src = value;
+            if (element instanceof HTMLAudioElement) {
+              _clipboardReloadMediaPreview(element);
+              continue;
+            }
+            if (element instanceof HTMLSourceElement) {
+              _clipboardReloadMediaPreview(element.parentElement);
+            }
+          }
         }
       }
       function _clipboardSetFormFieldValue(field, value) {
@@ -5169,25 +5777,56 @@ var FoundryPasteEaterRuntime = (() => {
         });
         return true;
       }
+      function _clipboardPopulateAudioFieldTarget(targetInfo, value, audioInput = null) {
+        if (!targetInfo || !value) return false;
+        const updated = _clipboardSetFormFieldValue(targetInfo.field, value);
+        if (!updated) return false;
+        _clipboardUpdateAudioFieldPreview(targetInfo, value);
+        _clipboardLog("info", "Populated a focused document audio field from pasted audio", {
+          documentName: targetInfo.documentName,
+          fieldName: targetInfo.fieldName,
+          value,
+          audioInput: audioInput ? {
+            source: audioInput.blob ? "blob" : "url",
+            name: audioInput.blob?.name || null,
+            type: audioInput.blob?.type || null,
+            size: audioInput.blob?.size ?? null,
+            url: audioInput.url || null
+          } : null
+        });
+        return true;
+      }
       module.exports = {
         CLIPBOARD_IMAGE_SUPPORTED_ART_FIELD_NAMES,
         CLIPBOARD_IMAGE_SUPPORTED_ART_FIELD_DOCUMENTS,
         CLIPBOARD_IMAGE_SUPPORTED_PDF_FIELD_NAMES,
+        CLIPBOARD_IMAGE_SUPPORTED_AUDIO_FIELD_NAMES,
+        CLIPBOARD_IMAGE_SUPPORTED_AUDIO_FIELD_DOCUMENTS,
         _clipboardGetApplicationRoot,
         _clipboardIterateApplicationInstances,
         _clipboardResolveApplicationForRoot,
         _clipboardGetAppFromElement,
         _clipboardGetArtFieldName,
         _clipboardGetPdfFieldName,
+        _clipboardGetAudioFieldName,
         _clipboardGetArtFieldMediaKinds,
+        _clipboardGetAudioDocumentFromApp,
         _clipboardCanPopulateArtField,
+        _clipboardCanPopulateAudioField,
         _clipboardGetFocusedArtFieldTarget,
         _clipboardGetFocusedPdfFieldTarget,
+        _clipboardGetFocusedAudioFieldTarget,
+        _clipboardGetPlaylistCollection,
+        _clipboardGetPlaylistById,
+        _clipboardResolvePlaylistFromDocument,
+        _clipboardGetPlaylistTargetFromElement,
         _clipboardReloadMediaPreview,
         _clipboardSetFormFieldValue,
         _clipboardUpdateArtFieldPreview,
+        _clipboardUpdateAudioFieldPreview,
         _clipboardPopulateArtFieldTarget,
-        _clipboardPopulatePdfFieldTarget
+        _clipboardPopulatePdfFieldTarget,
+        _clipboardPopulateAudioFieldTarget
       };
     }
   });
@@ -5699,6 +6338,36 @@ var FoundryPasteEaterRuntime = (() => {
         figure.append(caption);
         return figure.outerHTML;
       }
+      function _clipboardCreateChatAudioContent(audioData = {}) {
+        const figure = document.createElement("figure");
+        figure.className = "foundry-paste-eater-chat-message foundry-paste-eater-chat-audio-message";
+        const audio = document.createElement("audio");
+        audio.className = "foundry-paste-eater-chat-audio";
+        audio.src = audioData.src || "";
+        audio.controls = true;
+        audio.preload = "metadata";
+        figure.append(audio);
+        const caption = document.createElement("figcaption");
+        caption.className = "foundry-paste-eater-chat-audio-caption";
+        const title = document.createElement("strong");
+        title.textContent = audioData.name || "Pasted Audio";
+        caption.append(title);
+        const linkContainer = document.createElement("div");
+        const openLink = document.createElement("a");
+        openLink.href = audioData.src || "";
+        openLink.target = "_blank";
+        openLink.rel = "noopener noreferrer";
+        openLink.textContent = "Open audio";
+        linkContainer.append(openLink);
+        caption.append(linkContainer);
+        if (audioData.external) {
+          const source = document.createElement("small");
+          source.textContent = "External audio URL";
+          caption.append(source);
+        }
+        figure.append(caption);
+        return figure.outerHTML;
+      }
       function _clipboardGetFoundryGeneration() {
         const version = String(game?.release?.version || game?.version || "");
         const generation = Number.parseInt(version.split(".")[0], 10);
@@ -5761,6 +6430,27 @@ var FoundryPasteEaterRuntime = (() => {
         const visibilityOptions = _clipboardGetChatMessageVisibilityOptions();
         return visibilityOptions ? foundry.documents.ChatMessage.create(messageData, visibilityOptions) : foundry.documents.ChatMessage.create(messageData);
       }
+      async function _clipboardCreateAudioChatMessage({ audioData = {}, playAsMessageSound = false } = {}) {
+        if (!audioData?.src) {
+          throw new Error("Cannot create a chat audio message without a usable audio path");
+        }
+        _clipboardLog("info", "Creating chat audio message", {
+          src: audioData.src || null,
+          name: audioData.name || null,
+          external: Boolean(audioData.external),
+          playAsMessageSound
+        });
+        const messageData = {
+          content: _clipboardCreateChatAudioContent(audioData),
+          speaker: foundry.documents.ChatMessage.getSpeaker(),
+          user: game.user.id
+        };
+        if (playAsMessageSound) {
+          messageData.sound = audioData.src;
+        }
+        const visibilityOptions = _clipboardGetChatMessageVisibilityOptions();
+        return visibilityOptions ? foundry.documents.ChatMessage.create(messageData, visibilityOptions) : foundry.documents.ChatMessage.create(messageData);
+      }
       async function _clipboardPostChatImage(blob) {
         const destination = _clipboardGetUploadDestination({
           uploadContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT
@@ -5774,8 +6464,10 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardCreateChatMediaContent,
         _clipboardCreateJournalPageContentLink,
         _clipboardCreateChatPdfContent,
+        _clipboardCreateChatAudioContent,
         _clipboardCreateChatMessage,
         _clipboardCreatePdfChatMessage,
+        _clipboardCreateAudioChatMessage,
         _clipboardPostChatImage
       };
     }
@@ -6568,6 +7260,470 @@ var FoundryPasteEaterRuntime = (() => {
     }
   });
 
+  // src/paste/audio-workflows.js
+  var require_audio_workflows = __commonJS({
+    "src/paste/audio-workflows.js"(exports, module) {
+      var { CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO } = require_constants();
+      var {
+        _clipboardDescribeDestinationForLog,
+        _clipboardLog,
+        _clipboardSerializeError
+      } = require_diagnostics();
+      var {
+        _clipboardGetFilenameExtension,
+        _clipboardGetFilenameFromUrl,
+        _clipboardNormalizeAudioExtension,
+        _clipboardNormalizeMimeType
+      } = require_media();
+      var { _clipboardLooksLikeAudioUrl } = require_clipboard();
+      var {
+        _clipboardGetUploadDestination,
+        _clipboardCreateFolderIfMissing,
+        _clipboardResolveAudioInputBlob,
+        _clipboardUploadAudioBlob,
+        _clipboardCreateFreshMediaPath
+      } = require_storage();
+      var {
+        _clipboardCanUserModifyDocument,
+        _clipboardHasCanvasFocus,
+        _clipboardIsMouseWithinCanvas,
+        _clipboardResolvePasteContext
+      } = require_context();
+      var {
+        _clipboardCanUseCanvasMedia,
+        _clipboardCanUseChatMedia
+      } = require_settings();
+      var { _clipboardGetHiddenMode } = require_state();
+      var { _clipboardCreateAudioChatMessage } = require_chat();
+      var {
+        _clipboardGetFocusedAudioFieldTarget,
+        _clipboardGetPlaylistTargetFromElement,
+        _clipboardPopulateAudioFieldTarget
+      } = require_field_targets();
+      var { _clipboardAnnotateWorkflowError } = require_helpers();
+      var CLIPBOARD_IMAGE_DEFAULT_AUDIO_PLAYLIST_NAME = "Pasted Audio";
+      function _clipboardDescribeAudioInput(audioInput) {
+        if (!audioInput) return null;
+        if (audioInput.blob) {
+          return {
+            source: "blob",
+            name: audioInput.blob.name || null,
+            type: audioInput.blob.type || null,
+            size: audioInput.blob.size ?? null
+          };
+        }
+        return {
+          source: "url",
+          url: audioInput.url || null
+        };
+      }
+      function _clipboardGetAudioFilename(audioInput = {}, blob = null) {
+        const candidate = blob?.name || audioInput.blob?.name || _clipboardGetFilenameFromUrl(audioInput.url) || "Pasted Audio.mp3";
+        const extension = _clipboardNormalizeAudioExtension(_clipboardGetFilenameExtension(candidate));
+        if (extension) return candidate.replace(/\.(midi)(?=$|[?#])/i, ".mid");
+        return `${candidate.replace(/\.[^./]+$/, "") || "Pasted Audio"}.mp3`;
+      }
+      function _clipboardGetAudioDisplayName(audioInput = {}, blob = null) {
+        return _clipboardGetAudioFilename(audioInput, blob).replace(/\.[^./]+$/i, "") || "Pasted Audio";
+      }
+      function _clipboardIsBlockedDirectAudioUrlDownload(audioInput, error) {
+        return Boolean(
+          error?.clipboardBlockedDirectAudioUrl || audioInput?.url && error instanceof Error && error.message.startsWith("Failed to download pasted audio URL from ")
+        );
+      }
+      function _clipboardCanUseExternalAudioUrlFallback(audioInput, error) {
+        return Boolean(
+          _clipboardIsBlockedDirectAudioUrlDownload(audioInput, error) && _clipboardLooksLikeAudioUrl(audioInput.url, { explicitAudioContext: true })
+        );
+      }
+      function _clipboardDescribeAttemptedAudioContent({ blob, audioInput } = {}) {
+        const candidateBlob = blob || audioInput?.blob || null;
+        const candidateType = _clipboardNormalizeMimeType(candidateBlob?.type || "");
+        if (candidateType) return `audio (${candidateType})`;
+        return "audio";
+      }
+      async function _clipboardResolveAudioResource(audioInput) {
+        if (!audioInput) return null;
+        let blob = audioInput.blob || null;
+        let external = false;
+        let src = "";
+        try {
+          blob = blob || await _clipboardResolveAudioInputBlob(audioInput, {
+            explicitAudioContext: true
+          });
+        } catch (error) {
+          if (!_clipboardCanUseExternalAudioUrlFallback(audioInput, error)) throw error;
+          external = true;
+          src = audioInput.url;
+          _clipboardLog("warn", "Direct audio URL download failed; falling back to the original audio URL", {
+            audioInput: _clipboardDescribeAudioInput(audioInput),
+            error: _clipboardSerializeError(error)
+          });
+        }
+        const name = _clipboardGetAudioDisplayName(audioInput, blob);
+        if (external) {
+          return {
+            src,
+            name,
+            external: true
+          };
+        }
+        if (!blob) return null;
+        const destination = _clipboardGetUploadDestination({
+          uploadContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO
+        });
+        await _clipboardCreateFolderIfMissing(destination);
+        const uploadPath = await _clipboardUploadAudioBlob(blob, destination);
+        _clipboardLog("info", "Resolved pasted audio resource", {
+          name,
+          src: uploadPath,
+          destination: _clipboardDescribeDestinationForLog(destination),
+          audioInput: _clipboardDescribeAudioInput(audioInput),
+          mimeType: _clipboardNormalizeMimeType(blob.type) || null
+        });
+        return {
+          src: _clipboardCreateFreshMediaPath(uploadPath),
+          name,
+          external: false
+        };
+      }
+      function _clipboardPromptChatAudioBehavior() {
+        return new Promise((resolve) => {
+          let settled = false;
+          const settle = (behavior) => {
+            if (settled) return;
+            settled = true;
+            resolve(behavior);
+          };
+          const defaultBehavior = { playAsMessageSound: false };
+          const DialogConstructor = globalThis.Dialog;
+          if (typeof DialogConstructor !== "function") {
+            settle(defaultBehavior);
+            return;
+          }
+          new DialogConstructor({
+            title: "Post Audio to Chat",
+            content: "<p>Choose how this pasted audio should be posted to chat.</p>",
+            buttons: {
+              card: {
+                label: "Audio card only",
+                callback: () => settle(defaultBehavior)
+              },
+              sound: {
+                label: "Audio card + message sound",
+                callback: () => settle({ playAsMessageSound: true })
+              }
+            },
+            default: "card",
+            close: () => settle(defaultBehavior)
+          }).render(true);
+        });
+      }
+      async function _clipboardHandleChatAudioInput(audioInput) {
+        if (!_clipboardCanUseChatMedia()) return false;
+        try {
+          const behavior = await _clipboardPromptChatAudioBehavior();
+          const audioData = await _clipboardResolveAudioResource(audioInput);
+          if (!audioData?.src) return false;
+          await _clipboardCreateAudioChatMessage({
+            audioData,
+            playAsMessageSound: Boolean(behavior?.playAsMessageSound)
+          });
+          return true;
+        } catch (error) {
+          throw _clipboardAnnotateWorkflowError(error, {
+            clipboardContentSummary: _clipboardDescribeAttemptedAudioContent({ audioInput })
+          });
+        }
+      }
+      function _clipboardCanPasteAudioToCanvasContext(context) {
+        if (context?.requireCanvasFocus && !_clipboardHasCanvasFocus()) return false;
+        return _clipboardIsMouseWithinCanvas(context?.mousePos);
+      }
+      function _clipboardPromptCanvasAudioBehavior() {
+        return new Promise((resolve) => {
+          let settled = false;
+          const settle = (behavior) => {
+            if (settled) return;
+            settled = true;
+            resolve(behavior);
+          };
+          const defaultBehavior = { repeat: false };
+          const DialogConstructor = globalThis.Dialog;
+          if (typeof DialogConstructor !== "function") {
+            settle(defaultBehavior);
+            return;
+          }
+          new DialogConstructor({
+            title: "Create Ambient Sound",
+            content: "<p>Choose how this pasted audio should be added to the scene.</p>",
+            buttons: {
+              sound: {
+                label: "Ambient sound",
+                callback: () => settle(defaultBehavior)
+              },
+              loop: {
+                label: "Ambient loop",
+                callback: () => settle({ repeat: true })
+              }
+            },
+            default: "sound",
+            close: () => settle(defaultBehavior)
+          }).render(true);
+        });
+      }
+      function _clipboardGetAmbientSoundFallbackRadius() {
+        const gridDistance = Number(canvas?.scene?.grid?.distance || canvas?.dimensions?.distance || canvas?.grid?.distance || 5);
+        return Number.isFinite(gridDistance) && gridDistance > 0 ? gridDistance * 3 : 15;
+      }
+      function _clipboardClonePaletteData(data) {
+        if (!data || typeof data !== "object") return {};
+        if (typeof foundry?.utils?.deepClone === "function") return foundry.utils.deepClone(data);
+        return { ...data };
+      }
+      function _clipboardGetAmbientSoundPaletteData(context) {
+        const paletteCreateData = canvas?.sounds?.paletteCreateData;
+        if (typeof paletteCreateData === "function") {
+          try {
+            return _clipboardClonePaletteData(paletteCreateData({
+              x: context?.mousePos?.x,
+              y: context?.mousePos?.y
+            }));
+          } catch (error) {
+            _clipboardLog("debug", "Failed to read Foundry AmbientSound palette defaults; using module defaults", {
+              error: _clipboardSerializeError(error)
+            });
+            return {};
+          }
+        }
+        return _clipboardClonePaletteData(paletteCreateData);
+      }
+      function _clipboardCreateAmbientSoundData(audioData, behavior, context) {
+        const fallbackData = {
+          radius: _clipboardGetAmbientSoundFallbackRadius(),
+          volume: 0.5,
+          easing: true,
+          walls: true
+        };
+        const paletteData = _clipboardGetAmbientSoundPaletteData(context);
+        return {
+          ...fallbackData,
+          ...paletteData,
+          name: audioData.name || "Pasted Audio",
+          path: audioData.src,
+          x: context.mousePos.x,
+          y: context.mousePos.y,
+          repeat: Boolean(behavior?.repeat),
+          hidden: _clipboardGetHiddenMode()
+        };
+      }
+      async function _clipboardCreateAmbientSound(audioData, behavior, context) {
+        const createData = [_clipboardCreateAmbientSoundData(audioData, behavior, context)];
+        await canvas.scene.createEmbeddedDocuments("AmbientSound", createData);
+        _clipboardLog("info", "Created AmbientSound from pasted audio", {
+          src: audioData.src || null,
+          name: audioData.name || null,
+          repeat: Boolean(behavior?.repeat),
+          mousePos: context.mousePos
+        });
+        return true;
+      }
+      async function _clipboardHandleCanvasAudioInput(audioInput, options = {}) {
+        if (!canvas?.ready || !canvas.scene) return false;
+        if (!_clipboardCanUseCanvasMedia()) return false;
+        try {
+          const context = options.context || _clipboardResolvePasteContext(options.contextOptions);
+          if (!_clipboardCanPasteAudioToCanvasContext(context)) {
+            _clipboardLog("info", "Skipping canvas audio paste because the current context is not eligible", {
+              context
+            });
+            return false;
+          }
+          const behavior = await _clipboardPromptCanvasAudioBehavior();
+          const audioData = await _clipboardResolveAudioResource(audioInput);
+          if (!audioData?.src) return false;
+          return _clipboardCreateAmbientSound(audioData, behavior, context);
+        } catch (error) {
+          throw _clipboardAnnotateWorkflowError(error, {
+            clipboardContentSummary: _clipboardDescribeAttemptedAudioContent({ audioInput })
+          });
+        }
+      }
+      function _clipboardGetPlaylistDocumentClass() {
+        return foundry?.documents?.Playlist || globalThis.Playlist || CONFIG?.Playlist?.documentClass || null;
+      }
+      function _clipboardGetAllPlaylists() {
+        const playlists = game?.playlists;
+        if (Array.isArray(playlists?.contents)) return playlists.contents.filter(Boolean);
+        if (typeof playlists?.values === "function") return Array.from(playlists.values()).filter(Boolean);
+        return [];
+      }
+      function _clipboardFindDefaultAudioPlaylist() {
+        return _clipboardGetAllPlaylists().find((playlist) => playlist?.name === CLIPBOARD_IMAGE_DEFAULT_AUDIO_PLAYLIST_NAME) || null;
+      }
+      function _clipboardCanCreatePlaylist() {
+        if (game.user?.isGM) return true;
+        const PlaylistDocument = _clipboardGetPlaylistDocumentClass();
+        if (typeof PlaylistDocument?.canUserCreate === "function") {
+          return Boolean(PlaylistDocument.canUserCreate(game.user));
+        }
+        return false;
+      }
+      async function _clipboardGetOrCreateDefaultAudioPlaylist() {
+        const existingPlaylist = _clipboardFindDefaultAudioPlaylist();
+        if (existingPlaylist) {
+          if (!_clipboardCanUserModifyDocument(existingPlaylist, "update")) {
+            throw new Error(`You do not have permission to add sounds to the ${CLIPBOARD_IMAGE_DEFAULT_AUDIO_PLAYLIST_NAME} playlist.`);
+          }
+          return existingPlaylist;
+        }
+        if (!_clipboardCanCreatePlaylist()) {
+          throw new Error("You do not have permission to create a playlist for pasted audio.");
+        }
+        const PlaylistDocument = _clipboardGetPlaylistDocumentClass();
+        if (!PlaylistDocument?.create) {
+          throw new Error("Playlist creation is unavailable for pasted audio.");
+        }
+        return PlaylistDocument.create({
+          name: CLIPBOARD_IMAGE_DEFAULT_AUDIO_PLAYLIST_NAME,
+          mode: CONST?.PLAYLIST_MODES?.DISABLED ?? -1
+        });
+      }
+      function _clipboardCanUpdatePlaylistSound(playlistSound) {
+        return _clipboardCanUserModifyDocument(playlistSound, "update") || _clipboardCanUserModifyDocument(playlistSound?.parent, "update");
+      }
+      async function _clipboardPopulatePlaylistSound(playlistSound, audioData) {
+        if (!_clipboardCanUpdatePlaylistSound(playlistSound)) {
+          throw new Error("You do not have permission to update that playlist sound.");
+        }
+        const updateData = {
+          path: audioData.src
+        };
+        if (!playlistSound.name) updateData.name = audioData.name || "Pasted Audio";
+        await playlistSound.update(updateData);
+        _clipboardLog("info", "Updated PlaylistSound from pasted audio", {
+          playlistSoundId: playlistSound.id || null,
+          playlistId: playlistSound.parent?.id || null,
+          src: audioData.src || null
+        });
+        return true;
+      }
+      async function _clipboardAddAudioToPlaylist(playlist, audioData) {
+        if (!_clipboardCanUserModifyDocument(playlist, "update")) {
+          throw new Error("You do not have permission to add sounds to that playlist.");
+        }
+        if (typeof playlist?.createEmbeddedDocuments !== "function") {
+          throw new Error("Playlist sound creation is unavailable for pasted audio.");
+        }
+        await playlist.createEmbeddedDocuments("PlaylistSound", [{
+          name: audioData.name || "Pasted Audio",
+          path: audioData.src
+        }]);
+        _clipboardLog("info", "Added PlaylistSound from pasted audio", {
+          playlistId: playlist.id || null,
+          src: audioData.src || null,
+          name: audioData.name || null
+        });
+        return true;
+      }
+      async function _clipboardResolvePlaylistAudioTarget(target) {
+        const playlistTarget = target?.inPlaylistUi || target?.playlist || target?.playlistSound ? target : _clipboardGetPlaylistTargetFromElement(target);
+        if (!playlistTarget?.inPlaylistUi && !playlistTarget?.playlist && !playlistTarget?.playlistSound) return null;
+        return playlistTarget;
+      }
+      async function _clipboardHandlePlaylistAudioInput(audioInput, target) {
+        const playlistTarget = await _clipboardResolvePlaylistAudioTarget(target);
+        if (!playlistTarget) return false;
+        try {
+          if (playlistTarget.playlistSound && !_clipboardCanUpdatePlaylistSound(playlistTarget.playlistSound)) {
+            throw new Error("You do not have permission to update that playlist sound.");
+          }
+          if (playlistTarget.playlist && !_clipboardCanUserModifyDocument(playlistTarget.playlist, "update")) {
+            throw new Error("You do not have permission to add sounds to that playlist.");
+          }
+          if (!playlistTarget.playlist && !playlistTarget.playlistSound) {
+            const existingPlaylist = _clipboardFindDefaultAudioPlaylist();
+            if (existingPlaylist && !_clipboardCanUserModifyDocument(existingPlaylist, "update")) {
+              throw new Error(`You do not have permission to add sounds to the ${CLIPBOARD_IMAGE_DEFAULT_AUDIO_PLAYLIST_NAME} playlist.`);
+            }
+            if (!existingPlaylist && !_clipboardCanCreatePlaylist()) {
+              throw new Error("You do not have permission to create a playlist for pasted audio.");
+            }
+          }
+          const audioData = await _clipboardResolveAudioResource(audioInput);
+          if (!audioData?.src) return false;
+          if (playlistTarget.playlistSound) {
+            return _clipboardPopulatePlaylistSound(playlistTarget.playlistSound, audioData);
+          }
+          const playlist = playlistTarget.playlist || await _clipboardGetOrCreateDefaultAudioPlaylist();
+          return _clipboardAddAudioToPlaylist(playlist, audioData);
+        } catch (error) {
+          throw _clipboardAnnotateWorkflowError(error, {
+            clipboardContentSummary: _clipboardDescribeAttemptedAudioContent({ audioInput })
+          });
+        }
+      }
+      function _clipboardCanPopulateAudioFieldTarget(target) {
+        if (!target?.documentName) return false;
+        if (target.documentName === "ChatMessage") {
+          return _clipboardCanUseChatMedia() && _clipboardCanUserModifyDocument(target.document, "update");
+        }
+        if (target.documentName === "AmbientSound") {
+          return _clipboardCanUseCanvasMedia() && _clipboardCanUserModifyDocument(target.document, "update");
+        }
+        if (target.documentName === "PlaylistSound") {
+          return _clipboardCanUpdatePlaylistSound(target.document);
+        }
+        return false;
+      }
+      async function _clipboardHandleAudioFieldInput(audioInput, target) {
+        const audioFieldTarget = target?.field ? target : _clipboardGetFocusedAudioFieldTarget(target);
+        if (!audioFieldTarget) return false;
+        if (!_clipboardCanPopulateAudioFieldTarget(audioFieldTarget)) return false;
+        try {
+          const audioData = await _clipboardResolveAudioResource(audioInput);
+          if (!audioData?.src) return false;
+          return _clipboardPopulateAudioFieldTarget(audioFieldTarget, audioData.src, audioInput);
+        } catch (error) {
+          throw _clipboardAnnotateWorkflowError(error, {
+            clipboardContentSummary: _clipboardDescribeAttemptedAudioContent({ audioInput })
+          });
+        }
+      }
+      module.exports = {
+        CLIPBOARD_IMAGE_DEFAULT_AUDIO_PLAYLIST_NAME,
+        _clipboardDescribeAudioInput,
+        _clipboardGetAudioFilename,
+        _clipboardGetAudioDisplayName,
+        _clipboardIsBlockedDirectAudioUrlDownload,
+        _clipboardCanUseExternalAudioUrlFallback,
+        _clipboardDescribeAttemptedAudioContent,
+        _clipboardResolveAudioResource,
+        _clipboardPromptChatAudioBehavior,
+        _clipboardHandleChatAudioInput,
+        _clipboardCanPasteAudioToCanvasContext,
+        _clipboardPromptCanvasAudioBehavior,
+        _clipboardGetAmbientSoundFallbackRadius,
+        _clipboardGetAmbientSoundPaletteData,
+        _clipboardCreateAmbientSoundData,
+        _clipboardCreateAmbientSound,
+        _clipboardHandleCanvasAudioInput,
+        _clipboardGetPlaylistDocumentClass,
+        _clipboardGetAllPlaylists,
+        _clipboardFindDefaultAudioPlaylist,
+        _clipboardCanCreatePlaylist,
+        _clipboardGetOrCreateDefaultAudioPlaylist,
+        _clipboardCanUpdatePlaylistSound,
+        _clipboardPopulatePlaylistSound,
+        _clipboardAddAudioToPlaylist,
+        _clipboardResolvePlaylistAudioTarget,
+        _clipboardHandlePlaylistAudioInput,
+        _clipboardCanPopulateAudioFieldTarget,
+        _clipboardHandleAudioFieldInput
+      };
+    }
+  });
+
   // src/paste/scene-tools.js
   var require_scene_tools = __commonJS({
     "src/paste/scene-tools.js"(exports, module) {
@@ -6579,6 +7735,7 @@ var FoundryPasteEaterRuntime = (() => {
       var {
         _clipboardReadClipboardItems,
         _clipboardExtractImageInput,
+        _clipboardExtractAudioInput,
         _clipboardExtractPdfInput,
         _clipboardExtractTextInput
       } = require_clipboard();
@@ -6586,7 +7743,7 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardCanUseScenePasteTool,
         _clipboardCanUseSceneUploadTool
       } = require_settings();
-      var { _clipboardIsPdfBlob } = require_media();
+      var { _clipboardIsAudioBlob, _clipboardIsPdfBlob } = require_media();
       var {
         _clipboardHandleImageInput,
         _clipboardHandleImageInputWithTextFallback,
@@ -6597,11 +7754,15 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardHandleCanvasPdfInput,
         _clipboardHandleChatPdfInput
       } = require_pdf_workflows();
+      var {
+        _clipboardHandleCanvasAudioInput,
+        _clipboardHandleChatAudioInput
+      } = require_audio_workflows();
       var { _clipboardExecutePasteWorkflow } = require_workflow_runner();
       async function _clipboardReadAndPasteImage(options = {}) {
         const clipItems = await _clipboardReadClipboardItems();
         if (!clipItems?.length) {
-          if (options.notifyNoImage) ui.notifications.warn("Foundry Paste Eater: No clipboard media or PDF was available.");
+          if (options.notifyNoImage) ui.notifications.warn("Foundry Paste Eater: No clipboard media, PDF, or audio was available.");
           return false;
         }
         const pdfInput = await _clipboardExtractPdfInput(clipItems);
@@ -6609,9 +7770,16 @@ var FoundryPasteEaterRuntime = (() => {
           if (options.handlePdfInput) return options.handlePdfInput(pdfInput);
           return _clipboardHandleCanvasPdfInput(pdfInput, options);
         }
+        const audioInput = await _clipboardExtractAudioInput(clipItems, {
+          explicitAudioContext: Boolean(options.explicitAudioContext || canvas?.activeLayer === canvas?.sounds)
+        });
+        if (audioInput) {
+          if (options.handleAudioInput) return options.handleAudioInput(audioInput);
+          return _clipboardHandleCanvasAudioInput(audioInput, options);
+        }
         const imageInput = await _clipboardExtractImageInput(clipItems);
         if (!imageInput) {
-          if (options.notifyNoImage) ui.notifications.warn("Foundry Paste Eater: No supported media, PDF, or direct URL was found in the clipboard.");
+          if (options.notifyNoImage) ui.notifications.warn("Foundry Paste Eater: No supported media, PDF, audio, or direct URL was found in the clipboard.");
           return false;
         }
         if (options.handleImageInput) return options.handleImageInput(imageInput);
@@ -6633,6 +7801,13 @@ var FoundryPasteEaterRuntime = (() => {
           if (options.handlePdfInput) return options.handlePdfInput(pdfInput);
           return _clipboardHandleCanvasPdfInput(pdfInput, options);
         }
+        const audioInput = await _clipboardExtractAudioInput(clipItems, {
+          explicitAudioContext: Boolean(options.explicitAudioContext || canvas?.activeLayer === canvas?.sounds)
+        });
+        if (audioInput) {
+          if (options.handleAudioInput) return options.handleAudioInput(audioInput);
+          return _clipboardHandleCanvasAudioInput(audioInput, options);
+        }
         const mediaInput = await _clipboardExtractImageInput(clipItems);
         if (mediaInput) {
           if (options.handleImageInput) return options.handleImageInput(mediaInput);
@@ -6644,7 +7819,7 @@ var FoundryPasteEaterRuntime = (() => {
           return _clipboardHandleTextInput(textInput, options);
         }
         if (options.notifyNoContent) {
-          ui.notifications.warn("Foundry Paste Eater: No supported media, PDF, or text was found in the clipboard.");
+          ui.notifications.warn("Foundry Paste Eater: No supported media, PDF, audio, or text was found in the clipboard.");
         }
         return false;
       }
@@ -6689,10 +7864,19 @@ var FoundryPasteEaterRuntime = (() => {
       async function _clipboardOpenUploadPicker() {
         return _clipboardChooseAndHandleMediaFile({
           emptyMessage: "Upload picker closed without selecting a file.",
-          selectedMessage: "Selected a media or PDF file from the upload picker",
+          selectedMessage: "Selected a media, PDF, or audio file from the upload picker",
           handler: (file) => {
             if (_clipboardIsPdfBlob(file, { filename: file?.name, mimeType: file?.type })) {
               return _clipboardHandleCanvasPdfInput({ blob: file }, {
+                contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS
+              });
+            }
+            if (_clipboardIsAudioBlob(file, {
+              filename: file?.name,
+              mimeType: file?.type,
+              explicitAudioContext: canvas?.activeLayer === canvas?.sounds
+            })) {
+              return _clipboardHandleCanvasAudioInput({ blob: file }, {
                 contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS
               });
             }
@@ -6705,10 +7889,13 @@ var FoundryPasteEaterRuntime = (() => {
       async function _clipboardOpenChatUploadPicker() {
         return _clipboardChooseAndHandleMediaFile({
           emptyMessage: "Chat upload picker closed without selecting a file.",
-          selectedMessage: "Selected a media or PDF file from the chat upload picker",
+          selectedMessage: "Selected a media, PDF, or audio file from the chat upload picker",
           handler: (file) => {
             if (_clipboardIsPdfBlob(file, { filename: file?.name, mimeType: file?.type })) {
               return _clipboardHandleChatPdfInput({ blob: file });
+            }
+            if (_clipboardIsAudioBlob(file, { filename: file?.name, mimeType: file?.type })) {
+              return _clipboardHandleChatAudioInput({ blob: file });
             }
             return require_chat_media()._clipboardHandleChatImageBlob(file);
           }
@@ -6717,10 +7904,10 @@ var FoundryPasteEaterRuntime = (() => {
       function _clipboardHandleScenePasteAction() {
         if (!_clipboardCanUseScenePasteTool()) return false;
         if (!navigator.clipboard?.read) {
-          ui.notifications.warn("Foundry Paste Eater: Direct clipboard reads are unavailable here. Use your browser's Paste action or the Upload Media/PDF tool instead.");
+          ui.notifications.warn("Foundry Paste Eater: Direct clipboard reads are unavailable here. Use your browser's Paste action or the Upload Media, PDF, or Audio tool instead.");
           return false;
         }
-        _clipboardLog("info", "Invoked scene Paste Media/PDF action.", {
+        _clipboardLog("info", "Invoked scene Paste Media, PDF, or Audio action.", {
           activeLayer: canvas?.activeLayer?.options?.name || null
         });
         void _clipboardExecutePasteWorkflow(() => _clipboardReadAndPasteImage({
@@ -6733,7 +7920,7 @@ var FoundryPasteEaterRuntime = (() => {
       }
       function _clipboardHandleSceneUploadAction() {
         if (!_clipboardCanUseSceneUploadTool()) return false;
-        _clipboardLog("info", "Invoked scene Upload Media/PDF action.", {
+        _clipboardLog("info", "Invoked scene Upload Media, PDF, or Audio action.", {
           activeLayer: canvas?.activeLayer?.options?.name || null
         });
         void _clipboardExecutePasteWorkflow(() => _clipboardOpenUploadPicker(), {
@@ -6812,7 +7999,7 @@ var FoundryPasteEaterRuntime = (() => {
       }
       function _clipboardHandleChatUploadAction() {
         if (!_clipboardCanUseChatMedia()) return false;
-        _clipboardLog("info", "Invoked chat Upload Media/PDF action.");
+        _clipboardLog("info", "Invoked chat Upload Media, PDF, or Audio action.");
         void _clipboardExecutePasteWorkflow(() => _clipboardOpenChatUploadPicker(), {
           respectCopiedObjects: false
         });
@@ -6944,6 +8131,7 @@ var FoundryPasteEaterRuntime = (() => {
         ...require_canvas_media(),
         ...require_chat_media(),
         ...require_pdf_workflows(),
+        ...require_audio_workflows(),
         ...require_art_fields(),
         ...require_text_workflows(),
         ...require_scene_tools()
@@ -6968,6 +8156,8 @@ var FoundryPasteEaterRuntime = (() => {
       var {
         _clipboardExtractImageBlobFromDataTransfer,
         _clipboardExtractImageInputFromDataTransfer,
+        _clipboardExtractAudioBlobFromDataTransfer,
+        _clipboardExtractAudioInputFromDataTransfer,
         _clipboardExtractPdfBlobFromDataTransfer,
         _clipboardExtractPdfInputFromDataTransfer,
         _clipboardInsertTextAtTarget
@@ -6979,7 +8169,9 @@ var FoundryPasteEaterRuntime = (() => {
       var {
         _clipboardExecutePasteWorkflow,
         _clipboardDescribePdfInput,
+        _clipboardDescribeAudioInput,
         _clipboardHandleChatImageInput,
+        _clipboardHandleChatAudioInput,
         _clipboardHandleChatPdfInput,
         _clipboardHandleChatUploadAction
       } = require_workflows();
@@ -7010,7 +8202,7 @@ var FoundryPasteEaterRuntime = (() => {
       function _clipboardOnChatDragOver(event) {
         if (!_clipboardCanUseChatMedia()) return;
         const root = event.currentTarget;
-        const blob = _clipboardExtractPdfBlobFromDataTransfer(event.dataTransfer) || _clipboardExtractImageBlobFromDataTransfer(event.dataTransfer);
+        const blob = _clipboardExtractPdfBlobFromDataTransfer(event.dataTransfer) || _clipboardExtractAudioBlobFromDataTransfer(event.dataTransfer) || _clipboardExtractImageBlobFromDataTransfer(event.dataTransfer);
         if (!blob) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = "copy";
@@ -7034,6 +8226,19 @@ var FoundryPasteEaterRuntime = (() => {
           event.preventDefault();
           event.stopPropagation();
           void _clipboardExecutePasteWorkflow(() => _clipboardHandleChatPdfInput(pdfInput), {
+            respectCopiedObjects: false
+          });
+          return;
+        }
+        const audioInput = _clipboardExtractAudioInputFromDataTransfer(event.dataTransfer);
+        if (audioInput) {
+          _clipboardLog("info", "Handling dropped audio in chat.", {
+            audioInput: _clipboardDescribeAudioInput(audioInput),
+            dataTransfer: _clipboardDescribeDataTransfer(event.dataTransfer)
+          });
+          event.preventDefault();
+          event.stopPropagation();
+          void _clipboardExecutePasteWorkflow(() => _clipboardHandleChatAudioInput(audioInput), {
             respectCopiedObjects: false
           });
           return;
@@ -7081,8 +8286,8 @@ var FoundryPasteEaterRuntime = (() => {
         button.className = "ui-control icon fa-solid fa-file-arrow-up foundry-paste-eater-chat-upload";
         button.dataset.action = CLIPBOARD_IMAGE_CHAT_UPLOAD_ACTION;
         button.dataset.tooltip = "";
-        button.title = "Upload Chat Media or PDF";
-        button.ariaLabel = "Upload Chat Media or PDF";
+        button.title = "Upload Chat Media, PDF, or Audio";
+        button.ariaLabel = "Upload Chat Media, PDF, or Audio";
         button.addEventListener("click", () => _clipboardHandleChatUploadAction());
         mount.append(button);
       }
@@ -7148,6 +8353,7 @@ var FoundryPasteEaterRuntime = (() => {
       } = require_diagnostics();
       var {
         _clipboardExtractImageInputFromDataTransfer,
+        _clipboardExtractAudioInputFromDataTransfer,
         _clipboardExtractPdfInputFromDataTransfer,
         _clipboardExtractTextInputFromDataTransfer,
         _clipboardGetChatRootFromTarget,
@@ -7155,7 +8361,9 @@ var FoundryPasteEaterRuntime = (() => {
       } = require_clipboard();
       var {
         _clipboardGetFocusedArtFieldTarget,
-        _clipboardGetFocusedPdfFieldTarget
+        _clipboardGetFocusedAudioFieldTarget,
+        _clipboardGetFocusedPdfFieldTarget,
+        _clipboardGetPlaylistTargetFromElement
       } = require_field_targets();
       var { _clipboardResolvePasteContext, _clipboardCanPasteToContext } = require_context();
       var {
@@ -7167,6 +8375,11 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardHandleCanvasPdfInput,
         _clipboardHandleChatPdfInput,
         _clipboardHandlePdfFieldInput,
+        _clipboardHandleAudioFieldInput,
+        _clipboardHandleCanvasAudioInput,
+        _clipboardHandleChatAudioInput,
+        _clipboardHandlePlaylistAudioInput,
+        _clipboardCanPasteAudioToCanvasContext,
         _clipboardCanPastePdfToCanvasContext,
         _clipboardGetControlledSceneNoteDocuments,
         _clipboardHandleTextInput,
@@ -7202,6 +8415,7 @@ var FoundryPasteEaterRuntime = (() => {
         if (!(target instanceof HTMLElement)) return false;
         if (_clipboardGetChatRootFromTarget(target)) return false;
         if (_clipboardGetFocusedPdfFieldTarget(target)) return false;
+        if (_clipboardGetFocusedAudioFieldTarget(target)) return false;
         if (_clipboardIsEditableTarget(target)) return false;
         if (_clipboardGetFocusedArtFieldTarget(target)) return false;
         return Boolean(target.closest("#board, #scene-controls"));
@@ -7220,13 +8434,17 @@ var FoundryPasteEaterRuntime = (() => {
       }
       function _clipboardResolveNativePasteRoute({
         hasPdfInput = false,
+        hasAudioInput = false,
         hasMediaInput = false,
         hasTextInput = false,
         hasPdfFieldTarget = false,
+        hasAudioFieldTarget = false,
         hasArtFieldTarget = false,
+        hasPlaylistTarget = false,
         isChatTarget = false,
         isEditableTarget = false,
         canUseChatMedia = _clipboardCanUseChatMedia(),
+        canvasAudioEligible = false,
         canvasContextEligible = false
       } = {}) {
         if (hasPdfInput) {
@@ -7236,6 +8454,15 @@ var FoundryPasteEaterRuntime = (() => {
           }
           if (isEditableTarget) return { route: "ignore-editable-pdf" };
           return { route: canvasContextEligible ? "canvas-pdf" : "ignore-pdf-ineligible" };
+        }
+        if (hasAudioInput) {
+          if (hasAudioFieldTarget) return { route: "audio-field" };
+          if (isChatTarget) {
+            return { route: canUseChatMedia ? "chat-audio" : "ignore-chat-media-disabled" };
+          }
+          if (isEditableTarget) return { route: "ignore-editable-audio" };
+          if (hasPlaylistTarget) return { route: "playlist-audio" };
+          return { route: canvasAudioEligible ? "canvas-audio" : "ignore-audio-ineligible" };
         }
         if (hasMediaInput) {
           if (hasArtFieldTarget) return { route: "art-field-media" };
@@ -7260,7 +8487,6 @@ var FoundryPasteEaterRuntime = (() => {
           isEditableTarget: _clipboardIsEditableTarget(event.target),
           dataTransfer: _clipboardDescribeDataTransfer(event.clipboardData)
         });
-        const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
         const pdfInput = _clipboardExtractPdfInputFromDataTransfer(event.clipboardData);
         const context = _clipboardResolvePasteContext();
         const isChatTarget = Boolean(_clipboardGetChatRootFromTarget(event.target));
@@ -7309,6 +8535,68 @@ var FoundryPasteEaterRuntime = (() => {
           });
           return;
         }
+        const audioFieldTarget = _clipboardGetFocusedAudioFieldTarget(event.target);
+        const playlistAudioTarget = _clipboardGetPlaylistTargetFromElement(event.target);
+        const explicitAudioContext = Boolean(audioFieldTarget || playlistAudioTarget || canvas?.activeLayer === canvas?.sounds);
+        const audioInput = _clipboardExtractAudioInputFromDataTransfer(event.clipboardData, {
+          explicitAudioContext
+        });
+        if (audioInput) {
+          const route2 = _clipboardResolveNativePasteRoute({
+            hasAudioInput: true,
+            hasAudioFieldTarget: Boolean(audioFieldTarget),
+            hasPlaylistTarget: Boolean(playlistAudioTarget),
+            isChatTarget,
+            isEditableTarget,
+            canUseChatMedia: _clipboardCanUseChatMedia(),
+            canvasAudioEligible: _clipboardCanPasteAudioToCanvasContext(context)
+          });
+          if (route2.route === "audio-field") {
+            if (_clipboardHasPasteConflict({ respectCopiedObjects: false })) return;
+            _clipboardConsumePasteEvent(event);
+            void _clipboardExecutePasteWorkflow(() => _clipboardHandleAudioFieldInput(audioInput, audioFieldTarget), {
+              respectCopiedObjects: false
+            });
+            return;
+          }
+          if (route2.route === "chat-audio") {
+            if (_clipboardHasPasteConflict({ respectCopiedObjects: false })) return;
+            _clipboardConsumePasteEvent(event);
+            void _clipboardExecutePasteWorkflow(() => _clipboardHandleChatAudioInput(audioInput), {
+              respectCopiedObjects: false
+            });
+            return;
+          }
+          if (route2.route === "ignore-chat-media-disabled") return;
+          if (route2.route === "ignore-editable-audio") {
+            _clipboardLog("info", "Ignoring pasted audio in an unsupported editable target.", {
+              targetTagName: event.target?.tagName || null,
+              targetName: event.target?.name || event.target?.dataset?.edit || null
+            });
+            return;
+          }
+          if (route2.route === "playlist-audio") {
+            if (_clipboardHasPasteConflict({ respectCopiedObjects: false })) return;
+            _clipboardConsumePasteEvent(event);
+            void _clipboardExecutePasteWorkflow(() => _clipboardHandlePlaylistAudioInput(audioInput, playlistAudioTarget), {
+              respectCopiedObjects: false
+            });
+            return;
+          }
+          if (route2.route === "ignore-audio-ineligible") {
+            _clipboardLog("info", "Ignoring pasted audio because the canvas context is not eligible.", {
+              context: _clipboardDescribePasteContext(context)
+            });
+            return;
+          }
+          if (_clipboardHasPasteConflict()) return;
+          _clipboardConsumePasteEvent(event);
+          void _clipboardExecutePasteWorkflow(() => _clipboardHandleCanvasAudioInput(audioInput, { context }), {
+            respectCopiedObjects: false
+          });
+          return;
+        }
+        const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
         if (imageInput) {
           const artFieldTarget = _clipboardGetFocusedArtFieldTarget(event.target);
           const route2 = _clipboardResolveNativePasteRoute({
@@ -7412,6 +8700,8 @@ var FoundryPasteEaterRuntime = (() => {
       var {
         _clipboardExtractImageInput,
         _clipboardExtractImageInputFromDataTransfer,
+        _clipboardExtractAudioInput,
+        _clipboardExtractAudioInputFromDataTransfer,
         _clipboardExtractPdfInput,
         _clipboardExtractPdfInputFromDataTransfer,
         _clipboardReadClipboardItems
@@ -7425,6 +8715,7 @@ var FoundryPasteEaterRuntime = (() => {
       var {
         _clipboardExecutePasteWorkflow,
         _clipboardHandleCanvasPdfInput,
+        _clipboardHandleCanvasAudioInput,
         _clipboardHandleImageInput,
         _clipboardHandleScenePasteAction,
         _clipboardHandleSceneUploadAction
@@ -7458,7 +8749,7 @@ var FoundryPasteEaterRuntime = (() => {
           const onUploadClick = () => _clipboardHandleSceneUploadAction();
           _clipboardUpsertSceneControlTool(control, CLIPBOARD_IMAGE_TOOL_PASTE, {
             name: CLIPBOARD_IMAGE_TOOL_PASTE,
-            title: "Paste Media or PDF",
+            title: "Paste Media, PDF, or Audio",
             icon: "fa-solid fa-paste",
             order,
             button: true,
@@ -7468,7 +8759,7 @@ var FoundryPasteEaterRuntime = (() => {
           });
           _clipboardUpsertSceneControlTool(control, CLIPBOARD_IMAGE_TOOL_UPLOAD, {
             name: CLIPBOARD_IMAGE_TOOL_UPLOAD,
-            title: "Upload Media or PDF",
+            title: "Upload Media, PDF, or Audio",
             icon: "fa-solid fa-file-arrow-up",
             order: order + 1,
             button: true,
@@ -7501,9 +8792,9 @@ var FoundryPasteEaterRuntime = (() => {
       }
       function _clipboardGetScenePastePromptFallbackMessage(clipItems) {
         if (clipItems?.length && clipItems.every((item) => !item?.types?.length)) {
-          return "This clipboard content is not exposed to direct clipboard reads here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.";
+          return "This clipboard content is not exposed to direct clipboard reads here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media, PDF, or Audio.";
         }
-        return "Direct clipboard read did not return usable media or PDF. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.";
+        return "Direct clipboard read did not return usable media, PDF, or audio. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media, PDF, or Audio.";
       }
       async function _clipboardOnScenePastePromptPaste(event) {
         const prompt = event.currentTarget?.closest?.(`#${CLIPBOARD_IMAGE_SCENE_PASTE_PROMPT_ID}`);
@@ -7519,14 +8810,32 @@ var FoundryPasteEaterRuntime = (() => {
             _clipboardCloseScenePastePrompt(prompt);
             return;
           }
-          _clipboardSetScenePastePromptMessage(prompt, "Paste did not create a PDF note. Try again, or use Upload Media/PDF.");
+          _clipboardSetScenePastePromptMessage(prompt, "Paste did not create a PDF note. Try again, or use Upload Media, PDF, or Audio.");
+          _clipboardFocusScenePastePrompt(prompt);
+          return;
+        }
+        const audioInput = _clipboardExtractAudioInputFromDataTransfer(event.clipboardData, {
+          explicitAudioContext: canvas?.activeLayer === canvas?.sounds
+        });
+        if (audioInput) {
+          _clipboardConsumePasteEvent(event);
+          const handled2 = await _clipboardExecutePasteWorkflow(() => _clipboardHandleCanvasAudioInput(audioInput, {
+            contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS
+          }), {
+            respectCopiedObjects: false
+          });
+          if (handled2) {
+            _clipboardCloseScenePastePrompt(prompt);
+            return;
+          }
+          _clipboardSetScenePastePromptMessage(prompt, "Paste did not create an ambient sound. Try again, or use Upload Media, PDF, or Audio.");
           _clipboardFocusScenePastePrompt(prompt);
           return;
         }
         const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
         if (!imageInput) {
-          ui.notifications.warn("Foundry Paste Eater: No supported media or PDF was found in that paste.");
-          _clipboardSetScenePastePromptMessage(prompt, "No supported media or PDF was found in that paste. Try again, or use Upload Media/PDF.");
+          ui.notifications.warn("Foundry Paste Eater: No supported media, PDF, or audio was found in that paste.");
+          _clipboardSetScenePastePromptMessage(prompt, "No supported media, PDF, or audio was found in that paste. Try again, or use Upload Media, PDF, or Audio.");
           return;
         }
         _clipboardConsumePasteEvent(event);
@@ -7539,7 +8848,7 @@ var FoundryPasteEaterRuntime = (() => {
           _clipboardCloseScenePastePrompt(prompt);
           return;
         }
-        _clipboardSetScenePastePromptMessage(prompt, "Paste did not create media. Try again, or use Upload Media/PDF.");
+        _clipboardSetScenePastePromptMessage(prompt, "Paste did not create media. Try again, or use Upload Media, PDF, or Audio.");
         _clipboardFocusScenePastePrompt(prompt);
       }
       function _clipboardOpenScenePastePrompt() {
@@ -7553,8 +8862,8 @@ var FoundryPasteEaterRuntime = (() => {
         prompt.className = "foundry-paste-eater-scene-paste-prompt";
         prompt.innerHTML = `
     <div class="foundry-paste-eater-scene-paste-panel" role="dialog" aria-modal="true" aria-labelledby="foundry-paste-eater-scene-paste-title">
-      <h2 id="foundry-paste-eater-scene-paste-title">Paste Media or PDF</h2>
-      <p data-role="message">Trying direct clipboard read for media or PDFs. If nothing happens, press Cmd+V / Ctrl+V in the field below.</p>
+      <h2 id="foundry-paste-eater-scene-paste-title">Paste Media, PDF, or Audio</h2>
+      <p data-role="message">Trying direct clipboard read for media, PDFs, or audio. If nothing happens, press Cmd+V / Ctrl+V in the field below.</p>
       <textarea
         id="${CLIPBOARD_IMAGE_SCENE_PASTE_TARGET_ID}"
         class="foundry-paste-eater-scene-paste-target"
@@ -7562,7 +8871,7 @@ var FoundryPasteEaterRuntime = (() => {
         placeholder="Press Cmd+V / Ctrl+V here if direct clipboard read does not complete."
       ></textarea>
       <div class="foundry-paste-eater-scene-paste-actions">
-        ${_clipboardCanUseSceneUploadTool() ? '<button type="button" data-action="upload">Upload Media/PDF</button>' : ""}
+        ${_clipboardCanUseSceneUploadTool() ? '<button type="button" data-action="upload">Upload Media, PDF, or Audio</button>' : ""}
         <button type="button" data-action="cancel">Cancel</button>
       </div>
     </div>
@@ -7621,7 +8930,7 @@ var FoundryPasteEaterRuntime = (() => {
       }
       async function _clipboardTryScenePastePromptDirectRead(prompt) {
         if (!navigator.clipboard?.read) {
-          _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard reads are unavailable here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.");
+          _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard reads are unavailable here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media, PDF, or Audio.");
           return false;
         }
         const clipItems = await _clipboardReadClipboardItems();
@@ -7644,7 +8953,27 @@ var FoundryPasteEaterRuntime = (() => {
             return true;
           }
           if (_clipboardScenePastePromptIsOpen(prompt)) {
-            _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create a PDF note. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.");
+            _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create a PDF note. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media, PDF, or Audio.");
+            _clipboardFocusScenePastePrompt(prompt);
+          }
+          return false;
+        }
+        const audioInput = await _clipboardExtractAudioInput(clipItems, {
+          explicitAudioContext: canvas?.activeLayer === canvas?.sounds
+        });
+        if (!_clipboardScenePastePromptIsOpen(prompt)) return false;
+        if (audioInput) {
+          const handled2 = await _clipboardExecutePasteWorkflow(() => _clipboardHandleCanvasAudioInput(audioInput, {
+            contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS
+          }), {
+            respectCopiedObjects: false
+          });
+          if (handled2) {
+            _clipboardCloseScenePastePrompt(prompt);
+            return true;
+          }
+          if (_clipboardScenePastePromptIsOpen(prompt)) {
+            _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create an ambient sound. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media, PDF, or Audio.");
             _clipboardFocusScenePastePrompt(prompt);
           }
           return false;
@@ -7666,7 +8995,7 @@ var FoundryPasteEaterRuntime = (() => {
           return true;
         }
         if (_clipboardScenePastePromptIsOpen(prompt)) {
-          _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create media. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.");
+          _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create media. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media, PDF, or Audio.");
           _clipboardFocusScenePastePrompt(prompt);
         }
         return false;
@@ -7835,7 +9164,9 @@ var FoundryPasteEaterRuntime = (() => {
             CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT: constants.CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT,
             CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART: constants.CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
             CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF: constants.CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF,
+            CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO: constants.CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO,
             CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT: constants.CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT,
+            CLIPBOARD_IMAGE_AUDIO_EXTENSIONS: constants.CLIPBOARD_IMAGE_AUDIO_EXTENSIONS,
             CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS: constants.CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS
           }
         }

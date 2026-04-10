@@ -14,6 +14,11 @@ const CLIPBOARD_IMAGE_SUPPORTED_ART_FIELD_DOCUMENTS = {
   "prototypeToken.texture.src": new Set(["Actor", "Token"]),
 };
 const CLIPBOARD_IMAGE_SUPPORTED_PDF_FIELD_NAMES = new Set(["src"]);
+const CLIPBOARD_IMAGE_SUPPORTED_AUDIO_FIELD_NAMES = new Set(["path", "sound"]);
+const CLIPBOARD_IMAGE_SUPPORTED_AUDIO_FIELD_DOCUMENTS = {
+  path: new Set(["PlaylistSound", "AmbientSound"]),
+  sound: new Set(["ChatMessage"]),
+};
 
 function _clipboardGetApplicationRoot(target) {
   return target?.closest?.("[data-appid], .window-app[id], .app[id], .application[id]") || null;
@@ -99,13 +104,41 @@ function _clipboardGetPdfFieldName(target) {
   return null;
 }
 
+function _clipboardGetAudioFieldName(target) {
+  const picker = target?.closest?.("file-picker[name]") || null;
+  const candidates = [
+    target?.name,
+    target?.dataset?.edit,
+    picker?.getAttribute?.("name"),
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const normalized = candidate.trim();
+    if (!normalized) continue;
+    if (CLIPBOARD_IMAGE_SUPPORTED_AUDIO_FIELD_NAMES.has(normalized)) return normalized;
+  }
+
+  return null;
+}
+
 function _clipboardGetArtFieldMediaKinds(fieldName) {
   if (fieldName === "img") return ["image"];
   return ["image", "video"];
 }
 
+function _clipboardGetAudioDocumentFromApp(app) {
+  return app?.document || app?.object || app?.message || null;
+}
+
 function _clipboardCanPopulateArtField(documentName, fieldName) {
   const allowedDocuments = CLIPBOARD_IMAGE_SUPPORTED_ART_FIELD_DOCUMENTS[fieldName];
+  if (!allowedDocuments) return false;
+  return allowedDocuments.has(documentName);
+}
+
+function _clipboardCanPopulateAudioField(documentName, fieldName) {
+  const allowedDocuments = CLIPBOARD_IMAGE_SUPPORTED_AUDIO_FIELD_DOCUMENTS[fieldName];
   if (!allowedDocuments) return false;
   return allowedDocuments.has(documentName);
 }
@@ -157,6 +190,103 @@ function _clipboardGetFocusedPdfFieldTarget(target = document.activeElement) {
   };
 }
 
+function _clipboardGetFocusedAudioFieldTarget(target = document.activeElement) {
+  const field = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
+    ? target
+    : target?.closest?.("file-picker[name]")?.querySelector?.("input, textarea") || null;
+  if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) return null;
+
+  const fieldName = _clipboardGetAudioFieldName(field) || _clipboardGetAudioFieldName(target);
+  if (!fieldName) return null;
+
+  const {app, appRoot} = _clipboardGetAppFromElement(field);
+  const audioDocument = _clipboardGetAudioDocumentFromApp(app);
+  const documentName = audioDocument?.documentName || audioDocument?.constructor?.documentName || null;
+  if (!_clipboardCanPopulateAudioField(documentName, fieldName)) return null;
+
+  return {
+    field,
+    fieldName,
+    picker: field.closest?.("file-picker[name]") || null,
+    app,
+    appRoot,
+    document: audioDocument,
+    documentName,
+  };
+}
+
+function _clipboardGetPlaylistCollection() {
+  return game?.playlists || null;
+}
+
+function _clipboardGetPlaylistById(id) {
+  if (!id) return null;
+  const playlists = _clipboardGetPlaylistCollection();
+  return playlists?.get?.(id) ||
+    playlists?.contents?.find?.(playlist => playlist?.id === id) ||
+    null;
+}
+
+function _clipboardResolvePlaylistFromDocument(document) {
+  const documentName = document?.documentName || document?.constructor?.documentName || null;
+  if (documentName === "Playlist") return document;
+  if (documentName === "PlaylistSound") {
+    return document.parent ||
+      _clipboardGetPlaylistById(document.parent?.id || document.playlistId) ||
+      null;
+  }
+  return null;
+}
+
+function _clipboardGetPlaylistTargetFromElement(target = document.activeElement) {
+  const {app, appRoot} = _clipboardGetAppFromElement(target);
+  const appDocument = _clipboardGetAudioDocumentFromApp(app);
+  const playlistFromApp = _clipboardResolvePlaylistFromDocument(appDocument);
+  if (playlistFromApp) {
+    return {
+      playlist: playlistFromApp,
+      playlistSound: (appDocument?.documentName || appDocument?.constructor?.documentName) === "PlaylistSound" ? appDocument : null,
+      inPlaylistUi: true,
+      app,
+      appRoot,
+    };
+  }
+
+  const playlistElement = target?.closest?.("[data-playlist-id], [data-document-id], [data-entry-id], [data-id]") || null;
+  const candidateIds = [
+    playlistElement?.dataset?.playlistId,
+    playlistElement?.dataset?.documentId,
+    playlistElement?.dataset?.entryId,
+    playlistElement?.dataset?.id,
+  ].filter(Boolean);
+  for (const candidateId of candidateIds) {
+    const playlist = _clipboardGetPlaylistById(candidateId);
+    if (playlist) {
+      return {
+        playlist,
+        playlistSound: null,
+        inPlaylistUi: true,
+        app,
+        appRoot,
+      };
+    }
+  }
+
+  const inPlaylistUi = Boolean(
+    target?.closest?.("#playlists, .directory.playlists, [data-tab='playlists'], [data-application-part='playlists']") ||
+      appRoot?.querySelector?.("#playlists, .directory.playlists, [data-tab='playlists'], [data-application-part='playlists']")
+  );
+  return inPlaylistUi
+    ? {
+      playlist: null,
+      playlistSound: null,
+      inPlaylistUi: true,
+      app,
+      appRoot,
+    }
+    : null;
+}
+
 function _clipboardReloadMediaPreview(element) {
   if (!element?.load) return;
   if (/jsdom/i.test(globalThis.navigator?.userAgent || "") &&
@@ -168,6 +298,29 @@ function _clipboardReloadMediaPreview(element) {
     element.load();
   } catch {
     // jsdom does not implement HTMLMediaElement.load(); browsers do.
+  }
+}
+
+function _clipboardUpdateAudioFieldPreview(targetInfo, value) {
+  const previewSelector = `[data-edit="${targetInfo.fieldName}"]`;
+  for (const element of targetInfo.appRoot?.querySelectorAll?.(previewSelector) || []) {
+    if (element === targetInfo.field) continue;
+
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+      element.value = value;
+      continue;
+    }
+
+    if (element instanceof HTMLAudioElement || element instanceof HTMLSourceElement) {
+      element.src = value;
+      if (element instanceof HTMLAudioElement) {
+        _clipboardReloadMediaPreview(element);
+        continue;
+      }
+      if (element instanceof HTMLSourceElement) {
+        _clipboardReloadMediaPreview(element.parentElement);
+      }
+    }
   }
 }
 
@@ -250,23 +403,59 @@ function _clipboardPopulatePdfFieldTarget(targetInfo, value, pdfInput = null) {
   return true;
 }
 
+function _clipboardPopulateAudioFieldTarget(targetInfo, value, audioInput = null) {
+  if (!targetInfo || !value) return false;
+
+  const updated = _clipboardSetFormFieldValue(targetInfo.field, value);
+  if (!updated) return false;
+
+  _clipboardUpdateAudioFieldPreview(targetInfo, value);
+  _clipboardLog("info", "Populated a focused document audio field from pasted audio", {
+    documentName: targetInfo.documentName,
+    fieldName: targetInfo.fieldName,
+    value,
+    audioInput: audioInput
+      ? {
+        source: audioInput.blob ? "blob" : "url",
+        name: audioInput.blob?.name || null,
+        type: audioInput.blob?.type || null,
+        size: audioInput.blob?.size ?? null,
+        url: audioInput.url || null,
+      }
+      : null,
+  });
+  return true;
+}
+
 module.exports = {
   CLIPBOARD_IMAGE_SUPPORTED_ART_FIELD_NAMES,
   CLIPBOARD_IMAGE_SUPPORTED_ART_FIELD_DOCUMENTS,
   CLIPBOARD_IMAGE_SUPPORTED_PDF_FIELD_NAMES,
+  CLIPBOARD_IMAGE_SUPPORTED_AUDIO_FIELD_NAMES,
+  CLIPBOARD_IMAGE_SUPPORTED_AUDIO_FIELD_DOCUMENTS,
   _clipboardGetApplicationRoot,
   _clipboardIterateApplicationInstances,
   _clipboardResolveApplicationForRoot,
   _clipboardGetAppFromElement,
   _clipboardGetArtFieldName,
   _clipboardGetPdfFieldName,
+  _clipboardGetAudioFieldName,
   _clipboardGetArtFieldMediaKinds,
+  _clipboardGetAudioDocumentFromApp,
   _clipboardCanPopulateArtField,
+  _clipboardCanPopulateAudioField,
   _clipboardGetFocusedArtFieldTarget,
   _clipboardGetFocusedPdfFieldTarget,
+  _clipboardGetFocusedAudioFieldTarget,
+  _clipboardGetPlaylistCollection,
+  _clipboardGetPlaylistById,
+  _clipboardResolvePlaylistFromDocument,
+  _clipboardGetPlaylistTargetFromElement,
   _clipboardReloadMediaPreview,
   _clipboardSetFormFieldValue,
   _clipboardUpdateArtFieldPreview,
+  _clipboardUpdateAudioFieldPreview,
   _clipboardPopulateArtFieldTarget,
   _clipboardPopulatePdfFieldTarget,
+  _clipboardPopulateAudioFieldTarget,
 };

@@ -243,6 +243,74 @@ test("posts chat PDFs as Journal PDF cards without creating canvas content", asy
   }
 });
 
+test("posts chat audio cards without creating canvas content", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const chatSelector = await focusChatInput(page);
+    const before = await getStateSnapshot(page);
+
+    await dispatchFilePaste(page, {
+      targetSelector: chatSelector,
+      fixtureFilename: "test-audio.wav",
+      filename: `${run.prefix} test-audio.wav`,
+      mimeType: "audio/wav",
+    });
+    await page.getByRole("button", {name: "Audio card only"}).click();
+
+    await expect.poll(async () => (await getStateSnapshot(page)).messages.length).toBe(before.messages.length + 1);
+    const after = await getStateSnapshot(page);
+    const [message] = getNewDocuments(before, after, "messages");
+
+    expect(message.content).toContain("foundry-paste-eater-chat-audio-message");
+    expect(message.content).toContain("<audio");
+    expect(message.content).toContain(run.uploadFolder);
+    expect(message.sound).toBe("");
+    expect(after.tiles.length).toBe(before.tiles.length);
+    expect(after.tokens.length).toBe(before.tokens.length);
+    expect(after.notes.length).toBe(before.notes.length);
+    expect(after.sounds.length).toBe(before.sounds.length);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
+test("adds pasted audio to a targeted playlist UI row", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const targetSelector = await page.evaluate(async prefix => {
+      const PlaylistDocument = foundry.documents.Playlist || CONFIG.Playlist.documentClass || globalThis.Playlist;
+      const playlist = await PlaylistDocument.create({name: `${prefix} Playlist Audio`});
+      const root = document.createElement("section");
+      root.id = "playlists";
+      root.innerHTML = `<button type="button" data-playlist-id="${playlist.id}">${playlist.name}</button>`;
+      document.body.append(root);
+      return `#playlists [data-playlist-id="${playlist.id}"]`;
+    }, run.prefix);
+    const before = await getStateSnapshot(page);
+
+    await dispatchFilePaste(page, {
+      targetSelector,
+      fixtureFilename: "test-audio.wav",
+      filename: `${run.prefix} playlist-audio.wav`,
+      mimeType: "audio/wav",
+    });
+
+    await expect.poll(async () => {
+      const after = await getStateSnapshot(page);
+      const playlist = after.playlists.find(entry => entry.name.includes(run.prefix));
+      return playlist?.sounds.length || 0;
+    }).toBe(1);
+    const after = await getStateSnapshot(page);
+    const playlist = after.playlists.find(entry => entry.name.includes(run.prefix));
+    expect(playlist.sounds[0].path).toContain(run.uploadFolder);
+    expect(playlist.sounds[0].path).toMatch(/playlist-audio.*\.wav/i);
+    expect(after.messages.length).toBe(before.messages.length);
+    expect(after.sounds.length).toBe(before.sounds.length);
+  } finally {
+    await cleanupClipboardRun(page, run);
+  }
+});
+
 test("returns paste targeting to the canvas after clicking back into the board", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {

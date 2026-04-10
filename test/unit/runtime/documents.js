@@ -4,4 +4,6 @@ export {
   createJournalEntry,
   createPage,
   createPlaceableDocument,
+  createPlaylist,
+  createPlaylistSound,
 } from "./core.js";

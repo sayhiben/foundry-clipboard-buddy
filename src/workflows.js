@@ -4,6 +4,7 @@ module.exports = {
   ...require("./paste/canvas-media"),
   ...require("./paste/chat-media"),
   ...require("./paste/pdf-workflows"),
+  ...require("./paste/audio-workflows"),
   ...require("./paste/art-fields"),
   ...require("./paste/text-workflows"),
   ...require("./paste/scene-tools"),

@@ -9,6 +9,8 @@ const {
 const {
   _clipboardExtractImageInput,
   _clipboardExtractImageInputFromDataTransfer,
+  _clipboardExtractAudioInput,
+  _clipboardExtractAudioInputFromDataTransfer,
   _clipboardExtractPdfInput,
   _clipboardExtractPdfInputFromDataTransfer,
   _clipboardReadClipboardItems,
@@ -22,6 +24,7 @@ const {
 const {
   _clipboardExecutePasteWorkflow,
   _clipboardHandleCanvasPdfInput,
+  _clipboardHandleCanvasAudioInput,
   _clipboardHandleImageInput,
   _clipboardHandleScenePasteAction,
   _clipboardHandleSceneUploadAction,
@@ -63,7 +66,7 @@ function _clipboardAddSceneControlButtons(controls) {
     const onUploadClick = () => _clipboardHandleSceneUploadAction();
     _clipboardUpsertSceneControlTool(control, CLIPBOARD_IMAGE_TOOL_PASTE, {
       name: CLIPBOARD_IMAGE_TOOL_PASTE,
-      title: "Paste Media or PDF",
+      title: "Paste Media, PDF, or Audio",
       icon: "fa-solid fa-paste",
       order,
       button: true,
@@ -73,7 +76,7 @@ function _clipboardAddSceneControlButtons(controls) {
     });
     _clipboardUpsertSceneControlTool(control, CLIPBOARD_IMAGE_TOOL_UPLOAD, {
       name: CLIPBOARD_IMAGE_TOOL_UPLOAD,
-      title: "Upload Media or PDF",
+      title: "Upload Media, PDF, or Audio",
       icon: "fa-solid fa-file-arrow-up",
       order: order + 1,
       button: true,
@@ -113,10 +116,10 @@ function _clipboardFocusScenePastePrompt(prompt = _clipboardGetScenePastePrompt(
 
 function _clipboardGetScenePastePromptFallbackMessage(clipItems) {
   if (clipItems?.length && clipItems.every(item => !item?.types?.length)) {
-    return "This clipboard content is not exposed to direct clipboard reads here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.";
+    return "This clipboard content is not exposed to direct clipboard reads here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media, PDF, or Audio.";
   }
 
-  return "Direct clipboard read did not return usable media or PDF. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.";
+  return "Direct clipboard read did not return usable media, PDF, or audio. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media, PDF, or Audio.";
 }
 
 async function _clipboardOnScenePastePromptPaste(event) {
@@ -135,15 +138,36 @@ async function _clipboardOnScenePastePromptPaste(event) {
       return;
     }
 
-    _clipboardSetScenePastePromptMessage(prompt, "Paste did not create a PDF note. Try again, or use Upload Media/PDF.");
+    _clipboardSetScenePastePromptMessage(prompt, "Paste did not create a PDF note. Try again, or use Upload Media, PDF, or Audio.");
+    _clipboardFocusScenePastePrompt(prompt);
+    return;
+  }
+
+  const audioInput = _clipboardExtractAudioInputFromDataTransfer(event.clipboardData, {
+    explicitAudioContext: canvas?.activeLayer === canvas?.sounds,
+  });
+  if (audioInput) {
+    _clipboardConsumePasteEvent(event);
+    const handled = await _clipboardExecutePasteWorkflow(() => _clipboardHandleCanvasAudioInput(audioInput, {
+      contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS,
+    }), {
+      respectCopiedObjects: false,
+    });
+
+    if (handled) {
+      _clipboardCloseScenePastePrompt(prompt);
+      return;
+    }
+
+    _clipboardSetScenePastePromptMessage(prompt, "Paste did not create an ambient sound. Try again, or use Upload Media, PDF, or Audio.");
     _clipboardFocusScenePastePrompt(prompt);
     return;
   }
 
   const imageInput = _clipboardExtractImageInputFromDataTransfer(event.clipboardData);
   if (!imageInput) {
-    ui.notifications.warn("Foundry Paste Eater: No supported media or PDF was found in that paste.");
-    _clipboardSetScenePastePromptMessage(prompt, "No supported media or PDF was found in that paste. Try again, or use Upload Media/PDF.");
+    ui.notifications.warn("Foundry Paste Eater: No supported media, PDF, or audio was found in that paste.");
+    _clipboardSetScenePastePromptMessage(prompt, "No supported media, PDF, or audio was found in that paste. Try again, or use Upload Media, PDF, or Audio.");
     return;
   }
 
@@ -159,7 +183,7 @@ async function _clipboardOnScenePastePromptPaste(event) {
     return;
   }
 
-  _clipboardSetScenePastePromptMessage(prompt, "Paste did not create media. Try again, or use Upload Media/PDF.");
+  _clipboardSetScenePastePromptMessage(prompt, "Paste did not create media. Try again, or use Upload Media, PDF, or Audio.");
   _clipboardFocusScenePastePrompt(prompt);
 }
 
@@ -175,8 +199,8 @@ function _clipboardOpenScenePastePrompt() {
   prompt.className = "foundry-paste-eater-scene-paste-prompt";
   prompt.innerHTML = `
     <div class="foundry-paste-eater-scene-paste-panel" role="dialog" aria-modal="true" aria-labelledby="foundry-paste-eater-scene-paste-title">
-      <h2 id="foundry-paste-eater-scene-paste-title">Paste Media or PDF</h2>
-      <p data-role="message">Trying direct clipboard read for media or PDFs. If nothing happens, press Cmd+V / Ctrl+V in the field below.</p>
+      <h2 id="foundry-paste-eater-scene-paste-title">Paste Media, PDF, or Audio</h2>
+      <p data-role="message">Trying direct clipboard read for media, PDFs, or audio. If nothing happens, press Cmd+V / Ctrl+V in the field below.</p>
       <textarea
         id="${CLIPBOARD_IMAGE_SCENE_PASTE_TARGET_ID}"
         class="foundry-paste-eater-scene-paste-target"
@@ -184,7 +208,7 @@ function _clipboardOpenScenePastePrompt() {
         placeholder="Press Cmd+V / Ctrl+V here if direct clipboard read does not complete."
       ></textarea>
       <div class="foundry-paste-eater-scene-paste-actions">
-        ${_clipboardCanUseSceneUploadTool() ? '<button type="button" data-action="upload">Upload Media/PDF</button>' : ""}
+        ${_clipboardCanUseSceneUploadTool() ? '<button type="button" data-action="upload">Upload Media, PDF, or Audio</button>' : ""}
         <button type="button" data-action="cancel">Cancel</button>
       </div>
     </div>
@@ -251,7 +275,7 @@ function _clipboardResolveScenePasteToolPlan({
 
 async function _clipboardTryScenePastePromptDirectRead(prompt) {
   if (!navigator.clipboard?.read) {
-    _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard reads are unavailable here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.");
+    _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard reads are unavailable here. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media, PDF, or Audio.");
     return false;
   }
 
@@ -280,7 +304,31 @@ async function _clipboardTryScenePastePromptDirectRead(prompt) {
     }
 
     if (_clipboardScenePastePromptIsOpen(prompt)) {
-      _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create a PDF note. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.");
+      _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create a PDF note. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media, PDF, or Audio.");
+      _clipboardFocusScenePastePrompt(prompt);
+    }
+    return false;
+  }
+
+  const audioInput = await _clipboardExtractAudioInput(clipItems, {
+    explicitAudioContext: canvas?.activeLayer === canvas?.sounds,
+  });
+  if (!_clipboardScenePastePromptIsOpen(prompt)) return false;
+
+  if (audioInput) {
+    const handled = await _clipboardExecutePasteWorkflow(() => _clipboardHandleCanvasAudioInput(audioInput, {
+      contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS,
+    }), {
+      respectCopiedObjects: false,
+    });
+
+    if (handled) {
+      _clipboardCloseScenePastePrompt(prompt);
+      return true;
+    }
+
+    if (_clipboardScenePastePromptIsOpen(prompt)) {
+      _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create an ambient sound. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media, PDF, or Audio.");
       _clipboardFocusScenePastePrompt(prompt);
     }
     return false;
@@ -307,7 +355,7 @@ async function _clipboardTryScenePastePromptDirectRead(prompt) {
   }
 
   if (_clipboardScenePastePromptIsOpen(prompt)) {
-    _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create media. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media/PDF.");
+    _clipboardSetScenePastePromptMessage(prompt, "Direct clipboard read did not create media. Press Cmd+V / Ctrl+V in this prompt, or use Upload Media, PDF, or Audio.");
     _clipboardFocusScenePastePrompt(prompt);
   }
   return false;

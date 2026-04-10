@@ -244,6 +244,83 @@ test("fills a focused actor portrait field instead of creating canvas media", as
   }
 });
 
+test("fills focused AmbientSound and PlaylistSound audio path fields", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  try {
+    const targets = await page.evaluate(async prefix => {
+      const ambientAppId = `clipboard-audio-ambient-${Date.now()}`;
+      const ambientRoot = document.createElement("div");
+      ambientRoot.dataset.appid = ambientAppId;
+      ambientRoot.innerHTML = '<form><input type="text" name="path" value=""><audio data-edit="path"></audio></form>';
+      document.body.append(ambientRoot);
+      ui.windows[ambientAppId] = {
+        appId: ambientAppId,
+        object: {
+          id: ambientAppId,
+          documentName: "AmbientSound",
+          canUserModify: () => true,
+        },
+        close: () => {
+          ambientRoot.remove();
+          delete ui.windows[ambientAppId];
+        },
+      };
+
+      const PlaylistDocument = foundry.documents.Playlist || CONFIG.Playlist.documentClass || globalThis.Playlist;
+      const playlist = await PlaylistDocument.create({name: `${prefix} Field Audio`});
+      const [playlistSound] = await playlist.createEmbeddedDocuments("PlaylistSound", [{
+        name: `${prefix} Field Sound`,
+        path: "",
+      }]);
+
+      const playlistAppId = `clipboard-audio-playlist-${Date.now()}`;
+      const playlistRoot = document.createElement("div");
+      playlistRoot.dataset.appid = playlistAppId;
+      playlistRoot.innerHTML = '<form><input type="text" name="path" value=""><audio data-edit="path"></audio></form>';
+      document.body.append(playlistRoot);
+      ui.windows[playlistAppId] = {
+        appId: playlistAppId,
+        object: playlistSound,
+        close: () => {
+          playlistRoot.remove();
+          delete ui.windows[playlistAppId];
+        },
+      };
+
+      return {
+        ambientSelector: `[data-appid="${ambientAppId}"] input[name="path"]`,
+        playlistSelector: `[data-appid="${playlistAppId}"] input[name="path"]`,
+      };
+    }, run.prefix);
+
+    await page.locator(targets.ambientSelector).focus();
+    await dispatchFilePaste(page, {
+      targetSelector: targets.ambientSelector,
+      fixtureFilename: "test-audio.wav",
+      filename: `${run.prefix} ambient-field.wav`,
+      mimeType: "audio/wav",
+    });
+    await expect.poll(() => page.locator(targets.ambientSelector).inputValue()).toContain(run.uploadFolder);
+
+    await page.locator(targets.playlistSelector).focus();
+    await dispatchFilePaste(page, {
+      targetSelector: targets.playlistSelector,
+      fixtureFilename: "test-audio.wav",
+      filename: `${run.prefix} playlist-field.wav`,
+      mimeType: "audio/wav",
+    });
+    await expect.poll(() => page.locator(targets.playlistSelector).inputValue()).toContain(run.uploadFolder);
+  } finally {
+    await page.evaluate(() => {
+      for (const app of Object.values(ui.windows)) {
+        if (!String(app?.appId || "").startsWith("clipboard-audio-")) continue;
+        app.close?.();
+      }
+    }).catch(() => {});
+    await cleanupClipboardRun(page, run);
+  }
+});
+
 test("fills a focused item portrait field instead of creating canvas media", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {

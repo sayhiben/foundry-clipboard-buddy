@@ -1,7 +1,7 @@
 {
   "name": "foundry-paste-eater",
   "version": "1.3.1",
-  "description": "Paste media, PDFs, URLs, and contextual text into tiles, tokens, notes, Journal pages, and chat.",
+  "description": "Paste media, PDFs, audio, URLs, and contextual text into tiles, tokens, sounds, notes, Journal pages, playlists, and chat.",
   "main": "foundry-paste-eater.js",
   "scripts": {
     "build:runtime": "node scripts/build-runtime.js",
@@ -33,6 +33,7 @@
     "clipboard",
     "media",
     "pdf",
+    "audio",
     "image",
     "video",
     "gif",

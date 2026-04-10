@@ -343,10 +343,34 @@ describe("support and readiness helpers", () => {
       text: "Scene Note",
       texture: {src: "audit-root/canvas/user-1/2026-04/note-icon.png"},
     }));
+    globalThis.canvas.scene.sounds.contents.push(env.createPlaceableDocument("AmbientSound", {
+      id: "ambient-1",
+      name: "Scene Audio",
+      path: "audit-root/audio/user-1/2026-04/ambient.mp3",
+    }));
     globalThis.game.messages.contents.push({
       id: "message-1",
       speaker: {alias: "GM"},
       content: api._clipboardCreateChatMediaContent("audit-root/chat/user-1/2026-04/chat.png"),
+    });
+    globalThis.game.messages.contents.push({
+      id: "message-audio",
+      speaker: {alias: "GM"},
+      sound: "audit-root/audio/user-1/2026-04/chat-sound.mp3",
+      content: api._clipboardCreateChatAudioContent({
+        name: "Chat Audio",
+        src: "audit-root/audio/user-1/2026-04/chat-audio.mp3",
+        external: true,
+      }),
+    });
+    env.createPlaylist({
+      id: "playlist-audit",
+      name: "Audio Playlist",
+      sounds: [{
+        id: "playlist-sound-audit",
+        name: "Playlist Audio",
+        path: "audit-root/audio/user-1/2026-04/playlist.mp3",
+      }],
     });
     env.createJournalEntry({
       id: "entry-pdf-audit",
@@ -365,8 +389,9 @@ describe("support and readiness helpers", () => {
     });
 
     const report = api._clipboardCollectMediaAuditReport();
-    expect(report.summary.referenceCount).toBe(8);
+    expect(report.summary.referenceCount).toBe(12);
     expect(report.groups.map(group => group.context)).toEqual(expect.arrayContaining([
+      "audio",
       "canvas",
       "chat",
       "document-art",
@@ -390,6 +415,21 @@ describe("support and readiness helpers", () => {
         documentType: "JournalEntryPage",
         field: "src",
         context: "pdf",
+      }),
+      expect.objectContaining({
+        documentType: "AmbientSound",
+        field: "path",
+        context: "audio",
+      }),
+      expect.objectContaining({
+        documentType: "PlaylistSound",
+        field: "path",
+        context: "audio",
+      }),
+      expect.objectContaining({
+        documentType: "ChatMessage",
+        field: "sound",
+        context: "audio",
       }),
     ]));
   });
@@ -476,11 +516,13 @@ describe("support and readiness helpers", () => {
           <img src="audit-root/chat/user-1/image.png">
           <a href="audit-root/chat/user-1/image.png">dup</a>
           <video src="audit-root/chat/user-1/clip.webm"></video>
+          <audio src="audit-root/audio/user-1/theme.mp3"></audio>
         </figure>
       `,
     })).toEqual([
       "audit-root/chat/user-1/image.png",
       "audit-root/chat/user-1/clip.webm",
+      "audit-root/audio/user-1/theme.mp3",
     ]);
     expect(api._clipboardCreateAuditReference({
       path: "   ",

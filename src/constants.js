@@ -9,7 +9,7 @@ const CLIPBOARD_IMAGE_SOURCE_FORGE = "forgevtt";
 const CLIPBOARD_IMAGE_FILE_PICKER = foundry.applications.apps.FilePicker.implementation;
 const CLIPBOARD_IMAGE_KEYBOARD_MANAGER = foundry.helpers.interaction.KeyboardManager;
 const CLIPBOARD_IMAGE_FORM_APPLICATION = foundry.appv1.api.FormApplication;
-const CLIPBOARD_IMAGE_SCENE_CONTROLS = ["tiles", "tokens"];
+const CLIPBOARD_IMAGE_SCENE_CONTROLS = ["tiles", "tokens", "sounds"];
 const CLIPBOARD_IMAGE_TOOL_PASTE = "foundry-paste-eater-paste";
 const CLIPBOARD_IMAGE_TOOL_UPLOAD = "foundry-paste-eater-upload";
 const CLIPBOARD_IMAGE_CHAT_ROOT_ATTRIBUTE = "data-foundry-paste-eater-chat-root";
@@ -66,9 +66,11 @@ const CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CANVAS = "canvas";
 const CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT = "chat";
 const CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART = "document-art";
 const CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF = "pdf";
-const CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT = "image/*,video/*,application/pdf,.pdf";
+const CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO = "audio";
+const CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT = "image/*,video/*,application/pdf,audio/*,.pdf,.aac,.flac,.m4a,.mid,.midi,.mp3,.ogg,.opus,.wav,.webm";
 const CLIPBOARD_IMAGE_IMAGE_EXTENSIONS = new Set(["apng", "avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "tif", "tiff", "webp"]);
-const CLIPBOARD_IMAGE_VIDEO_EXTENSIONS = new Set(["m4v", "mp4", "mpeg", "mpg", "ogg", "ogv", "webm"]);
+const CLIPBOARD_IMAGE_VIDEO_EXTENSIONS = new Set(["m4v", "mp4", "mpeg", "mpg", "ogv", "webm"]);
+const CLIPBOARD_IMAGE_AUDIO_EXTENSIONS = new Set(["aac", "flac", "m4a", "mid", "midi", "mp3", "ogg", "opus", "wav", "webm"]);
 const CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS = Object.freeze({
   fallbackToCenter: true,
   requireCanvasFocus: false,
@@ -143,8 +145,10 @@ module.exports = {
   CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT,
   CLIPBOARD_IMAGE_UPLOAD_CONTEXT_DOCUMENT_ART,
   CLIPBOARD_IMAGE_UPLOAD_CONTEXT_PDF,
+  CLIPBOARD_IMAGE_UPLOAD_CONTEXT_AUDIO,
   CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT,
   CLIPBOARD_IMAGE_IMAGE_EXTENSIONS,
   CLIPBOARD_IMAGE_VIDEO_EXTENSIONS,
+  CLIPBOARD_IMAGE_AUDIO_EXTENSIONS,
   CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS,
 };

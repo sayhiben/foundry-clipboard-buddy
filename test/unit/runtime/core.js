@@ -124,6 +124,55 @@ function createActor(env, data = {}) {
   return actor;
 }
 
+function createPlaylistSound(data = {}, playlist = null) {
+  const sound = {
+    id: data.id || makeId("sound"),
+    documentName: "PlaylistSound",
+    name: data.name || "Playlist Sound",
+    path: data.path || "",
+    parent: playlist,
+    isOwner: data.isOwner ?? true,
+    canUserModify: data.canUserModify || vi.fn(() => data.isOwner ?? true),
+    testUserPermission: data.testUserPermission || vi.fn(() => data.isOwner ?? true),
+    update: vi.fn(async updateData => {
+      Object.assign(sound, updateData);
+      return sound;
+    }),
+  };
+  return sound;
+}
+
+function createPlaylist(env, data = {}) {
+  const playlist = {
+    id: data.id || makeId("playlist"),
+    documentName: "Playlist",
+    name: data.name || "Playlist",
+    mode: data.mode ?? -1,
+    isOwner: data.isOwner ?? true,
+    canUserModify: data.canUserModify || vi.fn(() => data.isOwner ?? true),
+    testUserPermission: data.testUserPermission || vi.fn(() => data.isOwner ?? true),
+    sounds: {
+      contents: [],
+      get: id => playlist.sounds.contents.find(sound => sound.id === id) || null,
+    },
+    createEmbeddedDocuments: vi.fn(async (documentName, dataList) => {
+      if (documentName !== "PlaylistSound") return [];
+      const sounds = dataList.map(soundData => createPlaylistSound(soundData, playlist));
+      playlist.sounds.contents.push(...sounds);
+      return sounds;
+    }),
+    update: vi.fn(async updateData => {
+      Object.assign(playlist, updateData);
+      return playlist;
+    }),
+  };
+
+  const sounds = (data.sounds || []).map(soundData => createPlaylistSound(soundData, playlist));
+  playlist.sounds.contents.push(...sounds);
+  env.playlists.set(playlist.id, playlist);
+  return playlist;
+}
+
 function createPlaceableDocument(documentName, data = {}) {
   const flags = new Map();
   if (data.flags) {
@@ -142,6 +191,13 @@ function createPlaceableDocument(documentName, data = {}) {
     height: data.height ?? 1,
     entryId: data.entryId ?? null,
     pageId: data.pageId ?? null,
+    path: data.path || "",
+    radius: data.radius ?? 0,
+    volume: data.volume ?? 0,
+    repeat: data.repeat ?? false,
+    easing: data.easing ?? false,
+    walls: data.walls ?? false,
+    hidden: data.hidden ?? false,
     text: data.text ?? "",
     texture: {
       src: data.texture?.src || "",
@@ -181,6 +237,10 @@ function createPlaceableDocument(documentName, data = {}) {
       for (const [key, value] of Object.entries(updateData || {})) {
         if (key === "texture.src") {
           document.texture.src = value;
+          continue;
+        }
+        if (key === "path") {
+          document.path = value;
           continue;
         }
         document[key] = value;
@@ -248,6 +308,7 @@ function loadRuntime(options = {}) {
   const journalEntries = new Map();
   const sceneNotes = new Map();
   const actors = new Map();
+  const playlists = new Map();
 
   class MockFilePicker {
     static browse = vi.fn(async () => ({}));
@@ -313,6 +374,7 @@ function loadRuntime(options = {}) {
     journalEntries,
     sceneNotes,
     actors,
+    playlists,
     defaultActorType: "character",
     MockFilePicker,
     MockFormApplication,
@@ -331,12 +393,18 @@ function loadRuntime(options = {}) {
       contents: [],
       get: id => sceneNotes.get(id) || scene.notes.contents.find(note => note.id === id) || null,
     },
+    sounds: {
+      contents: [],
+      get: id => scene.sounds.contents.find(sound => sound.id === id) || null,
+    },
     updateEmbeddedDocuments: vi.fn(async (documentName, updates) => {
       const collection = documentName === "Token"
         ? scene.tokens.contents
         : documentName === "Tile"
           ? scene.tiles.contents
-          : scene.notes.contents;
+          : documentName === "AmbientSound"
+            ? scene.sounds.contents
+            : scene.notes.contents;
       for (const update of updates || []) {
         const document = collection.find(entry => entry.id === update._id);
         if (!document) continue;
@@ -366,6 +434,8 @@ function loadRuntime(options = {}) {
         scene.tokens.contents.push(...documents);
       } else if (documentName === "Tile") {
         scene.tiles.contents.push(...documents);
+      } else if (documentName === "AmbientSound") {
+        scene.sounds.contents.push(...documents);
       }
       return documents;
     }),
@@ -380,6 +450,7 @@ function loadRuntime(options = {}) {
       controls: [
         {name: "tiles", tools: []},
         {name: "tokens", tools: []},
+        {name: "sounds", tools: []},
       ],
       initialize: vi.fn(({control} = {}) => {
         if (control) {
@@ -408,6 +479,7 @@ function loadRuntime(options = {}) {
     },
     mousePosition: {x: 150, y: 250},
     grid: {
+      distance: 5,
       sizeX: 100,
       sizeY: 100,
       getTopLeftPoint: vi.fn(point => ({
@@ -432,6 +504,18 @@ function loadRuntime(options = {}) {
       controlledObjects: new Map(),
       activate: vi.fn(),
       options: {name: "notes"},
+    },
+    sounds: {
+      controlled: [],
+      controlledObjects: new Map(),
+      activate: vi.fn(),
+      options: {name: "sounds"},
+      paletteCreateData: {
+        radius: 15,
+        volume: 0.5,
+        easing: true,
+        walls: true,
+      },
     },
   };
   globalThis.canvas.activeLayer = globalThis.canvas.tiles;
@@ -509,6 +593,12 @@ function loadRuntime(options = {}) {
       },
       get: id => actors.get(id),
     },
+    playlists: {
+      get contents() {
+        return Array.from(playlists.values());
+      },
+      get: id => playlists.get(id),
+    },
     scenes: {
       contents: [scene],
     },
@@ -553,6 +643,10 @@ function loadRuntime(options = {}) {
     KEYBINDING_PRECEDENCE: {
       PRIORITY: 42,
     },
+    AUDIO_FILE_EXTENSIONS: ["aac", "flac", "m4a", "mid", "mp3", "ogg", "opus", "wav", "webm"],
+    PLAYLIST_MODES: {
+      DISABLED: -1,
+    },
   };
 
   globalThis.CONFIG = {
@@ -593,6 +687,11 @@ function loadRuntime(options = {}) {
         },
       },
     },
+    audio: {
+      AudioHelper: {
+        hasAudioExtension: vi.fn(filename => /\.(?:aac|flac|m4a|mid|midi|mp3|ogg|opus|wav|webm)(?:$|[?#])/i.test(filename || "")),
+      },
+    },
     appv1: {
       api: {
         FormApplication: MockFormApplication,
@@ -627,6 +726,10 @@ function loadRuntime(options = {}) {
       Actor: {
         DEFAULT_ICON: "icons/svg/mystery-man.svg",
         create: vi.fn(async data => createActor(env, data)),
+      },
+      Playlist: {
+        canUserCreate: vi.fn(user => Boolean(user?.isGM)),
+        create: vi.fn(async data => createPlaylist(env, data)),
       },
     },
   };
@@ -680,6 +783,8 @@ function loadRuntime(options = {}) {
   env.api = runtime.__testables;
   env.createJournalEntry = data => createJournalEntry(env, data);
   env.createActor = data => createActor(env, data);
+  env.createPlaylist = data => createPlaylist(env, data);
+  env.createPlaylistSound = data => createPlaylistSound(data);
   env.createPage = data => createPage(data);
   env.createPlaceableDocument = (documentName, data) => createPlaceableDocument(documentName, data);
   env.createControlledPlaceable = (documentName, data) => createControlledPlaceable(documentName, data);
@@ -694,5 +799,7 @@ export {
   createJournalEntry,
   createPage,
   createPlaceableDocument,
+  createPlaylist,
+  createPlaylistSound,
   loadRuntime,
 };

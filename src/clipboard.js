@@ -7,12 +7,16 @@ const {
   _clipboardSerializeError,
 } = require("./diagnostics");
 const {
+  _clipboardCoerceAudioFile,
   _clipboardCoerceMediaFile,
   _clipboardCoercePdfFile,
+  _clipboardGetAudioKind,
   _clipboardGetFilenameFromUrl,
   _clipboardGetMediaKind,
+  _clipboardIsAudioMimeType,
   _clipboardIsPdfMimeType,
   _clipboardIsSupportedMediaBlob,
+  _clipboardLooksLikeAudioFilename,
   _clipboardLooksLikePdfFilename,
   _clipboardParseSupportedUrl,
 } = require("./media");
@@ -82,6 +86,23 @@ async function _clipboardExtractPdfBlob(clipItems) {
   return null;
 }
 
+async function _clipboardExtractAudioBlob(clipItems, {explicitAudioContext = false} = {}) {
+  for (const clipItem of clipItems || []) {
+    for (const fileType of clipItem.types) {
+      if (!_clipboardIsAudioMimeType(fileType)) continue;
+
+      const blob = await clipItem.getType(fileType);
+      const file = _clipboardCoerceAudioFile(blob, {
+        mimeType: fileType,
+        explicitAudioContext,
+      });
+      if (file) return file;
+    }
+  }
+
+  return null;
+}
+
 async function _clipboardReadClipboardText(clipItems, mimeType) {
   for (const clipItem of clipItems || []) {
     if (!clipItem.types.includes(mimeType)) continue;
@@ -126,6 +147,15 @@ function _clipboardLooksLikePdfUrl(value) {
   return _clipboardLooksLikePdfFilename(_clipboardGetFilenameFromUrl(url) || url);
 }
 
+function _clipboardLooksLikeAudioUrl(value, {explicitAudioContext = false} = {}) {
+  const url = _clipboardParseSupportedUrl(value);
+  if (!url) return false;
+  if (/^data:audio\//i.test(url)) return true;
+  return _clipboardLooksLikeAudioFilename(_clipboardGetFilenameFromUrl(url) || url, {
+    explicitAudioContext,
+  });
+}
+
 function _clipboardExtractPdfUrlFromUriList(text) {
   for (const line of (text || "").split(/\r?\n/)) {
     const candidate = line.trim();
@@ -143,6 +173,25 @@ function _clipboardExtractPdfUrlFromText(text) {
   if (!candidate || /\s/.test(candidate)) return null;
   const url = _clipboardParseSupportedUrl(candidate);
   return url && _clipboardLooksLikePdfUrl(url) ? url : null;
+}
+
+function _clipboardExtractAudioUrlFromUriList(text, {explicitAudioContext = false} = {}) {
+  for (const line of (text || "").split(/\r?\n/)) {
+    const candidate = line.trim();
+    if (!candidate || candidate.startsWith("#")) continue;
+
+    const url = _clipboardParseSupportedUrl(candidate);
+    if (url && _clipboardLooksLikeAudioUrl(url, {explicitAudioContext})) return url;
+  }
+
+  return null;
+}
+
+function _clipboardExtractAudioUrlFromText(text, {explicitAudioContext = false} = {}) {
+  const candidate = text?.trim();
+  if (!candidate || /\s/.test(candidate)) return null;
+  const url = _clipboardParseSupportedUrl(candidate);
+  return url && _clipboardLooksLikeAudioUrl(url, {explicitAudioContext}) ? url : null;
 }
 
 function _clipboardExtractImageUrlFromHtml(html) {
@@ -164,6 +213,21 @@ function _clipboardExtractPdfUrlFromHtml(html) {
       "";
     const url = _clipboardParseSupportedUrl(candidate.trim());
     if (url && _clipboardLooksLikePdfUrl(url)) return url;
+  }
+
+  return null;
+}
+
+function _clipboardExtractAudioUrlFromHtml(html, {explicitAudioContext = false} = {}) {
+  if (!html?.trim()) return null;
+
+  const documentFragment = new DOMParser().parseFromString(html, "text/html");
+  for (const audioElement of documentFragment.querySelectorAll("audio[src], audio source[src], a[href]")) {
+    const candidate = audioElement.getAttribute("src") ||
+      audioElement.getAttribute("href") ||
+      "";
+    const url = _clipboardParseSupportedUrl(candidate.trim());
+    if (url && _clipboardLooksLikeAudioUrl(url, {explicitAudioContext})) return url;
   }
 
   return null;
@@ -260,6 +324,52 @@ function _clipboardGetUrlBackedPdfInputCandidate(
   return null;
 }
 
+function _clipboardGetUrlBackedAudioInputCandidate(
+  {uriList = "", html = "", plainText = ""} = {},
+  {
+    uriListMessage,
+    htmlMessage,
+    plainTextMessage,
+    explicitAudioContext = false,
+  } = {}
+) {
+  const fallbackText = plainText || "";
+  const uriListUrl = _clipboardExtractAudioUrlFromUriList(uriList, {explicitAudioContext});
+  if (uriListUrl) {
+    return {
+      audioInput: {
+        url: uriListUrl,
+        text: fallbackText || uriListUrl,
+      },
+      message: uriListMessage,
+    };
+  }
+
+  const htmlUrl = _clipboardExtractAudioUrlFromHtml(html, {explicitAudioContext});
+  if (htmlUrl) {
+    return {
+      audioInput: {
+        url: htmlUrl,
+        text: fallbackText || htmlUrl,
+      },
+      message: htmlMessage,
+    };
+  }
+
+  const textUrl = _clipboardExtractAudioUrlFromText(fallbackText, {explicitAudioContext});
+  if (textUrl) {
+    return {
+      audioInput: {
+        url: textUrl,
+        text: fallbackText || textUrl,
+      },
+      message: plainTextMessage,
+    };
+  }
+
+  return null;
+}
+
 function _clipboardIsAnimationCapableUrl(url) {
   return Boolean(url && /\.(?:apng|avif|gif|webp|m4v|mp4|mpeg|mpg|ogg|ogv|webm)(?:$|[?#])/i.test(url));
 }
@@ -322,6 +432,24 @@ function _clipboardCreateLoggedPdfInput(pdfInput, message, details = undefined) 
   if (details) Object.assign(logDetails, details);
   _clipboardLog("debug", message, logDetails);
   return pdfInput;
+}
+
+function _clipboardCreateLoggedAudioInput(audioInput, message, details = undefined) {
+  const logDetails = {
+    audioInput: audioInput
+      ? {
+        source: audioInput.blob ? "blob" : "url",
+        name: audioInput.blob?.name || null,
+        type: audioInput.blob?.type || null,
+        size: audioInput.blob?.size ?? null,
+        url: audioInput.url || null,
+      }
+      : null,
+  };
+
+  if (details) Object.assign(logDetails, details);
+  _clipboardLog("debug", message, logDetails);
+  return audioInput;
 }
 
 function _clipboardExtractTextInputFromValues({plainText = "", html = ""} = {}) {
@@ -397,6 +525,39 @@ function _clipboardExtractPdfInputFromValues(
   return null;
 }
 
+function _clipboardExtractAudioInputFromValues(
+  {blob = null, uriList = "", html = "", plainText = ""} = {},
+  {
+    blobMessage,
+    uriListMessage,
+    htmlMessage,
+    plainTextMessage,
+    details,
+    explicitAudioContext = false,
+  } = {}
+) {
+  const audioBlob = _clipboardCoerceAudioFile(blob, {
+    filename: blob?.name,
+    mimeType: blob?.type,
+    explicitAudioContext,
+  });
+  if (audioBlob) return _clipboardCreateLoggedAudioInput({blob: audioBlob}, blobMessage, details);
+
+  const urlCandidate = _clipboardGetUrlBackedAudioInputCandidate({
+    uriList,
+    html,
+    plainText,
+  }, {
+    uriListMessage,
+    htmlMessage,
+    plainTextMessage,
+    explicitAudioContext,
+  });
+  if (urlCandidate) return _clipboardCreateLoggedAudioInput(urlCandidate.audioInput, urlCandidate.message, details);
+
+  return null;
+}
+
 async function _clipboardExtractImageInput(clipItems) {
   return _clipboardExtractImageInputFromValues({
     blob: await _clipboardExtractImageBlob(clipItems),
@@ -408,6 +569,21 @@ async function _clipboardExtractImageInput(clipItems) {
     uriListMessage: "Resolved media input from async clipboard uri-list",
     htmlMessage: "Resolved media input from async clipboard HTML",
     plainTextMessage: "Resolved media input from async clipboard plain text",
+  });
+}
+
+async function _clipboardExtractAudioInput(clipItems, {explicitAudioContext = false} = {}) {
+  return _clipboardExtractAudioInputFromValues({
+    blob: await _clipboardExtractAudioBlob(clipItems, {explicitAudioContext}),
+    uriList: await _clipboardReadClipboardText(clipItems, "text/uri-list"),
+    html: await _clipboardReadClipboardText(clipItems, "text/html"),
+    plainText: await _clipboardReadClipboardText(clipItems, "text/plain"),
+  }, {
+    blobMessage: "Resolved audio input from async clipboard file data",
+    uriListMessage: "Resolved audio input from async clipboard uri-list",
+    htmlMessage: "Resolved audio input from async clipboard HTML",
+    plainTextMessage: "Resolved audio input from async clipboard plain text URL",
+    explicitAudioContext,
   });
 }
 
@@ -471,6 +647,39 @@ function _clipboardExtractPdfBlobFromDataTransfer(dataTransfer) {
   return null;
 }
 
+function _clipboardExtractAudioBlobFromDataTransfer(dataTransfer, {explicitAudioContext = false} = {}) {
+  for (const item of dataTransfer?.items || []) {
+    if (item.kind !== "file") continue;
+
+    const file = item.getAsFile();
+    const typedFile = _clipboardCoerceAudioFile(file, {
+      filename: file?.name,
+      mimeType: item.type,
+      explicitAudioContext,
+    });
+    if (typedFile && _clipboardGetAudioKind({
+      blob: typedFile,
+      filename: typedFile.name,
+      explicitAudioContext,
+    })) return typedFile;
+  }
+
+  for (const file of dataTransfer?.files || []) {
+    const typedFile = _clipboardCoerceAudioFile(file, {
+      filename: file?.name,
+      mimeType: file?.type,
+      explicitAudioContext,
+    });
+    if (typedFile && _clipboardGetAudioKind({
+      blob: typedFile,
+      filename: typedFile.name,
+      explicitAudioContext,
+    })) return typedFile;
+  }
+
+  return null;
+}
+
 function _clipboardReadDataTransferText(dataTransfer, mimeType) {
   return dataTransfer?.getData?.(mimeType) || "";
 }
@@ -510,6 +719,24 @@ function _clipboardExtractPdfInputFromDataTransfer(dataTransfer) {
     uriListMessage: "Resolved PDF input from paste/drop uri-list",
     htmlMessage: "Resolved PDF input from paste/drop HTML",
     plainTextMessage: "Resolved PDF input from paste/drop plain text URL",
+    details: {
+      dataTransfer: _clipboardDescribeDataTransfer(dataTransfer),
+    },
+  });
+}
+
+function _clipboardExtractAudioInputFromDataTransfer(dataTransfer, {explicitAudioContext = false} = {}) {
+  return _clipboardExtractAudioInputFromValues({
+    blob: _clipboardExtractAudioBlobFromDataTransfer(dataTransfer, {explicitAudioContext}),
+    uriList: _clipboardReadDataTransferText(dataTransfer, "text/uri-list"),
+    html: _clipboardReadDataTransferText(dataTransfer, "text/html"),
+    plainText: _clipboardReadDataTransferText(dataTransfer, "text/plain"),
+  }, {
+    blobMessage: "Resolved audio input from paste/drop file data",
+    uriListMessage: "Resolved audio input from paste/drop uri-list",
+    htmlMessage: "Resolved audio input from paste/drop HTML",
+    plainTextMessage: "Resolved audio input from paste/drop plain text URL",
+    explicitAudioContext,
     details: {
       dataTransfer: _clipboardDescribeDataTransfer(dataTransfer),
     },
@@ -611,33 +838,44 @@ module.exports = {
   _clipboardReadClipboardItems,
   _clipboardExtractImageBlob,
   _clipboardExtractPdfBlob,
+  _clipboardExtractAudioBlob,
   _clipboardReadClipboardText,
   _clipboardExtractTextInput,
   _clipboardExtractImageUrlFromUriList,
   _clipboardExtractImageUrlFromText,
   _clipboardExtractImageUrlFromHtml,
   _clipboardLooksLikePdfUrl,
+  _clipboardLooksLikeAudioUrl,
   _clipboardExtractPdfUrlFromUriList,
   _clipboardExtractPdfUrlFromText,
   _clipboardExtractPdfUrlFromHtml,
+  _clipboardExtractAudioUrlFromUriList,
+  _clipboardExtractAudioUrlFromText,
+  _clipboardExtractAudioUrlFromHtml,
   _clipboardGetUrlBackedImageInputCandidate,
   _clipboardGetUrlBackedPdfInputCandidate,
+  _clipboardGetUrlBackedAudioInputCandidate,
   _clipboardIsAnimationCapableUrl,
   _clipboardIsLikelyRasterizedImageBlob,
   _clipboardShouldPreferUrlCandidateOverBlob,
   _clipboardCreateLoggedImageInput,
   _clipboardCreateLoggedPdfInput,
+  _clipboardCreateLoggedAudioInput,
   _clipboardExtractTextInputFromValues,
   _clipboardExtractImageInputFromValues,
   _clipboardExtractPdfInputFromValues,
+  _clipboardExtractAudioInputFromValues,
   _clipboardExtractImageInput,
   _clipboardExtractPdfInput,
+  _clipboardExtractAudioInput,
   _clipboardExtractImageBlobFromDataTransfer,
   _clipboardExtractPdfBlobFromDataTransfer,
+  _clipboardExtractAudioBlobFromDataTransfer,
   _clipboardReadDataTransferText,
   _clipboardExtractTextInputFromDataTransfer,
   _clipboardExtractImageInputFromDataTransfer,
   _clipboardExtractPdfInputFromDataTransfer,
+  _clipboardExtractAudioInputFromDataTransfer,
   _clipboardGetChatRootFromTarget,
   _clipboardIsEditableTarget,
   _clipboardInsertTextAtTarget,

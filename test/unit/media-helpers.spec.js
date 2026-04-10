@@ -20,12 +20,39 @@ describe("media helpers", () => {
 
     it("extracts filename extensions", () => {
       expect(api._clipboardGetFilenameExtension("https://example.com/file.webp?x=1#hash")).toBe("webp");
+      expect(api._clipboardGetFilenameExtension("https://example.com/file?x=1#hash")).toBe("");
+      expect(api._clipboardGetFilenameExtension("filename")).toBe("");
       expect(api._clipboardGetFilenameExtension("")).toBe("");
     });
 
     it("gets file extensions from File and Blob inputs", () => {
       expect(api._clipboardGetFileExtension(new File(["x"], "portrait.JPG", {type: "image/jpeg"}))).toBe("jpg");
       expect(api._clipboardGetFileExtension(new Blob(["x"], {type: "image/svg+xml"}))).toBe("svg");
+    });
+
+    it("maps Foundry audio mime types and filenames", () => {
+      expect(api._clipboardGetAudioExtensionFromMimeType("audio/aac")).toBe("aac");
+      expect(api._clipboardGetAudioExtensionFromMimeType("audio/x-flac")).toBe("flac");
+      expect(api._clipboardGetAudioExtensionFromMimeType("audio/x-m4a")).toBe("m4a");
+      expect(api._clipboardGetAudioExtensionFromMimeType("audio/x-midi")).toBe("mid");
+      expect(api._clipboardGetAudioExtensionFromMimeType("audio/mp3")).toBe("mp3");
+      expect(api._clipboardGetAudioExtensionFromMimeType("audio/ogg")).toBe("ogg");
+      expect(api._clipboardGetAudioExtensionFromMimeType("audio/opus")).toBe("opus");
+      expect(api._clipboardGetAudioExtensionFromMimeType("audio/x-wav")).toBe("wav");
+      expect(api._clipboardGetAudioExtensionFromMimeType("audio/webm")).toBe("webm");
+      expect(api._clipboardGetAudioExtensionFromMimeType("application/octet-stream")).toBe("");
+
+      expect(api._clipboardGetAudioMimeTypeFromFilename("theme.aac")).toBe("audio/aac");
+      expect(api._clipboardGetAudioMimeTypeFromFilename("theme.flac")).toBe("audio/flac");
+      expect(api._clipboardGetAudioMimeTypeFromFilename("theme.m4a")).toBe("audio/mp4");
+      expect(api._clipboardGetAudioMimeTypeFromFilename("theme.mid")).toBe("audio/midi");
+      expect(api._clipboardGetAudioMimeTypeFromFilename("theme.mp3")).toBe("audio/mpeg");
+      expect(api._clipboardGetAudioMimeTypeFromFilename("theme.ogg")).toBe("audio/ogg");
+      expect(api._clipboardGetAudioMimeTypeFromFilename("theme.opus")).toBe("audio/opus");
+      expect(api._clipboardGetAudioMimeTypeFromFilename("theme.wav")).toBe("audio/wav");
+      expect(api._clipboardGetAudioMimeTypeFromFilename("theme.webm")).toBe("audio/webm");
+      expect(api._clipboardGetAudioMimeTypeFromFilename("theme")).toBe("audio/mpeg");
+      expect(api._clipboardGetMimeTypeFromFilename("clip.ogv")).toBe("video/ogg");
     });
 
     it("extracts decoded filenames from supported urls", () => {
@@ -61,6 +88,15 @@ describe("media helpers", () => {
       expect(api._clipboardLooksLikeVideoFilename("clip.txt")).toBe(false);
     });
 
+    it("detects supported audio filenames and keeps extension-only webm visual by default", () => {
+      expect(api._clipboardLooksLikeAudioFilename("song.ogg")).toBe(true);
+      expect(api._clipboardLooksLikeAudioFilename("song.midi")).toBe(true);
+      expect(api._clipboardLooksLikeAudioFilename("song.webm")).toBe(false);
+      expect(api._clipboardLooksLikeAudioFilename("song.webm", {explicitAudioContext: true})).toBe(true);
+      globalThis.foundry.audio.AudioHelper.hasAudioExtension.mockReturnValueOnce(true);
+      expect(api._clipboardLooksLikeAudioFilename("song.custom")).toBe(true);
+    });
+
     it("classifies image and video mime types", () => {
       expect(api._clipboardIsImageMimeType("image/png")).toBe(true);
       expect(api._clipboardIsImageMimeType("video/mp4")).toBe(false);
@@ -68,6 +104,7 @@ describe("media helpers", () => {
       expect(api._clipboardIsVideoMimeType("image/png")).toBe(false);
       expect(api._clipboardIsPdfMimeType("application/pdf; charset=binary")).toBe(true);
       expect(api._clipboardIsPdfMimeType("application/x-pdf")).toBe(true);
+      expect(api._clipboardIsAudioMimeType("audio/mpeg; charset=binary")).toBe(true);
       expect(api._clipboardIsMediaMimeType("video/mp4")).toBe(true);
       expect(api._clipboardIsMediaMimeType("text/plain")).toBe(false);
     });
@@ -76,8 +113,18 @@ describe("media helpers", () => {
       expect(api._clipboardGetMediaKind({mimeType: "video/mp4"})).toBe("video");
       expect(api._clipboardGetMediaKind({mimeType: "image/png"})).toBe("image");
       expect(api._clipboardGetMediaKind({filename: "file.webm"})).toBe("video");
+      expect(api._clipboardGetMediaKind({filename: "file.ogg"})).toBeNull();
+      expect(api._clipboardGetMediaKind({mimeType: "video/ogg", filename: "file.ogg"})).toBe("video");
       expect(api._clipboardGetMediaKind({src: "https://example.com/file.gif"})).toBe("image");
       expect(api._clipboardGetMediaKind({filename: "file.txt"})).toBeNull();
+    });
+
+    it("derives audio kind from mime type, filename, and explicit audio context", () => {
+      expect(api._clipboardGetAudioKind({mimeType: "audio/mpeg"})).toBe("audio");
+      expect(api._clipboardGetAudioKind({filename: "track.ogg"})).toBe("audio");
+      expect(api._clipboardGetAudioKind({filename: "track.webm"})).toBeNull();
+      expect(api._clipboardGetAudioKind({filename: "track.webm", explicitAudioContext: true})).toBe("audio");
+      expect(api._clipboardGetAudioKind({filename: "track.txt"})).toBeNull();
     });
 
     it("validates supported media blobs", () => {
@@ -96,6 +143,22 @@ describe("media helpers", () => {
       expect(typedPdf.name).toBe("handout.pdf");
       expect(typedPdf.type).toBe("application/pdf");
       expect(api._clipboardCoercePdfFile(new File(["x"], "notes.txt", {type: "text/plain"}))).toBeNull();
+    });
+
+    it("detects and coerces audio files separately from visual media files", () => {
+      const untypedMidi = new File(["midi"], "theme.midi", {type: ""});
+      const typedMidi = api._clipboardCoerceAudioFile(untypedMidi, {
+        explicitAudioContext: true,
+      });
+
+      expect(api._clipboardIsAudioBlob(new File(["mp3"], "theme.mp3", {type: ""}))).toBe(true);
+      expect(api._clipboardIsAudioBlob(new File(["webm"], "theme.webm", {type: ""}))).toBe(false);
+      expect(api._clipboardIsAudioBlob(new File(["webm"], "theme.webm", {type: ""}), {explicitAudioContext: true})).toBe(true);
+      expect(typedMidi).toBeInstanceOf(File);
+      expect(typedMidi.name).toBe("theme.mid");
+      expect(typedMidi.type).toBe("audio/midi");
+      expect(api._clipboardCoerceAudioFile(new File(["x"], "notes.txt", {type: "text/plain"}))).toBeNull();
+      expect(api._clipboardCoerceMediaFile(new File(["ogg"], "theme.ogg", {type: ""}))).toBeNull();
     });
 
     it("can coerce under-described media blobs into typed files", () => {
@@ -134,9 +197,12 @@ describe("media helpers", () => {
       expect(api._clipboardGetMimeTypeFromFilename("a.webp")).toBe("image/webp");
       expect(api._clipboardGetMimeTypeFromFilename("a.m4v")).toBe("video/mp4");
       expect(api._clipboardGetMimeTypeFromFilename("a.mpg")).toBe("video/mpeg");
-      expect(api._clipboardGetMimeTypeFromFilename("a.ogg")).toBe("video/ogg");
+      expect(api._clipboardGetMimeTypeFromFilename("a.ogg")).toBe("audio/ogg");
       expect(api._clipboardGetMimeTypeFromFilename("a.webm")).toBe("video/webm");
       expect(api._clipboardGetMimeTypeFromFilename("a.pdf")).toBe("application/pdf");
+      expect(api._clipboardGetMimeTypeFromFilename("a.mp3")).toBe("audio/mpeg");
+      expect(api._clipboardGetMimeTypeFromFilename("a.midi")).toBe("audio/midi");
+      expect(api._clipboardGetAudioMimeTypeFromFilename("a.webm")).toBe("audio/webm");
       expect(api._clipboardGetMimeTypeFromFilename("a.unknown")).toBe("image/png");
     });
 
@@ -764,6 +830,20 @@ describe("media helpers", () => {
       expect(api._clipboardExtractPdfUrlFromHtml("")).toBeNull();
     });
 
+    it("parses direct audio URLs from uri-list, HTML audio tags, and plain text", () => {
+      expect(api._clipboardLooksLikeAudioUrl("https://example.com/theme.ogg?download=1")).toBe(true);
+      expect(api._clipboardLooksLikeAudioUrl("https://example.com/theme.webm")).toBe(false);
+      expect(api._clipboardLooksLikeAudioUrl("https://example.com/theme.webm", {explicitAudioContext: true})).toBe(true);
+      expect(api._clipboardLooksLikeAudioUrl("https://example.com/theme.png")).toBe(false);
+      expect(api._clipboardExtractAudioUrlFromUriList("# comment\nhttps://example.com/theme.ogg")).toBe("https://example.com/theme.ogg");
+      expect(api._clipboardExtractAudioUrlFromText("https://example.com/theme.ogg")).toBe("https://example.com/theme.ogg");
+      expect(api._clipboardExtractAudioUrlFromText("https://example.com/theme one.ogg")).toBeNull();
+      expect(api._clipboardExtractAudioUrlFromHtml('<audio src="https://example.com/theme.ogg"></audio>')).toBe("https://example.com/theme.ogg");
+      expect(api._clipboardExtractAudioUrlFromHtml('<audio><source src="https://example.com/theme.mp3"></audio>')).toBe("https://example.com/theme.mp3");
+      expect(api._clipboardExtractAudioUrlFromHtml('<a href="https://example.com/theme.ogg">Audio</a>')).toBe("https://example.com/theme.ogg");
+      expect(api._clipboardExtractAudioUrlFromHtml("")).toBeNull();
+    });
+
     it("creates logged image input wrappers", () => {
       expect(api._clipboardCreateLoggedImageInput({url: "https://example.com/file.png"}, "message", {a: 1})).toEqual({
         url: "https://example.com/file.png",
@@ -823,6 +903,45 @@ describe("media helpers", () => {
 
       expect(api._clipboardExtractPdfInputFromValues({plainText: "not a url"})).toBeNull();
       expect(api._clipboardExtractPdfInputFromValues({plainText: "https://example.com/image.png"})).toBeNull();
+    });
+
+    it("extracts audio input from blobs and audio-like URL values", () => {
+      const audio = new File(["audio"], "theme.mp3", {type: "audio/mpeg"});
+      expect(api._clipboardExtractAudioInputFromValues({
+        blob: audio,
+      }, {
+        blobMessage: "blob",
+      })).toEqual({blob: audio});
+
+      expect(api._clipboardExtractAudioInputFromValues({
+        uriList: "https://example.com/theme.ogg",
+      }, {
+        uriListMessage: "uri",
+      })).toEqual({
+        url: "https://example.com/theme.ogg",
+        text: "https://example.com/theme.ogg",
+      });
+
+      expect(api._clipboardExtractAudioInputFromValues({
+        html: '<audio src="https://example.com/theme.mp3"></audio>',
+      }, {
+        htmlMessage: "html",
+      })).toEqual({
+        url: "https://example.com/theme.mp3",
+        text: "https://example.com/theme.mp3",
+      });
+
+      expect(api._clipboardExtractAudioInputFromValues({
+        plainText: "https://example.com/theme.webm",
+      })).toBeNull();
+      expect(api._clipboardExtractAudioInputFromValues({
+        plainText: "https://example.com/theme.webm",
+      }, {
+        explicitAudioContext: true,
+      })).toEqual({
+        url: "https://example.com/theme.webm",
+        text: "https://example.com/theme.webm",
+      });
     });
 
     it("extracts image input from html media sources", () => {
@@ -905,6 +1024,20 @@ describe("media helpers", () => {
       });
     });
 
+    it("extracts audio input from async clipboard file and text values", async () => {
+      const audio = new File(["audio"], "theme.mp3", {type: "audio/mpeg"});
+      await expect(api._clipboardExtractAudioInput([
+        createClipboardItem({"audio/mpeg": audio}),
+      ])).resolves.toEqual({blob: audio});
+
+      await expect(api._clipboardExtractAudioInput([
+        createClipboardItem({"text/plain": "https://example.com/theme.ogg"}),
+      ])).resolves.toEqual({
+        url: "https://example.com/theme.ogg",
+        text: "https://example.com/theme.ogg",
+      });
+    });
+
     it("prefers animated-media urls from async clipboard items over rasterized image blobs", async () => {
       const pngBlob = new File(["x"], "copied-image.png", {type: "image/png"});
       await expect(api._clipboardExtractImageInput([
@@ -972,6 +1105,38 @@ describe("media helpers", () => {
       expect(api._clipboardExtractPdfInputFromDataTransfer(urlTransfer)).toEqual({
         url: "https://example.com/handout.pdf",
         text: "https://example.com/handout.pdf",
+      });
+    });
+
+    it("extracts audio blobs and inputs from dataTransfer payloads", () => {
+      const audio = new File(["audio"], "theme", {type: ""});
+      const audioTransfer = createDataTransfer({
+        items: [{
+          kind: "file",
+          type: "audio/mpeg",
+          getAsFile: () => audio,
+        }],
+        files: [audio],
+      });
+      const blob = api._clipboardExtractAudioBlobFromDataTransfer(audioTransfer);
+      expect(blob).toBeInstanceOf(File);
+      expect(blob.name).toBe("theme.mp3");
+      expect(blob.type).toBe("audio/mpeg");
+
+      const filesOnly = createDataTransfer({
+        files: [new File(["audio"], "files-only.wav", {type: "audio/wav"})],
+      });
+      expect(api._clipboardExtractAudioInputFromDataTransfer(filesOnly).blob.name).toBe("files-only.wav");
+
+      const urlTransfer = createDataTransfer({
+        data: {
+          "text/uri-list": "https://example.com/theme.ogg",
+          "text/plain": "https://example.com/theme.ogg",
+        },
+      });
+      expect(api._clipboardExtractAudioInputFromDataTransfer(urlTransfer)).toEqual({
+        url: "https://example.com/theme.ogg",
+        text: "https://example.com/theme.ogg",
       });
     });
 

@@ -1550,18 +1550,577 @@ describe("paste and handler workflows", () => {
     });
   });
 
+  describe("Audio workflows", () => {
+    it("describes, names, and detects blocked direct audio URLs", () => {
+      expect(api._clipboardDescribeAudioInput(null)).toBeNull();
+      expect(api._clipboardDescribeAudioInput({
+        blob: new File(["audio"], "theme.mp3", {type: "audio/mpeg"}),
+      })).toMatchObject({
+        source: "blob",
+        name: "theme.mp3",
+        type: "audio/mpeg",
+      });
+      expect(api._clipboardDescribeAudioInput({
+        url: "https://example.com/theme.ogg",
+      })).toEqual({
+        source: "url",
+        url: "https://example.com/theme.ogg",
+      });
+      expect(api._clipboardGetAudioFilename({url: "https://example.com/source.midi"})).toBe("source.mid");
+      expect(api._clipboardGetAudioDisplayName({url: "https://example.com/source.mp3"})).toBe("source");
+
+      const blocked = new Error("Failed to download pasted audio URL from https://example.com/theme.mp3");
+      expect(api._clipboardIsBlockedDirectAudioUrlDownload({url: "https://example.com/theme.mp3"}, blocked)).toBe(true);
+      expect(api._clipboardCanUseExternalAudioUrlFallback({url: "https://example.com/theme.mp3"}, blocked)).toBe(true);
+      expect(api._clipboardCanUseExternalAudioUrlFallback({url: "https://example.com/theme.txt"}, blocked)).toBe(false);
+    });
+
+    it("resolves audio resources into the audio upload context and supports direct URL fallback", async () => {
+      const resource = await api._clipboardResolveAudioResource({
+        blob: new File(["audio"], "theme.mp3", {type: "audio/mpeg"}),
+      });
+
+      expect(resource).toMatchObject({
+        name: "theme",
+        src: expect.stringMatching(/^pasted_images\/theme-\d+\.mp3\?foundry-paste-eater=\d+$/),
+        external: false,
+      });
+
+      env.settingsValues.set("foundry-paste-eater.upload-path-organization", "context-user-month");
+      const organized = await api._clipboardResolveAudioResource({
+        blob: new File(["audio"], "organized.wav", {type: "audio/wav"}),
+      });
+      expect(organized.src).toMatch(/^pasted_images\/audio\/user-1\/\d{4}-\d{2}\/organized-\d+\.wav\?foundry-paste-eater=\d+$/);
+
+      globalThis.fetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      await expect(api._clipboardResolveAudioResource({
+        url: "https://example.com/theme.ogg",
+      })).resolves.toEqual({
+        name: "theme",
+        src: "https://example.com/theme.ogg",
+        external: true,
+      });
+    });
+
+    it("posts chat audio cards by default and can set ChatMessage.sound", async () => {
+      const defaultPost = api._clipboardHandleChatAudioInput({
+        blob: new File(["audio"], "chat.mp3", {type: "audio/mpeg"}),
+      });
+      env.dialogInstances.at(-1).data.close();
+      await expect(defaultPost).resolves.toBe(true);
+
+      let message = globalThis.game.messages.contents.at(-1);
+      expect(message.content).toContain("foundry-paste-eater-chat-audio-message");
+      expect(message.content).toContain("<audio");
+      expect(message.sound).toBeUndefined();
+
+      const soundPost = api._clipboardHandleChatAudioInput({
+        blob: new File(["audio"], "notify.mp3", {type: "audio/mpeg"}),
+      });
+      env.dialogInstances.at(-1).data.buttons.sound.callback();
+      await expect(soundPost).resolves.toBe(true);
+
+      message = globalThis.game.messages.contents.at(-1);
+      expect(message.content).toContain("foundry-paste-eater-chat-audio-message");
+      expect(message.sound).toMatch(/^pasted_images\/notify-\d+\.mp3\?foundry-paste-eater=\d+$/);
+    });
+
+    it("annotates chat audio handling failures", async () => {
+      const chatAudio = api._clipboardHandleChatAudioInput({
+        url: "https://example.com/not-audio.txt",
+      });
+      env.dialogInstances.at(-1).data.close();
+      globalThis.fetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: () => "text/plain",
+        },
+        blob: async () => new Blob(["x"], {type: "text/plain"}),
+      });
+
+      await expect(chatAudio).rejects.toMatchObject({
+        clipboardContentSummary: "audio",
+      });
+    });
+
+    it("returns false when chat audio handling is disabled or has no resource", async () => {
+      env.settingsValues.set("foundry-paste-eater.enable-chat-media", false);
+      await expect(api._clipboardHandleChatAudioInput({
+        blob: new File(["audio"], "chat.wav", {type: "audio/wav"}),
+      })).resolves.toBe(false);
+      env.settingsValues.set("foundry-paste-eater.enable-chat-media", true);
+
+      const noResource = api._clipboardHandleChatAudioInput({});
+      env.dialogInstances.at(-1).data.close();
+      await expect(noResource).resolves.toBe(false);
+    });
+
+    it("creates AmbientSound documents with default and loop prompt behaviors", async () => {
+      const defaultSound = api._clipboardHandleCanvasAudioInput({
+        blob: new File(["audio"], "ambient.mp3", {type: "audio/mpeg"}),
+      });
+      env.dialogInstances.at(-1).data.close();
+      await expect(defaultSound).resolves.toBe(true);
+
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("AmbientSound", [
+        expect.objectContaining({
+          name: "ambient",
+          path: expect.stringMatching(/^pasted_images\/ambient-\d+\.mp3\?foundry-paste-eater=\d+$/),
+          x: 150,
+          y: 250,
+          repeat: false,
+          hidden: false,
+          radius: 15,
+          volume: 0.5,
+          easing: true,
+          walls: true,
+        }),
+      ]);
+
+      const loopSound = api._clipboardHandleCanvasAudioInput({
+        blob: new File(["audio"], "loop.ogg", {type: "audio/ogg"}),
+      });
+      env.dialogInstances.at(-1).data.buttons.loop.callback();
+      await expect(loopSound).resolves.toBe(true);
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenLastCalledWith("AmbientSound", [
+        expect.objectContaining({
+          name: "loop",
+          repeat: true,
+        }),
+      ]);
+    });
+
+    it("adds audio to targeted playlists and creates the default Pasted Audio playlist inside playlist UI", async () => {
+      const playlist = env.createPlaylist({id: "playlist-target", name: "Target Playlist"});
+      await expect(api._clipboardHandlePlaylistAudioInput({
+        blob: new File(["audio"], "playlist.mp3", {type: "audio/mpeg"}),
+      }, {
+        playlist,
+        inPlaylistUi: true,
+      })).resolves.toBe(true);
+
+      expect(playlist.createEmbeddedDocuments).toHaveBeenCalledWith("PlaylistSound", [
+        expect.objectContaining({
+          name: "playlist",
+          path: expect.stringMatching(/^pasted_images\/playlist-\d+\.mp3\?foundry-paste-eater=\d+$/),
+        }),
+      ]);
+
+      await expect(api._clipboardHandlePlaylistAudioInput({
+        blob: new File(["audio"], "default.mp3", {type: "audio/mpeg"}),
+      }, {
+        inPlaylistUi: true,
+      })).resolves.toBe(true);
+
+      expect(globalThis.foundry.documents.Playlist.create).toHaveBeenCalledWith({
+        name: "Pasted Audio",
+        mode: -1,
+      });
+      const defaultPlaylist = globalThis.game.playlists.contents.find(entry => entry.name === "Pasted Audio");
+      expect(defaultPlaylist.sounds.contents.at(-1)).toMatchObject({
+        name: "default",
+        path: expect.stringMatching(/^pasted_images\/default-\d+\.mp3\?foundry-paste-eater=\d+$/),
+      });
+    });
+
+    it("updates targeted PlaylistSound documents instead of adding new sounds", async () => {
+      const playlist = env.createPlaylist({
+        id: "playlist-update",
+        sounds: [{id: "sound-update", name: "Existing", path: "old.mp3"}],
+      });
+      const [playlistSound] = playlist.sounds.contents;
+
+      await expect(api._clipboardHandlePlaylistAudioInput({
+        blob: new File(["audio"], "replacement.mp3", {type: "audio/mpeg"}),
+      }, {
+        playlistSound,
+        inPlaylistUi: true,
+      })).resolves.toBe(true);
+
+      expect(playlistSound.update).toHaveBeenCalledWith({
+        path: expect.stringMatching(/^pasted_images\/replacement-\d+\.mp3\?foundry-paste-eater=\d+$/),
+      });
+      expect(playlist.createEmbeddedDocuments).not.toHaveBeenCalled();
+    });
+
+    it("fills focused audio fields from uploaded audio resources", async () => {
+      const root = document.createElement("form");
+      root.id = "AmbientSoundConfig-2";
+      root.className = "application sheet ambient-sound";
+      root.innerHTML = '<file-picker name="path"><input type="text" value=""></file-picker>';
+      document.body.append(root);
+      const ambientSound = env.createPlaceableDocument("AmbientSound", {id: "ambient-field", path: ""});
+      globalThis.foundry.applications.instances = new Map([[root.id, {
+        id: root.id,
+        object: ambientSound,
+      }]]);
+      const field = root.querySelector("input");
+
+      await expect(api._clipboardHandleAudioFieldInput({
+        blob: new File(["audio"], "field.mp3", {type: "audio/mpeg"}),
+      }, field)).resolves.toBe(true);
+
+      expect(field.value).toMatch(/^pasted_images\/field-\d+\.mp3\?foundry-paste-eater=\d+$/);
+    });
+
+    it("preflights playlist permissions before uploading audio", async () => {
+      const playlist = env.createPlaylist({id: "playlist-locked", isOwner: false});
+      globalThis.game.user.isGM = false;
+
+      await expect(api._clipboardHandlePlaylistAudioInput({
+        blob: new File(["audio"], "locked.mp3", {type: "audio/mpeg"}),
+      }, {
+        playlist,
+        inPlaylistUi: true,
+      })).rejects.toMatchObject({
+        message: "You do not have permission to add sounds to that playlist.",
+        clipboardContentSummary: "audio (audio/mpeg)",
+      });
+      expect(env.MockFilePicker.upload).not.toHaveBeenCalled();
+    });
+
+    it("covers audio helper fallbacks that avoid accidental filename and dialog assumptions", async () => {
+      const anonymousBlob = new Blob(["audio"], {type: ""});
+      expect(api._clipboardDescribeAudioInput({blob: anonymousBlob})).toMatchObject({
+        source: "blob",
+        name: null,
+        type: null,
+        size: 5,
+      });
+      expect(api._clipboardDescribeAudioInput({})).toEqual({
+        source: "url",
+        url: null,
+      });
+      expect(api._clipboardGetAudioFilename({
+        blob: new File(["audio"], "untitled", {type: "audio/mpeg"}),
+      })).toBe("untitled.mp3");
+      expect(api._clipboardGetAudioDisplayName({url: "https://example.com/"})).toBe("Pasted Audio");
+      expect(api._clipboardDescribeAttemptedAudioContent({})).toBe("audio");
+      expect(api._clipboardIsBlockedDirectAudioUrlDownload({
+        url: "https://example.com/theme.wav",
+      }, Object.assign(new Error("blocked"), {clipboardBlockedDirectAudioUrl: true}))).toBe(true);
+      await expect(api._clipboardResolveAudioResource(null)).resolves.toBeNull();
+
+      const OriginalDialog = globalThis.Dialog;
+      try {
+        delete globalThis.Dialog;
+        await expect(api._clipboardPromptChatAudioBehavior()).resolves.toEqual({playAsMessageSound: false});
+        await expect(api._clipboardPromptCanvasAudioBehavior()).resolves.toEqual({repeat: false});
+      } finally {
+        globalThis.Dialog = OriginalDialog;
+      }
+
+      const chatPrompt = api._clipboardPromptChatAudioBehavior();
+      const chatDialog = env.dialogInstances.at(-1);
+      chatDialog.data.buttons.card.callback();
+      chatDialog.data.buttons.sound.callback();
+      await expect(chatPrompt).resolves.toEqual({playAsMessageSound: false});
+
+      const canvasPrompt = api._clipboardPromptCanvasAudioBehavior();
+      const canvasDialog = env.dialogInstances.at(-1);
+      canvasDialog.data.buttons.sound.callback();
+      canvasDialog.data.buttons.loop.callback();
+      await expect(canvasPrompt).resolves.toEqual({repeat: false});
+    });
+
+    it("covers ambient sound palette defaults and ineligible canvas audio paths", async () => {
+      const focusTrap = document.createElement("input");
+      document.body.append(focusTrap);
+      focusTrap.focus();
+      expect(api._clipboardCanPasteAudioToCanvasContext({
+        requireCanvasFocus: true,
+        mousePos: {x: 100, y: 100},
+      })).toBe(false);
+
+      const originalGrid = globalThis.canvas.scene.grid;
+      const originalDimensions = globalThis.canvas.dimensions;
+      const originalCanvasGrid = globalThis.canvas.grid;
+      globalThis.canvas.scene.grid = {distance: 0};
+      globalThis.canvas.dimensions = {distance: 0};
+      globalThis.canvas.grid = {distance: 0};
+      expect(api._clipboardGetAmbientSoundFallbackRadius()).toBe(15);
+      globalThis.canvas.scene.grid = originalGrid;
+      globalThis.canvas.dimensions = originalDimensions;
+      globalThis.canvas.grid = originalCanvasGrid;
+
+      globalThis.foundry.utils.deepClone = vi.fn(data => ({...data, cloned: true}));
+      globalThis.canvas.sounds.paletteCreateData = vi.fn(({x, y}) => ({
+        x,
+        y,
+        radius: 9,
+        volume: 0.25,
+      }));
+      expect(api._clipboardGetAmbientSoundPaletteData({mousePos: {x: 1, y: 2}})).toMatchObject({
+        x: 1,
+        y: 2,
+        radius: 9,
+        volume: 0.25,
+        cloned: true,
+      });
+
+      globalThis.canvas.sounds.paletteCreateData = vi.fn(() => {
+        throw new Error("palette failed");
+      });
+      expect(api._clipboardGetAmbientSoundPaletteData({mousePos: {x: 1, y: 2}})).toEqual({});
+
+      globalThis.canvas.sounds.paletteCreateData = null;
+      expect(api._clipboardGetAmbientSoundPaletteData({mousePos: {x: 1, y: 2}})).toEqual({});
+
+      expect(api._clipboardCreateAmbientSoundData({
+        src: "audio.wav",
+      }, null, {
+        mousePos: {x: 5, y: 6},
+      })).toMatchObject({
+        name: "Pasted Audio",
+        path: "audio.wav",
+        x: 5,
+        y: 6,
+        repeat: false,
+      });
+
+      const created = await api._clipboardCreateAmbientSound({
+        src: "direct.wav",
+      }, null, {
+        mousePos: {x: 7, y: 8},
+      });
+      expect(created).toBe(true);
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenLastCalledWith("AmbientSound", [
+        expect.objectContaining({
+          name: "Pasted Audio",
+          path: "direct.wav",
+        }),
+      ]);
+
+      globalThis.canvas.ready = false;
+      await expect(api._clipboardHandleCanvasAudioInput({
+        blob: new File(["audio"], "ready.wav", {type: "audio/wav"}),
+      })).resolves.toBe(false);
+      globalThis.canvas.ready = true;
+
+      env.settingsValues.set("foundry-paste-eater.minimum-role-canvas-media", 4);
+      await expect(api._clipboardHandleCanvasAudioInput({
+        blob: new File(["audio"], "role.wav", {type: "audio/wav"}),
+      })).resolves.toBe(false);
+      env.settingsValues.set("foundry-paste-eater.minimum-role-canvas-media", 1);
+
+      await expect(api._clipboardHandleCanvasAudioInput({
+        blob: new File(["audio"], "ineligible.wav", {type: "audio/wav"}),
+      }, {
+        context: {
+          requireCanvasFocus: false,
+          mousePos: {x: -10, y: -10},
+        },
+      })).resolves.toBe(false);
+
+      const failedCanvasAudio = api._clipboardHandleCanvasAudioInput({
+        url: "https://example.com/not-audio.txt",
+      }, {
+        context: {
+          requireCanvasFocus: false,
+          mousePos: {x: 100, y: 100},
+        },
+      });
+      env.dialogInstances.at(-1).data.close();
+      globalThis.fetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: () => "text/plain",
+        },
+        blob: async () => new Blob(["x"], {type: "text/plain"}),
+      });
+      await expect(failedCanvasAudio).rejects.toMatchObject({
+        clipboardContentSummary: "audio",
+      });
+    });
+
+    it("covers playlist permission and fallback branches before audio upload", async () => {
+      globalThis.game.user.isGM = true;
+      expect(api._clipboardCanCreatePlaylist()).toBe(true);
+
+      globalThis.game.user.isGM = false;
+      expect(api._clipboardCanCreatePlaylist()).toBe(false);
+      globalThis.foundry.documents.Playlist.canUserCreate.mockReturnValueOnce(true);
+      expect(api._clipboardCanCreatePlaylist()).toBe(true);
+
+      const savedDocumentPlaylist = globalThis.foundry.documents.Playlist;
+      const savedGlobalPlaylist = globalThis.Playlist;
+      const savedConfigPlaylist = globalThis.CONFIG.Playlist;
+      try {
+        delete globalThis.foundry.documents.Playlist;
+        globalThis.Playlist = function GlobalPlaylist() {};
+        expect(api._clipboardGetPlaylistDocumentClass()).toBe(globalThis.Playlist);
+        delete globalThis.Playlist;
+        globalThis.CONFIG.Playlist = {documentClass: function ConfigPlaylist() {}};
+        expect(api._clipboardGetPlaylistDocumentClass()).toBe(globalThis.CONFIG.Playlist.documentClass);
+        globalThis.game.user.isGM = false;
+        delete globalThis.CONFIG.Playlist;
+        expect(api._clipboardCanCreatePlaylist()).toBe(false);
+      } finally {
+        globalThis.foundry.documents.Playlist = savedDocumentPlaylist;
+        globalThis.Playlist = savedGlobalPlaylist;
+        globalThis.CONFIG.Playlist = savedConfigPlaylist;
+      }
+
+      const savedPlaylists = globalThis.game.playlists;
+      try {
+        const valuesPlaylist = env.createPlaylist({id: "values-playlist", name: "Values Playlist"});
+        globalThis.game.playlists = {
+          values: () => [valuesPlaylist].values(),
+        };
+        expect(api._clipboardGetAllPlaylists()).toEqual([valuesPlaylist]);
+        globalThis.game.playlists = {};
+        expect(api._clipboardGetAllPlaylists()).toEqual([]);
+      } finally {
+        globalThis.game.playlists = savedPlaylists;
+      }
+
+      const existing = env.createPlaylist({
+        id: "pasted-audio-existing",
+        name: "Pasted Audio",
+      });
+      await expect(api._clipboardGetOrCreateDefaultAudioPlaylist()).resolves.toBe(existing);
+      existing.canUserModify = vi.fn(() => false);
+      existing.testUserPermission = vi.fn(() => false);
+      await expect(api._clipboardGetOrCreateDefaultAudioPlaylist()).rejects.toThrow("Pasted Audio");
+      existing.canUserModify = vi.fn(() => true);
+      existing.testUserPermission = vi.fn(() => true);
+
+      const PlaylistDocument = globalThis.foundry.documents.Playlist;
+      globalThis.game.user.isGM = true;
+      globalThis.game.playlists = {contents: []};
+      globalThis.foundry.documents.Playlist = {};
+      await expect(api._clipboardGetOrCreateDefaultAudioPlaylist()).rejects.toThrow("Playlist creation is unavailable");
+      globalThis.foundry.documents.Playlist = PlaylistDocument;
+      globalThis.game.playlists = savedPlaylists;
+
+      const unnamedSound = env.createPlaylistSound({
+        id: "unnamed",
+        path: "old.wav",
+      }, existing);
+      unnamedSound.name = "";
+      await expect(api._clipboardPopulatePlaylistSound(unnamedSound, {
+        src: "new.wav",
+        name: "New Sound",
+      })).resolves.toBe(true);
+      expect(unnamedSound.update).toHaveBeenCalledWith({
+        path: "new.wav",
+        name: "New Sound",
+      });
+
+      const lockedSound = env.createPlaylistSound({
+        id: "locked-sound",
+        isOwner: false,
+      }, env.createPlaylist({id: "locked-parent", isOwner: false}));
+      globalThis.game.user.isGM = false;
+      await expect(api._clipboardPopulatePlaylistSound(lockedSound, {
+        src: "locked.wav",
+      })).rejects.toThrow("update that playlist sound");
+
+      const lockedPlaylist = env.createPlaylist({id: "locked-add", isOwner: false});
+      await expect(api._clipboardAddAudioToPlaylist(lockedPlaylist, {
+        src: "locked.wav",
+      })).rejects.toThrow("add sounds to that playlist");
+
+      const badPlaylist = env.createPlaylist({id: "bad-add"});
+      globalThis.game.user.isGM = true;
+      badPlaylist.createEmbeddedDocuments = null;
+      await expect(api._clipboardAddAudioToPlaylist(badPlaylist, {
+        src: "bad.wav",
+      })).rejects.toThrow("Playlist sound creation is unavailable");
+
+      await expect(api._clipboardResolvePlaylistAudioTarget(null)).resolves.toBeNull();
+      await expect(api._clipboardHandlePlaylistAudioInput({
+        blob: new File(["audio"], "no-target.wav", {type: "audio/wav"}),
+      }, null)).resolves.toBe(false);
+
+      existing.canUserModify = vi.fn(() => false);
+      existing.testUserPermission = vi.fn(() => false);
+      globalThis.game.user.isGM = false;
+      await expect(api._clipboardHandlePlaylistAudioInput({
+        blob: new File(["audio"], "locked-default.wav", {type: "audio/wav"}),
+      }, {
+        inPlaylistUi: true,
+      })).rejects.toThrow("Pasted Audio");
+      expect(env.MockFilePicker.upload).not.toHaveBeenCalled();
+    });
+
+    it("covers focused audio field permission branches and error annotation", async () => {
+      expect(api._clipboardCanPopulateAudioFieldTarget(null)).toBe(false);
+
+      const chatTarget = {
+        documentName: "ChatMessage",
+        document: {isOwner: true},
+        field: document.createElement("input"),
+      };
+      expect(api._clipboardCanPopulateAudioFieldTarget(chatTarget)).toBe(true);
+      env.settingsValues.set("foundry-paste-eater.enable-chat-media", false);
+      expect(api._clipboardCanPopulateAudioFieldTarget(chatTarget)).toBe(false);
+      env.settingsValues.set("foundry-paste-eater.enable-chat-media", true);
+
+      const ambientTarget = {
+        documentName: "AmbientSound",
+        document: env.createPlaceableDocument("AmbientSound", {id: "ambient-field-target"}),
+        field: document.createElement("input"),
+      };
+      expect(api._clipboardCanPopulateAudioFieldTarget(ambientTarget)).toBe(true);
+
+      const playlist = env.createPlaylist({id: "field-playlist"});
+      const [playlistSound] = await playlist.createEmbeddedDocuments("PlaylistSound", [{
+        id: "field-sound",
+        name: "Field Sound",
+      }]);
+      expect(api._clipboardCanPopulateAudioFieldTarget({
+        documentName: "PlaylistSound",
+        document: playlistSound,
+        field: document.createElement("input"),
+      })).toBe(true);
+      expect(api._clipboardCanPopulateAudioFieldTarget({
+        documentName: "Unknown",
+        document: {},
+        field: document.createElement("input"),
+      })).toBe(false);
+
+      await expect(api._clipboardHandleAudioFieldInput({
+        blob: new File(["audio"], "field.wav", {type: "audio/wav"}),
+      }, null)).resolves.toBe(false);
+
+      globalThis.game.user.isGM = false;
+      globalThis.game.user.role = 0;
+      env.settingsValues.set("foundry-paste-eater.minimum-role-canvas-media", 4);
+      await expect(api._clipboardHandleAudioFieldInput({
+        blob: new File(["audio"], "blocked.wav", {type: "audio/wav"}),
+      }, ambientTarget)).resolves.toBe(false);
+      globalThis.game.user.isGM = true;
+      globalThis.game.user.role = 4;
+      env.settingsValues.set("foundry-paste-eater.minimum-role-canvas-media", 1);
+
+      globalThis.fetch.mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: () => "text/plain",
+        },
+        blob: async () => new Blob(["x"], {type: "text/plain"}),
+      });
+      await expect(api._clipboardHandleAudioFieldInput({
+        url: "https://example.com/not-audio.txt",
+      }, ambientTarget)).rejects.toMatchObject({
+        clipboardContentSummary: "audio",
+      });
+    });
+  });
+
   describe("clipboard-read orchestrators", () => {
     it("warns when no clipboard media exists", async () => {
       window.navigator.clipboard.read.mockResolvedValueOnce([]);
       await expect(api._clipboardReadAndPasteImage({notifyNoImage: true})).resolves.toBe(false);
-      expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith("Foundry Paste Eater: No clipboard media or PDF was available.");
+      expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith("Foundry Paste Eater: No clipboard media, PDF, or audio was available.");
     });
 
     it("warns when clipboard content has no supported media", async () => {
       window.navigator.clipboard.read.mockResolvedValueOnce([{types: ["text/plain"], getType: async () => ({text: async () => "plain"})}]);
       await expect(api._clipboardReadAndPasteImage({notifyNoImage: true})).resolves.toBe(false);
       expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith(
-        "Foundry Paste Eater: No supported media, PDF, or direct URL was found in the clipboard."
+        "Foundry Paste Eater: No supported media, PDF, audio, or direct URL was found in the clipboard."
       );
     });
 
@@ -1639,7 +2198,7 @@ describe("paste and handler workflows", () => {
       ]);
       await expect(api._clipboardReadAndPasteClipboardContent({notifyNoContent: true})).resolves.toBe(false);
       expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith(
-        "Foundry Paste Eater: No supported media, PDF, or text was found in the clipboard."
+        "Foundry Paste Eater: No supported media, PDF, audio, or text was found in the clipboard."
       );
     });
   });

@@ -1,3 +1,8 @@
+### Unreleased
+* Add audio paste and upload support for Foundry audio formats, including chat audio cards, optional `ChatMessage.sound`, canvas AmbientSound creation, PlaylistSound add/update flows, focused audio document fields, and direct audio URL fallbacks
+* Route organized audio uploads under the `audio` context and include AmbientSound, PlaylistSound, ChatMessage sound, and chat audio-card references in uploaded-media audit reporting
+* Expand unit and Playwright coverage for audio extraction, routing precedence, prompts, permissions, playlist behavior, focused fields, chat cards, and canvas AmbientSound creation
+
 ### 1.3.1
 * Mark the module as verified through Foundry V14.359 after running the full local release gate and Playwright smoke suite against a real V14 world
 * Fix V14 chat fallback insertion so blocked direct-media downloads and other text fallbacks land back in the ProseMirror chat editor correctly, even when another editable control owns the current selection

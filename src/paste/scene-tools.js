@@ -6,6 +6,7 @@ const {_clipboardDescribeFile, _clipboardLog} = require("../diagnostics");
 const {
   _clipboardReadClipboardItems,
   _clipboardExtractImageInput,
+  _clipboardExtractAudioInput,
   _clipboardExtractPdfInput,
   _clipboardExtractTextInput,
 } = require("../clipboard");
@@ -13,7 +14,7 @@ const {
   _clipboardCanUseScenePasteTool,
   _clipboardCanUseSceneUploadTool,
 } = require("../settings");
-const {_clipboardIsPdfBlob} = require("../media");
+const {_clipboardIsAudioBlob, _clipboardIsPdfBlob} = require("../media");
 const {
   _clipboardHandleImageInput,
   _clipboardHandleImageInputWithTextFallback,
@@ -24,12 +25,16 @@ const {
   _clipboardHandleCanvasPdfInput,
   _clipboardHandleChatPdfInput,
 } = require("./pdf-workflows");
+const {
+  _clipboardHandleCanvasAudioInput,
+  _clipboardHandleChatAudioInput,
+} = require("./audio-workflows");
 const {_clipboardExecutePasteWorkflow} = require("./workflow-runner");
 
 async function _clipboardReadAndPasteImage(options = {}) {
   const clipItems = await _clipboardReadClipboardItems();
   if (!clipItems?.length) {
-    if (options.notifyNoImage) ui.notifications.warn("Foundry Paste Eater: No clipboard media or PDF was available.");
+    if (options.notifyNoImage) ui.notifications.warn("Foundry Paste Eater: No clipboard media, PDF, or audio was available.");
     return false;
   }
 
@@ -39,9 +44,17 @@ async function _clipboardReadAndPasteImage(options = {}) {
     return _clipboardHandleCanvasPdfInput(pdfInput, options);
   }
 
+  const audioInput = await _clipboardExtractAudioInput(clipItems, {
+    explicitAudioContext: Boolean(options.explicitAudioContext || canvas?.activeLayer === canvas?.sounds),
+  });
+  if (audioInput) {
+    if (options.handleAudioInput) return options.handleAudioInput(audioInput);
+    return _clipboardHandleCanvasAudioInput(audioInput, options);
+  }
+
   const imageInput = await _clipboardExtractImageInput(clipItems);
   if (!imageInput) {
-    if (options.notifyNoImage) ui.notifications.warn("Foundry Paste Eater: No supported media, PDF, or direct URL was found in the clipboard.");
+    if (options.notifyNoImage) ui.notifications.warn("Foundry Paste Eater: No supported media, PDF, audio, or direct URL was found in the clipboard.");
     return false;
   }
 
@@ -68,6 +81,14 @@ async function _clipboardReadAndPasteClipboardContent(options = {}) {
     return _clipboardHandleCanvasPdfInput(pdfInput, options);
   }
 
+  const audioInput = await _clipboardExtractAudioInput(clipItems, {
+    explicitAudioContext: Boolean(options.explicitAudioContext || canvas?.activeLayer === canvas?.sounds),
+  });
+  if (audioInput) {
+    if (options.handleAudioInput) return options.handleAudioInput(audioInput);
+    return _clipboardHandleCanvasAudioInput(audioInput, options);
+  }
+
   const mediaInput = await _clipboardExtractImageInput(clipItems);
   if (mediaInput) {
     if (options.handleImageInput) return options.handleImageInput(mediaInput);
@@ -81,7 +102,7 @@ async function _clipboardReadAndPasteClipboardContent(options = {}) {
   }
 
   if (options.notifyNoContent) {
-    ui.notifications.warn("Foundry Paste Eater: No supported media, PDF, or text was found in the clipboard.");
+    ui.notifications.warn("Foundry Paste Eater: No supported media, PDF, audio, or text was found in the clipboard.");
   }
   return false;
 }
@@ -134,10 +155,20 @@ async function _clipboardChooseAndHandleMediaFile({emptyMessage, selectedMessage
 async function _clipboardOpenUploadPicker() {
   return _clipboardChooseAndHandleMediaFile({
     emptyMessage: "Upload picker closed without selecting a file.",
-    selectedMessage: "Selected a media or PDF file from the upload picker",
+    selectedMessage: "Selected a media, PDF, or audio file from the upload picker",
     handler: file => {
       if (_clipboardIsPdfBlob(file, {filename: file?.name, mimeType: file?.type})) {
         return _clipboardHandleCanvasPdfInput({blob: file}, {
+          contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS,
+        });
+      }
+
+      if (_clipboardIsAudioBlob(file, {
+        filename: file?.name,
+        mimeType: file?.type,
+        explicitAudioContext: canvas?.activeLayer === canvas?.sounds,
+      })) {
+        return _clipboardHandleCanvasAudioInput({blob: file}, {
           contextOptions: CLIPBOARD_IMAGE_SCENE_ACTION_CONTEXT_OPTIONS,
         });
       }
@@ -152,10 +183,14 @@ async function _clipboardOpenUploadPicker() {
 async function _clipboardOpenChatUploadPicker() {
   return _clipboardChooseAndHandleMediaFile({
     emptyMessage: "Chat upload picker closed without selecting a file.",
-    selectedMessage: "Selected a media or PDF file from the chat upload picker",
+    selectedMessage: "Selected a media, PDF, or audio file from the chat upload picker",
     handler: file => {
       if (_clipboardIsPdfBlob(file, {filename: file?.name, mimeType: file?.type})) {
         return _clipboardHandleChatPdfInput({blob: file});
+      }
+
+      if (_clipboardIsAudioBlob(file, {filename: file?.name, mimeType: file?.type})) {
+        return _clipboardHandleChatAudioInput({blob: file});
       }
 
       return require("./chat-media")._clipboardHandleChatImageBlob(file);
@@ -166,11 +201,11 @@ async function _clipboardOpenChatUploadPicker() {
 function _clipboardHandleScenePasteAction() {
   if (!_clipboardCanUseScenePasteTool()) return false;
   if (!navigator.clipboard?.read) {
-    ui.notifications.warn("Foundry Paste Eater: Direct clipboard reads are unavailable here. Use your browser's Paste action or the Upload Media/PDF tool instead.");
+    ui.notifications.warn("Foundry Paste Eater: Direct clipboard reads are unavailable here. Use your browser's Paste action or the Upload Media, PDF, or Audio tool instead.");
     return false;
   }
 
-  _clipboardLog("info", "Invoked scene Paste Media/PDF action.", {
+  _clipboardLog("info", "Invoked scene Paste Media, PDF, or Audio action.", {
     activeLayer: canvas?.activeLayer?.options?.name || null,
   });
   void _clipboardExecutePasteWorkflow(() => _clipboardReadAndPasteImage({
@@ -184,7 +219,7 @@ function _clipboardHandleScenePasteAction() {
 
 function _clipboardHandleSceneUploadAction() {
   if (!_clipboardCanUseSceneUploadTool()) return false;
-  _clipboardLog("info", "Invoked scene Upload Media/PDF action.", {
+  _clipboardLog("info", "Invoked scene Upload Media, PDF, or Audio action.", {
     activeLayer: canvas?.activeLayer?.options?.name || null,
   });
   void _clipboardExecutePasteWorkflow(() => _clipboardOpenUploadPicker(), {

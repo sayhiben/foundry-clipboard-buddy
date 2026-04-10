@@ -73,6 +73,16 @@
   gap: 0.2rem;
 }
 
+.foundry-paste-eater-chat-audio {
+  width: min(360px, 100%);
+}
+
+.foundry-paste-eater-chat-audio-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
 .foundry-paste-eater-chat-upload {
   flex: 0 0 auto;
   margin: 0;

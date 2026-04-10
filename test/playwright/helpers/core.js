@@ -743,7 +743,11 @@ async function cleanupClipboardRun(page, run) {
   try {
     await page.evaluate(async ({moduleId, run}) => {
       const messageIds = game.messages.contents
-        .filter(message => (message.content || "").includes(run.uploadFolder) || (message.content || "").includes(run.prefix))
+        .filter(message =>
+          (message.content || "").includes(run.uploadFolder) ||
+          (message.content || "").includes(run.prefix) ||
+          (message.sound || "").includes(run.uploadFolder)
+        )
         .map(message => message.id);
       for (const id of messageIds) {
         await game.messages.get(id)?.delete();
@@ -786,6 +790,29 @@ async function cleanupClipboardRun(page, run) {
         .map(tile => tile.id);
       if (tileIds.length) {
         await canvas.scene.deleteEmbeddedDocuments("Tile", tileIds);
+      }
+
+      const soundIds = canvas.scene.sounds.contents
+        .filter(sound =>
+          (sound.name || "").includes(run.prefix) ||
+          (sound.path || "").includes(run.uploadFolder)
+        )
+        .map(sound => sound.id);
+      if (soundIds.length) {
+        await canvas.scene.deleteEmbeddedDocuments("AmbientSound", soundIds);
+      }
+
+      const playlistIds = game.playlists.contents
+        .filter(playlist =>
+          (playlist.name || "").includes(run.prefix) ||
+          playlist.sounds.contents.some(sound =>
+            (sound.name || "").includes(run.prefix) ||
+            (sound.path || "").includes(run.uploadFolder)
+          )
+        )
+        .map(playlist => playlist.id);
+      for (const id of playlistIds) {
+        await game.playlists.get(id)?.delete();
       }
 
       const actorIds = game.actors.contents
@@ -1711,6 +1738,17 @@ async function getStateSnapshot(page) {
       x: note.x,
       y: note.y,
     })),
+    sounds: canvas.scene.sounds.contents.map(sound => ({
+      id: sound.id,
+      name: sound.name,
+      path: sound.path || "",
+      x: sound.x,
+      y: sound.y,
+      radius: sound.radius,
+      volume: sound.volume,
+      repeat: sound.repeat,
+      hidden: sound.hidden,
+    })),
     journals: game.journal.contents.map(entry => ({
       id: entry.id,
       name: entry.name,
@@ -1727,6 +1765,16 @@ async function getStateSnapshot(page) {
     messages: game.messages.contents.map(message => ({
       id: message.id,
       content: message.content || "",
+      sound: message.sound || "",
+    })),
+    playlists: game.playlists.contents.map(playlist => ({
+      id: playlist.id,
+      name: playlist.name,
+      sounds: playlist.sounds.contents.map(sound => ({
+        id: sound.id,
+        name: sound.name,
+        path: sound.path || "",
+      })),
     })),
   }));
 }

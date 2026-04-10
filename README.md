@@ -2,12 +2,15 @@
 
 # Foundry Paste Eater
 
-Foundry Paste Eater lets GMs and players paste or upload media, PDFs, and contextual text into:
+Foundry Paste Eater lets GMs and players paste or upload media, PDFs, audio, and contextual text into:
 - Tiles
 - Tokens
+- Ambient Sounds
 - Scene notes
 - Journal PDF pages
+- Playlists
 - Focused document art fields
+- Focused audio document fields
 - Chat
 
 The Foundry manifest title is `Foundry Paste Eater`.
@@ -40,6 +43,7 @@ Repository:
 - [Default Behavior Cheat Sheet](#default-behavior-cheat-sheet)
 - [Media Behavior By Context](#media-behavior-by-context)
 - [PDF Behavior By Context](#pdf-behavior-by-context)
+- [Audio Behavior By Context](#audio-behavior-by-context)
 - [Text Behavior By Context](#text-behavior-by-context)
 - [Chat Behavior](#chat-behavior)
 - [Scene Tools And Upload Fallbacks](#scene-tools-and-upload-fallbacks)
@@ -56,13 +60,14 @@ Repository:
 
 ## Quick Start
 
-1. Copy an image, video, PDF, direct URL, or plain text.
+1. Copy an image, video, PDF, audio file, direct URL, or plain text.
 2. Choose where the paste should go:
    - Focus a supported art field to update that field.
    - Focus a PDF Journal page `src` field to update that page.
-   - Focus the chat input to post media or PDFs to chat, or keep text as chat text.
-   - Focus the canvas to replace selected content, create new scene content, or create PDF scene notes.
-   - Use `Paste Media or PDF` or `Upload Media or PDF` from scene controls if you want an explicit scene action.
+   - Focus a PlaylistSound, AmbientSound, or ChatMessage audio field to update that field.
+   - Focus the chat input to post media, PDFs, or audio to chat, or keep text as chat text.
+   - Focus the canvas to replace selected content, create new scene content, create PDF scene notes, or create Ambient Sounds.
+   - Use `Paste Media, PDF, or Audio` or `Upload Media, PDF, or Audio` from scene controls if you want an explicit scene action.
 3. Paste with your normal browser gesture:
    `Ctrl+V` on Windows/Linux, `Cmd+V` on macOS, or your browser's Paste action.
 4. On a fresh install:
@@ -84,14 +89,14 @@ These are the first-run defaults the module ships with.
 | Minimum role for canvas text paste | `Player` |
 | Minimum role for chat media paste | `Player` |
 | Allow non-GMs to use scene controls | Enabled |
-| Enable chat media and PDF handling | Enabled |
+| Enable chat media, PDF, and audio handling | Enabled |
 | Enable chat upload button | Enabled |
 | Allow token creation from pasted media | Enabled |
 | Allow tile creation from pasted media | Enabled |
 | Allow token art replacement | Enabled |
 | Allow tile art replacement | Enabled |
-| Enable scene `Paste Media or PDF` tool | Enabled |
-| Enable scene `Upload Media or PDF` tool | Enabled |
+| Enable scene `Paste Media, PDF, or Audio` tool | Enabled |
+| Enable scene `Upload Media, PDF, or Audio` tool | Enabled |
 | Default empty-canvas paste target | `Active layer` |
 | Create backing Actors for pasted tokens | Enabled |
 | Backing Actor type for pasted tokens | `Ask each time` |
@@ -112,14 +117,16 @@ Foundry Paste Eater follows a simple routing model:
 1. Focus wins first.
    If a supported art field is focused, pasted media goes there before chat or canvas handling.
 2. Chat wins next.
-   If chat is focused, media and PDFs go to chat and plain text stays plain chat text.
+   If chat is focused, media, PDFs, and audio go to chat and plain text stays plain chat text.
 3. Canvas uses selection before creation.
    On the canvas, selected placeables are replaced before new scene media content is created.
 4. Plain text on the canvas is opt-in.
    When `Canvas text paste mode` is enabled, text creates or updates Journal-backed scene notes instead of chat content.
 5. PDFs use Journal pages.
    Pasted PDFs create world Journal PDF pages, with chat cards or scene Notes linking to those pages.
-6. Settings and permissions can change the defaults.
+6. Audio is contextual.
+   Pasted audio creates chat audio cards, Ambient Sounds, PlaylistSounds, or focused audio field values depending on the current target.
+7. Settings and permissions can change the defaults.
    Role minimums, feature toggles, selected-token image mode, and empty-canvas targeting all change what players experience.
 
 Normal keyboard canvas paste respects Foundry's copied-object buffer before this module creates anything. The explicit scene-control tools do not.
@@ -132,6 +139,9 @@ Normal keyboard canvas paste respects Foundry's copied-object buffer before this
 | Focus a token-style art field and paste an image or video | Update that field | Works for `texture.src` and `prototypeToken.texture.src` |
 | Focus chat and paste an image or video | Upload and post media to chat | Chat display mode controls preview style |
 | Focus chat and paste a PDF | Create a Journal PDF page and post a chat reference | Uses a thumbnail when available, otherwise a PDF icon |
+| Focus chat and paste audio | Prompt for a quiet audio card or a chat message sound | The default card uses browser audio controls and does not auto-play |
+| Focus a PlaylistSound, AmbientSound, or ChatMessage audio field and paste audio | Update that field | Only known audio document fields are targeted |
+| Paste audio in a Playlist UI context | Add or update a PlaylistSound | Falls back to a `Pasted Audio` playlist when no specific playlist is inferred |
 | Focus chat and paste plain text or a non-media URL | Keep normal chat text | The module does not swallow normal chat text |
 | Select a token and paste an image | Prompt for scene-only or actor-wide replacement when eligible; otherwise replace selected scene token art | Ineligible selections skip the prompt and stay scene-local |
 | Select a token and paste a video | Replace selected scene token art | Video always stays scene-local |
@@ -142,8 +152,9 @@ Normal keyboard canvas paste respects Foundry's copied-object buffer before this
 | Paste image or video on an empty canvas | Follow the active layer | Tokens create tokens; Tiles and Notes create tiles unless you override the setting |
 | Paste plain text on an empty canvas | No module action by default | Enable `Canvas text paste mode` for standalone notes |
 | Paste a PDF on an empty canvas | Create a Journal-backed scene Note | Uses the PDF preview when available, otherwise the default note icon |
-| Use scene `Paste Media or PDF` | Run an explicit scene media or PDF workflow | Never creates text notes from plain text |
-| Use scene `Upload Media or PDF` | Pick a local file and apply normal scene media or PDF rules | Never creates text notes from plain text |
+| Paste audio on the canvas | Prompt for an Ambient Sound or ambient loop | Scene tools use canvas-center fallback placement when needed |
+| Use scene `Paste Media, PDF, or Audio` | Run an explicit scene media, PDF, or audio workflow | Never creates text notes from plain text |
+| Use scene `Upload Media, PDF, or Audio` | Pick a local file and apply normal scene media, PDF, or audio rules | Never creates text notes from plain text |
 
 ## Media Behavior By Context
 
@@ -244,19 +255,38 @@ Pasted PDFs are stored as world Journal content, not as tiles or tokens.
 PDF Journal entries created from chat or canvas paste are shared so players can open the posted reference immediately. First-page previews are best-effort and dependency-free; when a preview cannot be generated, chat uses a PDF icon and canvas Notes use the default Journal note icon.
 Appending a PDF page to an existing selected scene Note preserves that Journal entry's current ownership instead of widening access to unrelated pages.
 
+## Audio Behavior By Context
+
+Audio is handled as a separate content kind from image/video media so formats such as `.ogg` and `.webm` can follow Foundry's actual audio rules without regressing visual paste behavior.
+
+Supported audio formats follow Foundry's runtime audio support: `.aac`, `.flac`, `.m4a`, `.mid`, `.mp3`, `.ogg`, `.opus`, `.wav`, and audio `.webm`. Pasted `.midi` filenames are normalized to `.mid` when a new upload filename is generated.
+
+| Audio action | Result |
+| --- | --- |
+| Paste audio into chat | Prompt for a quiet audio card or a chat message that also sets `ChatMessage.sound` |
+| Drag, drop, or upload audio into chat | Post the same chat audio card flow |
+| Paste audio on the canvas | Prompt for a non-repeating AmbientSound or a repeat-enabled ambient loop |
+| Paste audio in a Playlist UI context | Add to the targeted Playlist or PlaylistSound, or create/reuse a `Pasted Audio` playlist when no specific playlist can be inferred |
+| Paste audio into `PlaylistSound.path`, `AmbientSound.path`, or `ChatMessage.sound` | Upload and populate the focused field |
+| Paste audio into unsupported editable fields | Leave the field alone |
+
+Direct audio URLs are downloaded and uploaded when the browser allows it. If browser-side download is blocked for a clearly audio-like URL, audio contexts can use the original URL directly because Foundry audio sources can point at remote files.
+
 ## Chat Behavior
 
 | Chat action | Result |
 | --- | --- |
 | Paste an image or video | Upload and post a chat media message |
 | Paste a PDF | Create a Journal PDF page and post a chat PDF card |
+| Paste audio | Prompt for a quiet chat audio card or a chat message sound |
 | Paste a direct media URL | Download, upload, and post media when the browser allows it |
 | Paste a direct PDF URL | Download, upload, and post a Journal PDF reference when the browser allows it |
+| Paste a direct audio URL | Download and upload audio when possible, or use a clearly audio-like URL directly when browser download is blocked |
 | Paste a direct media URL from a host that blocks browser-side download | Leave the original URL text in chat instead of creating a broken or empty message |
 | Paste a direct PDF URL from a host that blocks browser-side download | Use the original URL in a Journal PDF page if the URL is clearly PDF-like |
 | Paste plain text or a non-media URL | Keep normal chat text |
-| Drag and drop media or PDFs into chat | Upload and post chat media or PDF references |
-| Use `Upload Chat Media or PDF` | Pick a local file and post it to chat |
+| Drag and drop media, PDFs, or audio into chat | Upload and post chat media, PDF, or audio references |
+| Use `Upload Chat Media, PDF, or Audio` | Pick a local file and post it to chat |
 
 Chat also supports three display modes:
 - `Full preview`
@@ -266,8 +296,8 @@ Chat also supports three display modes:
 ## Scene Tools And Upload Fallbacks
 
 The Tiles and Tokens controls add:
-- `Paste Media or PDF`
-- `Upload Media or PDF`
+- `Paste Media, PDF, or Audio`
+- `Upload Media, PDF, or Audio`
 
 Use these when:
 - you want an explicit scene action
@@ -277,14 +307,14 @@ Use these when:
 
 | Tool | Intended behavior |
 | --- | --- |
-| `Paste Media or PDF` | Media and PDFs only. Uses direct clipboard read, the manual paste prompt, or both depending on `Scene Paste Media prompt mode`. |
-| `Upload Media or PDF` | Media and PDFs only. Opens a file picker and then applies normal scene create-or-reference rules. |
+| `Paste Media, PDF, or Audio` | Media, PDFs, and audio only. Uses direct clipboard read, the manual paste prompt, or both depending on `Scene Paste Media prompt mode`. |
+| `Upload Media, PDF, or Audio` | Media, PDFs, and audio only. Opens a file picker and then applies normal scene create-or-reference rules. |
 
 Additional scene-tool rules:
 - These tools do not create Journal notes from plain text.
 - These tools do not defer to Foundry's copied-object buffer.
 - These tools can still work when normal canvas focus is not active.
-- `Paste Media or PDF` can fall back to a manual paste prompt so the browser's native `paste` event can finish the workflow.
+- `Paste Media, PDF, or Audio` can fall back to a manual paste prompt so the browser's native `paste` event can finish the workflow.
 
 ## Access, Ownership, And Permission Rules
 
@@ -294,8 +324,9 @@ Foundry Paste Eater has both role-based and real document-permission checks.
 | --- | --- |
 | Canvas media role minimum | Controls who can create or replace canvas media |
 | Canvas text role minimum | Controls who can create or update scene notes from pasted text and PDFs |
-| Chat media role minimum | Controls who can post pasted or uploaded media or PDFs into chat |
+| Chat media role minimum | Controls who can post pasted or uploaded media, PDFs, or audio into chat |
 | Non-GM scene controls | Non-GMs only see scene buttons when enabled and when they already meet the canvas-media role requirement |
+| Playlist changes | Require actual Foundry Playlist or PlaylistSound create/update permission |
 | Token replacement | Non-GMs must be able to update the token or its Actor |
 | Tile replacement | Non-GMs must be able to update the tile |
 | Actor-wide token image mode | Every selected token must be linked to a base Actor the user can update |
@@ -316,13 +347,13 @@ These are the settings most likely to change what your players expect.
 | `Canvas text paste mode` | `Scene notes` | Whether plain text on the canvas creates notes or is disabled |
 | `Scene Paste Media prompt mode` | `Auto` | Whether the explicit scene paste button uses direct read, always opens the prompt, or never opens the prompt |
 | `Chat media display` | `Thumbnail` | How uploaded chat media is rendered |
-| `Upload path organization` | `Context / user / month` | Whether uploads stay in one folder or are separated into `canvas`, `chat`, `document-art`, and `pdf` subfolders |
+| `Upload path organization` | `Context / user / month` | Whether uploads stay in one folder or are separated into `canvas`, `chat`, `document-art`, `pdf`, and `audio` subfolders |
 | `Allow token creation from pasted media` | Enabled | Whether empty-canvas token-targeted media can create new tokens |
 | `Allow tile creation from pasted media` | Enabled | Whether empty-canvas tile-targeted media can create new tiles |
 | `Allow token art replacement` | Enabled | Whether pasted media may replace selected token art |
 | `Allow tile art replacement` | Enabled | Whether pasted media may replace selected tile art |
-| `Enable chat media and PDF handling` | Enabled | Whether chat media/PDF paste, drag/drop, and upload are active |
-| `Enable chat upload button` | Enabled | Whether the explicit `Upload Chat Media or PDF` button is shown |
+| `Enable chat media, PDF, and audio handling` | Enabled | Whether chat media, PDF, and audio paste, drag/drop, and upload are active |
+| `Enable chat upload button` | Enabled | Whether the explicit `Upload Chat Media, PDF, or Audio` button is shown |
 | `Allow non-GMs to use scene controls` | Enabled | Whether non-GMs can see the scene control buttons when they otherwise qualify |
 
 ## Settings Reference
@@ -389,18 +420,18 @@ Open Foundry's Game Settings and look for the module settings and menu.
 
 ### Chat
 
-- `Enable chat media and PDF handling`
-  Master toggle for chat media/PDF paste, drag/drop, and upload behavior.
+- `Enable chat media, PDF, and audio handling`
+  Master toggle for chat media, PDF, and audio paste, drag/drop, and upload behavior.
 - `Enable chat upload button`
-  Controls whether the explicit `Upload Chat Media or PDF` button appears.
+  Controls whether the explicit `Upload Chat Media, PDF, or Audio` button appears.
 - `Chat media display`
   Chooses between full preview, thumbnail preview, or link-only chat posts.
 
 ### Scene tools
 
-- `Enable scene Paste Media or PDF tool`
+- `Enable scene Paste Media, PDF, or Audio tool`
   Controls whether the explicit scene-control paste button is shown.
-- `Enable scene Upload Media or PDF tool`
+- `Enable scene Upload Media, PDF, or Audio tool`
   Controls whether the explicit scene-control upload button is shown.
 - `Scene Paste Media prompt mode`
   Chooses whether the explicit scene-control paste button uses automatic browser behavior, always opens the manual paste prompt, or only uses direct clipboard reads.
@@ -540,7 +571,7 @@ worlds/<your-world>/pasted_images
 
 If you use S3-compatible storage and want lower retention costs, a sensible pattern is:
 - Keep a durable base prefix for long-lived Actor and sheet art.
-- Enable `Upload path organization` so chat, canvas, document-art, and PDF uploads land in separate subfolders.
+- Enable `Upload path organization` so chat, canvas, document-art, PDF, and audio uploads land in separate subfolders.
 - Apply backend lifecycle rules only to clearly ephemeral prefixes such as `chat/` or temporary canvas scratch uploads.
 
 Foundry Paste Eater does not delete uploads or manage retention policies itself. Storage cleanup remains a GM or storage-backend responsibility.
@@ -557,7 +588,7 @@ When the upload destination changes, the module records the old and new configur
 | Actor-wide selected-token image paste failed | At least one selected token was probably unlinked, actorless, or tied to an Actor the user could not update |
 | A direct media URL turned into normal text in chat | The remote host probably blocked browser-side download. Upload locally or use a CORS-friendly host |
 | A direct media URL did not create canvas content | The remote host probably blocked browser-side download, so the module failed cleanly instead of creating broken scene content |
-| The scene `Paste Media or PDF` button opened a prompt | This is expected when the prompt mode is `Always show prompt` or when direct clipboard reads could not provide usable media or PDF data in `Auto` mode |
+| The scene `Paste Media, PDF, or Audio` button opened a prompt | This is expected when the prompt mode is `Always show prompt` or when direct clipboard reads could not provide usable media, PDF, or audio data in `Auto` mode |
 | Players can browse or upload nowhere | Check `Game Settings -> Configure Permissions` for `Use File Browser` and `Upload Files`, then check backend storage credentials or filesystem access |
 | New media became a token when you expected a tile | `Default empty-canvas paste target` is probably set to `Active layer` or `Token`. With the shipped default, empty-canvas paste on the Tokens layer creates tokens |
 
@@ -568,38 +599,40 @@ When the upload destination changes, the module records the old and new configur
 Direct clipboard reads are stricter than normal browser paste events. On raw IP addresses, insecure origins, or other untrusted contexts:
 
 - `navigator.clipboard.read()` may be blocked
-- the scene-control `Paste Media or PDF` action may warn or fall back to its manual prompt
+- the scene-control `Paste Media, PDF, or Audio` action may warn or fall back to its manual prompt
 - normal browser paste events may still work
-- `Upload Media or PDF` and chat upload remain the safest fallback
+- `Upload Media, PDF, or Audio` and chat upload remain the safest fallback
 
 ### Firefox
 
 Modern Firefox is much more usable than older versions for clipboard media workflows, but clipboard permission behavior can still differ from Chromium browsers. If direct clipboard reads prompt or fail, browser paste events and upload fallbacks should still cover the main workflows.
 
-### Remote media and PDF URLs
+### Remote media, PDF, and audio URLs
 
-Direct media and PDF URLs are downloaded in the browser before upload when possible. If a remote host blocks that browser-side download:
+Direct media, PDF, and audio URLs are downloaded in the browser before upload when possible. If a remote host blocks that browser-side download:
 - canvas paste will warn instead of creating broken tiles or tokens
 - chat paste will leave the original URL text in the input instead of creating a broken or empty media message
 - focused art fields may fall back to the original URL when that media kind is supported there
 - clearly PDF-like URLs can still be used as external Journal PDF page sources
+- clearly audio-like URLs can still be used directly in chat audio, AmbientSound, PlaylistSound, or known audio field contexts
 - the safest workaround is to upload the file locally or use a host that allows browser-side downloads
 
 ## Supported Input Types
 
 - Images, including animated formats such as `.gif` and `.webp`
-- Browser-supported video formats such as `.webm`, `.mp4`, `.m4v`, `.mpeg`, `.mpg`, `.ogg`, and `.ogv`
+- Browser-supported video formats such as `.webm`, `.mp4`, `.m4v`, `.mpeg`, `.mpg`, and `.ogv`
 - PDFs from local files or clearly PDF-like direct URLs
+- Foundry-supported audio formats such as `.aac`, `.flac`, `.m4a`, `.mid`, `.mp3`, `.ogg`, `.opus`, `.wav`, and audio `.webm`
 - Direct media URLs
-- Clipboard payloads that expose media or PDFs through `text/uri-list`, `text/plain`, HTML media tags, or HTML PDF links
+- Clipboard payloads that expose media, PDFs, or audio through `text/uri-list`, `text/plain`, HTML media/audio tags, or HTML document links
 - Plain text for contextual note creation when `Canvas text paste mode` is enabled
 
 When the browser exposes multiple `ClipboardItem` entries through `navigator.clipboard.read()`, the module scans all of them instead of assuming the first entry is the useful one.
 
 That means:
-- it can find media or PDFs in a later clipboard item even if an earlier one only contains text or another unsupported payload
+- it can find media, PDFs, or audio in a later clipboard item even if an earlier one only contains text or another unsupported payload
 - it checks the current clipboard snapshot, not clipboard history
-- it stops at the first usable PDF, media, or text result and does not paste multiple clipboard items at once
+- it stops at the first usable PDF, audio, media, or text result and does not paste multiple clipboard items at once
 
 ## Suggested README GIFs
 
@@ -649,7 +682,7 @@ These placeholder callouts are grouped by feature area so recorded media can be 
 > Focus chat, paste an image, then paste a video, so the README shows chat-only routing and inline media previews.
 
 > INSERT `12-chat-drag-drop-and-upload.gif` HERE
-> Drag media or a PDF into chat, then use the `Upload Chat Media or PDF` button to show the non-clipboard chat entry points.
+> Drag media, a PDF, or audio into chat, then use the `Upload Chat Media, PDF, or Audio` button to show the non-clipboard chat entry points.
 
 > INSERT `13-direct-media-url-chat.gif` HERE
 > Paste a direct media URL into chat so readers can see that remote media can become a normal uploaded chat post.
@@ -657,10 +690,10 @@ These placeholder callouts are grouped by feature area so recorded media can be 
 ### Scene controls and fallbacks
 
 > INSERT `14-scene-paste-prompt-fallback.gif` HERE
-> Click `Paste Media or PDF`, let the manual paste prompt appear, paste into it, and show the prompt closing after successful creation.
+> Click `Paste Media, PDF, or Audio`, let the manual paste prompt appear, paste into it, and show the prompt closing after successful creation.
 
 > INSERT `15-scene-upload-tool.gif` HERE
-> Use the scene `Upload Media or PDF` button so the fallback path is visible without relying on clipboard permissions.
+> Use the scene `Upload Media, PDF, or Audio` button so the fallback path is visible without relying on clipboard permissions.
 
 > INSERT `16-hidden-mode.gif` HERE
 > Hold `Ctrl` or `Cmd` with `Caps Lock`, paste new canvas media, and show the created tile or token as hidden.

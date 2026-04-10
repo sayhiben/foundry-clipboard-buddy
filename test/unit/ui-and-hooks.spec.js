@@ -282,7 +282,7 @@ describe("ui and hook integration helpers", () => {
 
       api._clipboardHandleScenePasteAction();
       expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith(
-        "Foundry Paste Eater: Direct clipboard reads are unavailable here. Use your browser's Paste action or the Upload Media/PDF tool instead."
+        "Foundry Paste Eater: Direct clipboard reads are unavailable here. Use your browser's Paste action or the Upload Media, PDF, or Audio tool instead."
       );
       Object.defineProperty(window.navigator, "clipboard", {
         configurable: true,
@@ -398,6 +398,36 @@ describe("ui and hook integration helpers", () => {
       expect(api._clipboardGetScenePastePrompt()).toBeNull();
     });
 
+    it("handles audio pasted into the scene paste prompt", async () => {
+      const prompt = api._clipboardOpenScenePastePrompt();
+      const target = prompt.querySelector("#foundry-paste-eater-scene-paste-target");
+      const file = new File(["audio"], "prompt.mp3", {type: "audio/mpeg"});
+      const event = new Event("paste", {bubbles: true, cancelable: true});
+      Object.defineProperty(event, "clipboardData", {
+        configurable: true,
+        value: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "audio/mpeg",
+            getAsFile: () => file,
+          }],
+          files: [file],
+        }),
+      });
+
+      target.dispatchEvent(event);
+      env.dialogInstances.at(-1).data.close();
+      await flush();
+
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("AmbientSound", [
+        expect.objectContaining({
+          name: "prompt",
+          path: expect.stringMatching(/^pasted_images\/prompt-\d+\.mp3\?foundry-paste-eater=\d+$/),
+        }),
+      ]);
+      expect(api._clipboardGetScenePastePrompt()).toBeNull();
+    });
+
     it("keeps the scene paste prompt open for unsupported pasted content", async () => {
       const prompt = api._clipboardOpenScenePastePrompt();
       const target = prompt.querySelector("#foundry-paste-eater-scene-paste-target");
@@ -413,7 +443,7 @@ describe("ui and hook integration helpers", () => {
       await flush();
 
       expect(globalThis.ui.notifications.warn).toHaveBeenCalledWith(
-        "Foundry Paste Eater: No supported media or PDF was found in that paste."
+        "Foundry Paste Eater: No supported media, PDF, or audio was found in that paste."
       );
       expect(api._clipboardGetScenePastePrompt()).toBe(prompt);
       api._clipboardCloseScenePastePrompt(prompt);
@@ -545,6 +575,25 @@ describe("ui and hook integration helpers", () => {
       ]);
     });
 
+    it("closes the scene paste prompt when direct read audio succeeds", async () => {
+      window.navigator.clipboard.read.mockResolvedValueOnce([
+        {types: ["audio/wav"], getType: async () => new File(["audio"], "direct.wav", {type: "audio/wav"})},
+      ]);
+
+      const prompt = api._clipboardOpenScenePastePrompt();
+      const pending = api._clipboardTryScenePastePromptDirectRead(prompt);
+      await flush();
+      env.dialogInstances.at(-1).data.close();
+      await expect(pending).resolves.toBe(true);
+      expect(api._clipboardGetScenePastePrompt()).toBeNull();
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("AmbientSound", [
+        expect.objectContaining({
+          name: "direct",
+          path: expect.stringMatching(/^pasted_images\/direct-\d+\.wav\?foundry-paste-eater=\d+$/),
+        }),
+      ]);
+    });
+
     it("keeps the scene paste prompt open when direct read media cannot be applied", async () => {
       const restoreImage = withMockImage();
       window.navigator.clipboard.read.mockResolvedValueOnce([
@@ -571,6 +620,21 @@ describe("ui and hook integration helpers", () => {
       const prompt = api._clipboardOpenScenePastePrompt();
       await expect(api._clipboardTryScenePastePromptDirectRead(prompt)).resolves.toBe(false);
       expect(prompt.querySelector("[data-role='message']").textContent).toContain("did not create a PDF note");
+      expect(api._clipboardGetScenePastePrompt()).toBe(prompt);
+
+      api._clipboardSetRuntimeState({locked: false});
+      api._clipboardCloseScenePastePrompt(prompt);
+    });
+
+    it("keeps the scene paste prompt open when direct read audio cannot be applied", async () => {
+      window.navigator.clipboard.read.mockResolvedValueOnce([
+        {types: ["audio/wav"], getType: async () => new File(["audio"], "direct.wav", {type: "audio/wav"})},
+      ]);
+      api._clipboardSetRuntimeState({locked: true});
+
+      const prompt = api._clipboardOpenScenePastePrompt();
+      await expect(api._clipboardTryScenePastePromptDirectRead(prompt)).resolves.toBe(false);
+      expect(prompt.querySelector("[data-role='message']").textContent).toContain("did not create an ambient sound");
       expect(api._clipboardGetScenePastePrompt()).toBe(prompt);
 
       api._clipboardSetRuntimeState({locked: false});
@@ -764,16 +828,18 @@ describe("ui and hook integration helpers", () => {
       const controls = {
         tiles: {tools: {}},
         tokens: {tools: {}},
+        sounds: {tools: {}},
         walls: {tools: {}},
       };
 
       api._clipboardAddSceneControlButtons(controls);
-      expect(controls.tiles.tools["foundry-paste-eater-paste"]).toMatchObject({title: "Paste Media or PDF", button: true});
+      expect(controls.tiles.tools["foundry-paste-eater-paste"]).toMatchObject({title: "Paste Media, PDF, or Audio", button: true});
       expect(controls.tiles.tools["foundry-paste-eater-paste"].onClick).toBeTypeOf("function");
       expect(controls.tiles.tools["foundry-paste-eater-paste"].onChange).toBe(controls.tiles.tools["foundry-paste-eater-paste"].onClick);
-      expect(controls.tokens.tools["foundry-paste-eater-upload"]).toMatchObject({title: "Upload Media or PDF", button: true});
+      expect(controls.tokens.tools["foundry-paste-eater-upload"]).toMatchObject({title: "Upload Media, PDF, or Audio", button: true});
       expect(controls.tokens.tools["foundry-paste-eater-upload"].onClick).toBeTypeOf("function");
       expect(controls.tokens.tools["foundry-paste-eater-upload"].onChange).toBe(controls.tokens.tools["foundry-paste-eater-upload"].onClick);
+      expect(controls.sounds.tools["foundry-paste-eater-paste"]).toMatchObject({title: "Paste Media, PDF, or Audio", button: true});
       expect(controls.walls.tools["foundry-paste-eater-paste"]).toBeUndefined();
     });
 
@@ -1049,6 +1115,32 @@ describe("ui and hook integration helpers", () => {
       expect(event.preventDefault).toHaveBeenCalled();
       expect(event.stopPropagation).toHaveBeenCalled();
       expect(globalThis.game.messages.contents.at(-1).content).toContain("foundry-paste-eater-chat-pdf-message");
+    });
+
+    it("handles dropped chat audio", async () => {
+      const root = document.createElement("form");
+      const audio = new File(["audio"], "drag.mp3", {type: "audio/mpeg"});
+      const event = {
+        currentTarget: root,
+        target: root,
+        dataTransfer: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "audio/mpeg",
+            getAsFile: () => audio,
+          }],
+          files: [audio],
+        }),
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+
+      api._clipboardOnChatDrop(event);
+      env.dialogInstances.at(-1).data.close();
+      await flush();
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(event.stopPropagation).toHaveBeenCalled();
+      expect(globalThis.game.messages.contents.at(-1).content).toContain("foundry-paste-eater-chat-audio-message");
     });
 
     it("ignores dropped chat media when disabled or unsupported", () => {
@@ -1483,6 +1575,37 @@ describe("ui and hook integration helpers", () => {
         canvasContextEligible: false,
       })).toEqual({route: "ignore-pdf-ineligible"});
       expect(api._clipboardResolveNativePasteRoute({
+        hasAudioInput: true,
+        hasAudioFieldTarget: true,
+      })).toEqual({route: "audio-field"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasAudioInput: true,
+        isChatTarget: true,
+        canUseChatMedia: true,
+      })).toEqual({route: "chat-audio"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasAudioInput: true,
+        isChatTarget: true,
+        canUseChatMedia: false,
+      })).toEqual({route: "ignore-chat-media-disabled"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasAudioInput: true,
+        isEditableTarget: true,
+        hasPlaylistTarget: true,
+      })).toEqual({route: "ignore-editable-audio"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasAudioInput: true,
+        hasPlaylistTarget: true,
+      })).toEqual({route: "playlist-audio"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasAudioInput: true,
+        canvasAudioEligible: true,
+      })).toEqual({route: "canvas-audio"});
+      expect(api._clipboardResolveNativePasteRoute({
+        hasAudioInput: true,
+        canvasAudioEligible: false,
+      })).toEqual({route: "ignore-audio-ineligible"});
+      expect(api._clipboardResolveNativePasteRoute({
         hasMediaInput: true,
         hasArtFieldTarget: true,
       })).toEqual({route: "art-field-media"});
@@ -1589,6 +1712,101 @@ describe("ui and hook integration helpers", () => {
       expect(globalThis.game.messages.contents.at(-1).content).toContain("foundry-paste-eater-chat-pdf-message");
     });
 
+    it("routes chat audio paste events through the audio chat pipeline", async () => {
+      const root = document.createElement("form");
+      root.setAttribute("data-foundry-paste-eater-chat-root", "true");
+      const input = document.createElement("textarea");
+      root.append(input);
+
+      const audio = new File(["audio"], "chat.mp3", {type: "audio/mpeg"});
+      const event = {
+        target: input,
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "audio/mpeg",
+            getAsFile: () => audio,
+          }],
+          files: [audio],
+        }),
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+
+      api._clipboardOnPaste(event);
+      env.dialogInstances.at(-1).data.close();
+      await flush();
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(globalThis.game.messages.contents.at(-1).content).toContain("foundry-paste-eater-chat-audio-message");
+    });
+
+    it("routes focused audio field paste events before playlist or canvas handling", async () => {
+      const root = document.createElement("form");
+      root.id = "AmbientSoundConfig-native";
+      root.className = "application sheet ambient-sound";
+      root.innerHTML = '<input type="text" name="path" value="">';
+      document.body.append(root);
+      const ambientSound = env.createPlaceableDocument("AmbientSound", {id: "native-audio-field", path: ""});
+      globalThis.foundry.applications.instances = new Map([[root.id, {
+        id: root.id,
+        object: ambientSound,
+      }]]);
+      const input = root.querySelector("input");
+      const audio = new File(["audio"], "field.wav", {type: "audio/wav"});
+      const event = {
+        target: input,
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "audio/wav",
+            getAsFile: () => audio,
+          }],
+          files: [audio],
+        }),
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+
+      api._clipboardOnPaste(event);
+      await flush();
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(input.value).toMatch(/^pasted_images\/field-\d+\.wav\?foundry-paste-eater=\d+$/);
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).not.toHaveBeenCalledWith("AmbientSound", expect.anything());
+    });
+
+    it("routes playlist audio paste events through PlaylistSound creation", async () => {
+      const playlist = env.createPlaylist({id: "native-playlist", name: "Native Playlist"});
+      const directory = document.createElement("div");
+      directory.id = "playlists";
+      directory.innerHTML = '<div data-playlist-id="native-playlist"><span>Native Playlist</span></div>';
+      document.body.append(directory);
+      const target = directory.querySelector("span");
+      const audio = new File(["audio"], "playlist.wav", {type: "audio/wav"});
+      const event = {
+        target,
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "audio/wav",
+            getAsFile: () => audio,
+          }],
+          files: [audio],
+        }),
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+
+      api._clipboardOnPaste(event);
+      await flush();
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(playlist.createEmbeddedDocuments).toHaveBeenCalledWith("PlaylistSound", [
+        expect.objectContaining({
+          name: "playlist",
+          path: expect.stringMatching(/^pasted_images\/playlist-\d+\.wav\?foundry-paste-eater=\d+$/),
+        }),
+      ]);
+    });
+
     it("routes canvas PDF paste events through the PDF note pipeline", async () => {
       document.querySelector(".game").focus();
       const pdf = new File(["pdf"], "canvas.pdf", {type: "application/pdf"});
@@ -1614,6 +1832,70 @@ describe("ui and hook integration helpers", () => {
           text: "canvas",
         }),
       ]);
+    });
+
+    it("routes canvas audio paste events through the AmbientSound pipeline", async () => {
+      document.querySelector(".game").focus();
+      const audio = new File(["audio"], "canvas.mp3", {type: "audio/mpeg"});
+      const event = {
+        target: document.querySelector(".game"),
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "audio/mpeg",
+            getAsFile: () => audio,
+          }],
+          files: [audio],
+        }),
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+
+      api._clipboardOnPaste(event);
+      env.dialogInstances.at(-1).data.close();
+      await flush();
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(globalThis.canvas.scene.createEmbeddedDocuments).toHaveBeenCalledWith("AmbientSound", [
+        expect.objectContaining({
+          name: "canvas",
+          path: expect.stringMatching(/^pasted_images\/canvas-\d+\.mp3\?foundry-paste-eater=\d+$/),
+        }),
+      ]);
+    });
+
+    it("ignores audio paste in unsupported editable targets and ineligible canvas contexts", () => {
+      const unsupportedEditable = document.createElement("textarea");
+      unsupportedEditable.dataset.edit = "path";
+      const editableAudioEvent = {
+        target: unsupportedEditable,
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "audio/wav",
+            getAsFile: () => new File(["audio"], "sheet.wav", {type: "audio/wav"}),
+          }],
+        }),
+        preventDefault: vi.fn(),
+      };
+      api._clipboardOnPaste(editableAudioEvent);
+      expect(editableAudioEvent.preventDefault).not.toHaveBeenCalled();
+
+      const ineligibleTarget = document.createElement("div");
+      globalThis.canvas.mousePosition = null;
+      const ineligibleAudioEvent = {
+        target: ineligibleTarget,
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "audio/wav",
+            getAsFile: () => new File(["audio"], "canvas.wav", {type: "audio/wav"}),
+          }],
+        }),
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+      api._clipboardOnPaste(ineligibleAudioEvent);
+      expect(ineligibleAudioEvent.preventDefault).not.toHaveBeenCalled();
     });
 
     it("ignores already-handled, empty, disabled-chat, and unsupported-editable paste events", () => {

@@ -125,6 +125,43 @@ function _clipboardCreateChatPdfContent({entry, page, pdfData = {}} = {}) {
   return figure.outerHTML;
 }
 
+function _clipboardCreateChatAudioContent(audioData = {}) {
+  const figure = document.createElement("figure");
+  figure.className = "foundry-paste-eater-chat-message foundry-paste-eater-chat-audio-message";
+
+  const audio = document.createElement("audio");
+  audio.className = "foundry-paste-eater-chat-audio";
+  audio.src = audioData.src || "";
+  audio.controls = true;
+  audio.preload = "metadata";
+  figure.append(audio);
+
+  const caption = document.createElement("figcaption");
+  caption.className = "foundry-paste-eater-chat-audio-caption";
+
+  const title = document.createElement("strong");
+  title.textContent = audioData.name || "Pasted Audio";
+  caption.append(title);
+
+  const linkContainer = document.createElement("div");
+  const openLink = document.createElement("a");
+  openLink.href = audioData.src || "";
+  openLink.target = "_blank";
+  openLink.rel = "noopener noreferrer";
+  openLink.textContent = "Open audio";
+  linkContainer.append(openLink);
+  caption.append(linkContainer);
+
+  if (audioData.external) {
+    const source = document.createElement("small");
+    source.textContent = "External audio URL";
+    caption.append(source);
+  }
+
+  figure.append(caption);
+  return figure.outerHTML;
+}
+
 function _clipboardGetFoundryGeneration() {
   const version = String(game?.release?.version || game?.version || "");
   const generation = Number.parseInt(version.split(".")[0], 10);
@@ -199,6 +236,32 @@ async function _clipboardCreatePdfChatMessage({entry, page, pdfData = {}} = {}) 
     : foundry.documents.ChatMessage.create(messageData);
 }
 
+async function _clipboardCreateAudioChatMessage({audioData = {}, playAsMessageSound = false} = {}) {
+  if (!audioData?.src) {
+    throw new Error("Cannot create a chat audio message without a usable audio path");
+  }
+
+  _clipboardLog("info", "Creating chat audio message", {
+    src: audioData.src || null,
+    name: audioData.name || null,
+    external: Boolean(audioData.external),
+    playAsMessageSound,
+  });
+  const messageData = {
+    content: _clipboardCreateChatAudioContent(audioData),
+    speaker: foundry.documents.ChatMessage.getSpeaker(),
+    user: game.user.id,
+  };
+  if (playAsMessageSound) {
+    messageData.sound = audioData.src;
+  }
+
+  const visibilityOptions = _clipboardGetChatMessageVisibilityOptions();
+  return visibilityOptions
+    ? foundry.documents.ChatMessage.create(messageData, visibilityOptions)
+    : foundry.documents.ChatMessage.create(messageData);
+}
+
 async function _clipboardPostChatImage(blob) {
   const destination = _clipboardGetUploadDestination({
     uploadContext: CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT,
@@ -213,7 +276,9 @@ module.exports = {
   _clipboardCreateChatMediaContent,
   _clipboardCreateJournalPageContentLink,
   _clipboardCreateChatPdfContent,
+  _clipboardCreateChatAudioContent,
   _clipboardCreateChatMessage,
   _clipboardCreatePdfChatMessage,
+  _clipboardCreateAudioChatMessage,
   _clipboardPostChatImage,
 };

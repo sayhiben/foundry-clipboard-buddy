@@ -7,7 +7,7 @@
     "foundry_target": "v13-v14.359"
   },
   "conversation": {
-    "intent": "Long-running coding, testing, support, release, CI-hardening, V14 compatibility, and unreleased PDF paste support thread for Foundry Paste Eater.",
+    "intent": "Long-running coding, testing, support, release, CI-hardening, V14 compatibility, unreleased PDF paste support, and unreleased audio paste support thread for Foundry Paste Eater.",
     "tags": {
       "domain": [
         "foundry",
@@ -19,7 +19,10 @@
         "storage",
         "testing",
         "pdf",
-        "journal"
+        "journal",
+        "audio",
+        "playlist",
+        "ambient-sound"
       ],
       "phase": [
         "implementation",
@@ -53,7 +56,11 @@
         "pdf-paste-support",
         "journal-pdf-pages",
         "chat-pdf-cards",
-        "canvas-pdf-notes"
+        "canvas-pdf-notes",
+        "audio-paste-support",
+        "playlist-sounds",
+        "ambient-sounds",
+        "chat-audio-cards"
       ],
       "future": [
         "owned-token-replacement-setting",
@@ -62,7 +69,8 @@
         "post-release-monitoring",
         "pdf-compendium-curation",
         "pdf-preview-enhancement",
-        "codex-skills-review-perspectives"
+        "codex-skills-review-perspectives",
+        "audio-playback-polish"
       ]
     }
   },
@@ -79,10 +87,11 @@
     "branch": "main",
     "package_version": "1.3.1",
     "latest_tag": "1.3.1",
-    "head_commit": "96868de",
-    "head_commit_subject": "Release 1.3.1",
+    "head_commit": "219eb0f",
+    "head_commit_subject": "Add PDF paste support",
     "worktree_clean": false,
     "modified_files": [
+      "CHANGELOG.md",
       "README.md",
       "TESTING.md",
       "foundry-paste-eater.css",
@@ -95,7 +104,6 @@
       "src/field-targets.js",
       "src/index.js",
       "src/media.js",
-      "src/notes.js",
       "src/paste/chat-media.js",
       "src/paste/scene-tools.js",
       "src/settings/schema.js",
@@ -109,22 +117,25 @@
       "src/ui/scene-controls.js",
       "src/workflows.js",
       "test/playwright/helpers/core.js",
-      "test/playwright/smoke.canvas-text.spec.js",
+      "test/playwright/smoke.art-fields.spec.js",
+      "test/playwright/smoke.canvas-media.spec.js",
       "test/playwright/smoke.chat.spec.js",
       "test/shared/behavior-scenarios.js",
+      "test/unit/diagnostics.spec.js",
       "test/unit/field-targets.spec.js",
       "test/unit/journal-and-upload.spec.js",
       "test/unit/media-helpers.spec.js",
       "test/unit/runtime/core.js",
+      "test/unit/runtime/documents.js",
       "test/unit/support.spec.js",
       "test/unit/ui-and-hooks.spec.js",
       "test/unit/workflows.spec.js"
     ],
     "untracked_paths": [
-      "src/paste/pdf-workflows.js",
-      "test/assets/test-document.pdf"
+      "src/paste/audio-workflows.js",
+      "test/assets/test-audio.wav"
     ],
-    "note": "Non-handoff repo state is intentionally dirty with unreleased PDF paste support work on top of 96868de (Release 1.3.1). No new release has been created for this PDF work. Handoff snapshot files under handoff/ remain excluded from repo-state parity checks."
+    "note": "Non-handoff repo state is intentionally dirty with unreleased audio paste support work on top of 219eb0f (Add PDF paste support). PDF paste support is now committed in 219eb0f. No new release has been created for this audio work. Handoff snapshot files under handoff/ remain excluded from repo-state parity checks."
   },
   "release_state": {
     "released_version": "1.3.1",
@@ -137,23 +148,24 @@
   },
   "validation_state": {
     "latest_local_release_pass": {
-      "command": "FOUNDRY_URL=http://127.0.0.1:30014 npm run verify:release",
+      "command": "npm run verify:release",
       "lint": "passed",
-      "unit_tests": "549 passed",
+      "unit_tests": "641 passed",
       "typecheck": "passed",
-      "build_runtime": "passed",
+      "build_runtime": "passed via copy step",
       "verify_bundle": "passed",
-      "copy_package_zip": "passed",
-      "smoke": "92 passed, 1 skipped",
+      "copy_package_zip": "copy step passed; zip was not created",
+      "smoke": "skipped because no reachable local Foundry runtime was found at http://127.0.0.1:30000",
       "verify_release": "passed",
-      "foundry_target": "V14.359"
+      "foundry_target": "not reached in this environment",
+      "note": "This release gate was run for unreleased audio paste support on top of committed PDF paste support; it did not create a release."
     },
     "latest_local_unit": {
-      "tests_passed": 598,
+      "tests_passed": 641,
       "coverage": {
-        "statements": 99.69,
+        "statements": 99.61,
         "functions": 100,
-        "branches": 86.35
+        "branches": 85.42
       }
     },
     "latest_manual_v14_exercises": [
@@ -163,7 +175,7 @@
     ],
     "latest_handoff_validation": {
       "script": "npm run handoff:validate",
-      "status": "passed after the unreleased PDF support handoff refresh"
+      "status": "passed after the 30014 live-smoke handoff refresh"
     },
     "ci": {
       "latest_successful_run": 24157148547,
@@ -192,6 +204,35 @@
       "foundry_container": "foundry-v14-dev",
       "release_created": false,
       "note": "This was a full local development validation for unreleased PDF paste support, not a new release."
+    },
+    "latest_audio_development_pass": {
+      "command": "npm run verify:release",
+      "lint": "passed",
+      "unit_tests": "641 passed",
+      "runtime_coverage": {
+        "statements": 99.61,
+        "functions": 100,
+        "branches": 85.42
+      },
+      "typecheck": "passed",
+      "build_runtime": "passed",
+      "verify_bundle": "passed",
+      "copy_dist": "passed",
+      "smoke": "skipped",
+      "skipped": "Playwright smoke tests skipped because no local Foundry runtime was reachable at http://127.0.0.1:30000.",
+      "verify_release": "passed",
+      "foundry_url": "http://127.0.0.1:30000",
+      "release_created": false,
+      "note": "This was a local development validation for unreleased audio paste support, not a new release."
+    },
+    "latest_audio_live_smoke": {
+      "command": "FOUNDRY_URL=http://127.0.0.1:30014 npm run test:smoke",
+      "result": "98 passed, 1 skipped",
+      "foundry_url": "http://127.0.0.1:30014",
+      "targeted_rerun": "FOUNDRY_URL=http://127.0.0.1:30014 npx playwright test test/playwright/smoke.canvas-media.spec.js -g \"pastes audio as an AmbientSound on the canvas\" passed after the selector fix.",
+      "selector_fix": "The first live smoke run surfaced a Playwright selector ambiguity in test/playwright/smoke.canvas-media.spec.js; the Ambient sound dialog button selector now uses exact: true.",
+      "release_created": false,
+      "note": "This was a standalone live Foundry V14 smoke run for unreleased audio paste support, not a new release."
     }
   },
   "decisions": [
@@ -254,6 +295,26 @@
     {
       "type": "decision",
       "summary": "No new release has been created for the PDF work; release_state remains anchored to published version 1.3.1."
+    },
+    {
+      "type": "decision",
+      "summary": "Audio paste support is implemented as a separate content kind, not folded into image/video media helpers, to avoid .ogg and .webm regressions."
+    },
+    {
+      "type": "decision",
+      "summary": "Audio support follows Foundry runtime audio formats and normalizes .midi filenames to .mid when generating upload names."
+    },
+    {
+      "type": "decision",
+      "summary": "Audio workflows reuse existing chat media and canvas media role gates; playlist changes rely on actual Playlist/PlaylistSound permissions instead of a new setting."
+    },
+    {
+      "type": "decision",
+      "summary": "Blocked direct audio URL downloads may use the original URL only in explicit audio contexts such as chat audio, AmbientSound, PlaylistSound, or known audio fields."
+    },
+    {
+      "type": "decision",
+      "summary": "No audio Journal page type is added for this release path; canvas audio uses AmbientSound and playlist audio uses PlaylistSound."
     }
   ],
   "implemented_changes": [
@@ -284,16 +345,27 @@
     "Canvas PDF scene Notes and selected-note PDF page append behavior, with selected existing Journal ownership preserved",
     "Focused PDF Journal page src field handling without hijacking unsupported editable fields",
     "PDF unit coverage, PDF Playwright smoke coverage, PDF fixture, docs, support/audit/readiness updates, and regenerated runtime artifact",
-    "Review fix: selected-note PDF append preflights linked JournalEntry update rights before upload so blocked targets do not leave orphaned PDF uploads"
+    "Review fix: selected-note PDF append preflights linked JournalEntry update rights before upload so blocked targets do not leave orphaned PDF uploads",
+    "Unreleased audio paste support as a first-class content kind for Foundry-supported audio formats",
+    "Audio detection from local files, async clipboard items, direct URLs, uri-list payloads, HTML audio/source/link tags, and plain text audio URLs",
+    "Audio upload support under the audio upload context with .midi to .mid normalization and no image/video/PDF coercion",
+    "Chat audio cards with browser audio controls plus optional ChatMessage.sound posting behavior",
+    "Canvas AmbientSound creation with default sound vs ambient-loop prompt behavior and Foundry palette default merging",
+    "PlaylistSound add/update behavior, including fallback creation/reuse of a Pasted Audio playlist when only the playlist UI context is known",
+    "Focused audio document field handling for PlaylistSound.path, AmbientSound.path, and ChatMessage.sound without hijacking arbitrary path/src fields",
+    "Support/audit/readiness/docs updates for AmbientSound.path, PlaylistSound.path, ChatMessage.sound, chat audio-card references, and audio upload organization",
+    "Audio unit coverage, Playwright smoke coverage, a valid WAV fixture, and regenerated runtime artifact"
   ],
   "open_threads": [
     "Possible future setting: only allow token replacement for tokens owned by the user.",
     "Possible future feature: scene drag/drop from Finder or Explorer.",
     "Possible future experiment: optional GIF to WebM conversion for canvas uploads.",
     "Post-release watch: monitor 1.3.1 user feedback, CI, and release asset health; no known functional blocker is open from this validation pass.",
-    "PDF support is implemented and fully validated locally but remains unreleased; review, commit, and release planning are still pending.",
     "Possible future PDF enhancements: compendium curation/export, deduplication, page-range links, stronger thumbnail generation through bundled PDF.js, and text extraction.",
-    "Possible future Codex Skills or multi-agent review workflow for specialized review perspectives after the PDF review path is closed."
+    "Possible future Codex Skills or multi-agent review workflow for specialized review perspectives after the PDF review path is closed.",
+    "Audio support is implemented and has passed local validation plus live Foundry V14 smoke against http://127.0.0.1:30014.",
+    "Audio support remains unreleased; review, commit, and release planning are still pending.",
+    "PDF support is committed in 219eb0f but remains unreleased as part of the next release train with audio support."
   ],
   "files_to_read": [
     "AGENTS.md",
@@ -324,64 +396,47 @@
     "test/unit/ui-and-hooks.spec.js",
     "test/playwright/smoke.canvas-text.spec.js",
     "test/playwright/smoke.chat.spec.js",
-    "test/assets/test-document.pdf"
+    "test/assets/test-document.pdf",
+    "src/paste/audio-workflows.js",
+    "src/ui/scene-controls.js",
+    "src/support/media-audit.js",
+    "test/unit/field-targets.spec.js",
+    "test/playwright/smoke.canvas-media.spec.js",
+    "test/playwright/smoke.art-fields.spec.js",
+    "test/assets/test-audio.wav"
   ],
   "recent_commands": [
-    "git status --short -- . ':(exclude)handoff'",
-    "npx vitest run test/unit/workflows.spec.js test/unit/journal-and-upload.spec.js",
     "npm run lint",
+    "npm test",
     "npm run typecheck",
     "npm run build:runtime",
     "npm run verify:bundle",
-    "npm test",
     "git diff --check",
-    "docker ps --format \"table {{.ID}}\\t{{.Names}}\\t{{.Status}}\\t{{.Ports}}\"",
-    "curl -s -o /dev/null -w \"%{http_code}\\n\" http://127.0.0.1:30014/join",
-    "docker inspect foundry-v14-dev --format '{{json .Mounts}}' | python3 -m json.tool",
-    "env -u FOUNDRY_PASSWORD FOUNDRY_URL=http://127.0.0.1:30014 FOUNDRY_DOCKER_CONTAINER=foundry-v14-dev npm run verify:release",
-    "git diff --check",
+    "node scripts/verify-release.js via npm run verify:release",
+    "git status --porcelain -- . :(exclude)handoff",
+    "node -e/fetch reachability check for http://127.0.0.1:30000",
+    "curl -I --max-time 5 http://127.0.0.1:30014/",
+    "FOUNDRY_URL=http://127.0.0.1:30014 npm run test:smoke",
+    "FOUNDRY_URL=http://127.0.0.1:30014 npx playwright test test/playwright/smoke.canvas-media.spec.js -g \"pastes audio as an AmbientSound on the canvas\"",
+    "FOUNDRY_URL=http://127.0.0.1:30014 npm run test:smoke",
     "npm run handoff:validate"
   ],
   "recent_turns": [
     {
       "speaker": "user",
-      "summary": "Asked how the module should handle pasted PDFs."
+      "summary": "Asked to continue previous compatibility efforts and first review the latest handoff documents."
     },
     {
       "speaker": "user",
-      "summary": "Shared PDF UX thoughts and asked for better options around upload, chat/canvas references, previews, fields, and sharing."
+      "summary": "Asked for a deep Foundry audio research and design plan covering playlist, canvas, chat, fields, and context-sensitive audio paste behavior."
     },
     {
       "speaker": "user",
-      "summary": "Provided a detailed PDF Paste Support Plan and initially asked to implement it."
+      "summary": "Provided and explicitly requested implementation of the Audio Paste Support Plan for .mp3, .wav, .ogg, .midi/.mid, and other Foundry-supported playlist audio formats."
     },
     {
       "speaker": "user",
-      "summary": "Redirected into critical UX/design review of the PDF approach."
-    },
-    {
-      "speaker": "user",
-      "summary": "Asked for an engineering perspective on whether the new media type matched the project's strict expectations."
-    },
-    {
-      "speaker": "user",
-      "summary": "Provided review findings for selected-note Journal ownership exposure and upload-before-preflight behavior."
-    },
-    {
-      "speaker": "user",
-      "summary": "Asked what other review expertise to consider, how to use Codex sub-agents, and whether Codex Skills should be created."
-    },
-    {
-      "speaker": "user",
-      "summary": "Asked to finish the PDF review path first and return to the Codex Skills side-thought later."
-    },
-    {
-      "speaker": "user",
-      "summary": "Allowed starting a container for the full validation suite and asked to stop if user-run help would be faster."
-    },
-    {
-      "speaker": "user",
-      "summary": "Asked whether the handoff/* files are remembered and then requested a handoff refresh, explicitly noting that no new release is being created yet."
+      "summary": "Reported a Foundry runtime at port 30014 and asked to run the Playwright smoke suite."
     }
   ],
   "summary_lineage": [
@@ -424,6 +479,16 @@
       "id": "handoff-pdf-support-dev",
       "kind": "unreleased-development-refresh",
       "note": "This refresh records the unreleased PDF paste support implementation, the two PDF review fixes, and the full local Foundry V14 validation pass while keeping release_state anchored to published version 1.3.1."
+    },
+    {
+      "id": "handoff-audio-support-dev",
+      "kind": "unreleased-development-refresh",
+      "note": "This refresh records unreleased audio paste support on top of committed PDF support, local release-gate validation, and the smoke-test limitation caused by no reachable local Foundry runtime."
+    },
+    {
+      "id": "handoff-audio-live-smoke-30014",
+      "kind": "unreleased-development-validation-refresh",
+      "note": "This refresh records the follow-up live Foundry smoke pass against http://127.0.0.1:30014 and the exact-button selector fix for the AmbientSound prompt smoke test."
     }
   ],
   "compaction_protocol": {
@@ -438,5 +503,5 @@
       "Preserve facts, decisions, preferences, open questions, and risks as distinct categories."
     ]
   },
-  "resume_prompt": "Resume from main at commit 96868de (Release 1.3.1) with a deliberately dirty non-handoff worktree containing unreleased PDF paste support. Do not assume a new release was created: release_state remains 1.3.1. Start by checking git status and reviewing src/paste/pdf-workflows.js, src/notes.js, src/clipboard.js, src/chat.js, and the PDF unit/smoke tests. The PDF work passed lint, unit, typecheck, bundle parity, and verify:release against the existing foundry-v14-dev container at http://127.0.0.1:30014 with 94 Playwright smoke tests passed and 1 S3 smoke skipped. If you edit handoff files again, append to handoff/history.ndjson and run npm run handoff:validate."
+  "resume_prompt": "Resume from main at commit 219eb0f (Add PDF paste support) with a deliberately dirty non-handoff worktree containing unreleased audio paste support on top of committed PDF paste support. Do not assume a new release was created: release_state remains 1.3.1. Start by checking git status and reviewing src/paste/audio-workflows.js, src/clipboard.js, src/media.js, src/chat.js, src/field-targets.js, src/storage/upload.js, src/storage/remote-url.js, src/ui/paste-events.js, and the audio unit/smoke tests. The audio work passed lint, unit coverage, typecheck, bundle parity, git diff --check, and npm run verify:release locally; standalone live Foundry smoke then passed against http://127.0.0.1:30014 with 98 passed and 1 skipped after fixing an exact-button selector in test/playwright/smoke.canvas-media.spec.js. If you edit handoff files again, append to handoff/history.ndjson and run npm run handoff:validate."
 }
