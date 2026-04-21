@@ -304,6 +304,45 @@ test("scene prompt upload still works when copied objects are present and falls 
   }
 });
 
+test("scene upload tool creates media on the active tile and token layers", async ({foundryPage: page}, testInfo) => {
+  const run = await beginClipboardRun(page, testInfo);
+  const previousSettings = await setModuleSettings(page, {
+    "enable-scene-upload-tool": true,
+    "create-backing-actors": false,
+    "default-empty-canvas-target": "active-layer",
+  });
+  try {
+    await clearCanvasMousePosition(page);
+    await page.evaluate(() => canvas.tiles.activate());
+    let before = await getStateSnapshot(page);
+    let chooserPromise = page.waitForEvent("filechooser");
+    await invokeSceneTool(page, "tiles", "foundry-paste-eater-upload");
+    let chooser = await chooserPromise;
+    await chooser.setFiles(getFixturePath("test-token.png"));
+
+    await expect.poll(async () => (await getStateSnapshot(page)).tiles.length).toBe(before.tiles.length + 1);
+    let after = await getStateSnapshot(page);
+    const [tile] = getNewDocuments(before, after, "tiles");
+    expect(tile.textureSrc).toContain(run.uploadFolder);
+
+    await clearCanvasMousePosition(page);
+    await page.evaluate(() => canvas.tokens.activate());
+    before = await getStateSnapshot(page);
+    chooserPromise = page.waitForEvent("filechooser");
+    await invokeSceneTool(page, "tokens", "foundry-paste-eater-upload");
+    chooser = await chooserPromise;
+    await chooser.setFiles(getFixturePath("test-token.png"));
+
+    await expect.poll(async () => (await getStateSnapshot(page)).tokens.length).toBe(before.tokens.length + 1);
+    after = await getStateSnapshot(page);
+    const [token] = getNewDocuments(before, after, "tokens");
+    expect(token.textureSrc).toContain(run.uploadFolder);
+  } finally {
+    await restoreModuleSettings(page, previousSettings);
+    await cleanupClipboardRun(page, run);
+  }
+});
+
 test("scene paste reads later async clipboard items, ignores copied objects, and falls back to canvas center", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   const previousSettings = await setModuleSettings(page, {

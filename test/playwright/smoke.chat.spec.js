@@ -277,19 +277,30 @@ test("posts chat audio cards without creating canvas content", async ({foundryPa
 test("adds pasted audio to a targeted playlist UI row", async ({foundryPage: page}, testInfo) => {
   const run = await beginClipboardRun(page, testInfo);
   try {
-    const targetSelector = await page.evaluate(async prefix => {
+    const playlistSelector = await page.evaluate(async prefix => {
       const PlaylistDocument = foundry.documents.Playlist || CONFIG.Playlist.documentClass || globalThis.Playlist;
       const playlist = await PlaylistDocument.create({name: `${prefix} Playlist Audio`});
-      const root = document.createElement("section");
-      root.id = "playlists";
-      root.innerHTML = `<button type="button" data-playlist-id="${playlist.id}">${playlist.name}</button>`;
-      document.body.append(root);
-      return `#playlists [data-playlist-id="${playlist.id}"]`;
+      ui.playlists?.render?.(true);
+      ui.sidebar?.expand?.();
+      ui.sidebar?.activateTab?.("playlists");
+      return `#playlists .directory-item.playlist[data-entry-id="${playlist.id}"] .entry-name`;
     }, run.prefix);
+    await page.waitForSelector("#playlists.sidebar-tab.active", {state: "visible"});
+    await page.waitForSelector(playlistSelector, {state: "visible"});
+    await page.evaluate(selector => {
+      const target = document.querySelector(selector);
+      if (!target) throw new Error(`Could not find playlist target ${selector}.`);
+      target.dispatchEvent(new MouseEvent("mousedown", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+      }));
+    }, playlistSelector);
     const before = await getStateSnapshot(page);
 
     await dispatchFilePaste(page, {
-      targetSelector,
+      targetSelector: "body",
       fixtureFilename: "test-audio.wav",
       filename: `${run.prefix} playlist-audio.wav`,
       mimeType: "audio/wav",

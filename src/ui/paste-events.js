@@ -1,6 +1,8 @@
 const {
   CLIPBOARD_IMAGE_BOUND_EVENT_DOCUMENTS,
+  _clipboardGetLastPointerTarget,
   _clipboardSetHiddenMode,
+  _clipboardSetLastPointerTarget,
 } = require("../state");
 const {
   _clipboardDescribeDataTransfer,
@@ -62,6 +64,54 @@ function _clipboardGetGameRoot() {
   return document.querySelector(".game");
 }
 
+function _clipboardGetElementTarget(target) {
+  if (target instanceof Element) return target;
+  if (target?.nodeType === Node.TEXT_NODE) return target.parentElement || null;
+  return null;
+}
+
+function _clipboardIsPageRootTarget(target) {
+  return target === document.body || target === document.documentElement;
+}
+
+function _clipboardGetActivePlaylistUiRoot() {
+  return document.querySelector(
+    "#playlists.sidebar-tab.active, #playlists.active, .directory.playlists.active, [data-tab='playlists'].active, [data-application-part='playlists'].active"
+  ) || document.querySelector(
+    "#playlists, .directory.playlists, [data-tab='playlists'], [data-application-part='playlists']"
+  );
+}
+
+function _clipboardGetPlaylistPasteTarget(target) {
+  const normalizedTarget = _clipboardGetElementTarget(target);
+  const activeElement = _clipboardGetElementTarget(document.activeElement);
+  const shouldUseFallbackTarget = (
+    !normalizedTarget ||
+    _clipboardIsPageRootTarget(normalizedTarget)
+  ) && !_clipboardIsEditableTarget(activeElement);
+  const candidateTargets = [
+    normalizedTarget,
+    shouldUseFallbackTarget ? _clipboardGetLastPointerTarget() : null,
+    activeElement,
+    _clipboardGetActivePlaylistUiRoot(),
+  ];
+  const seenTargets = new Set();
+  let fallbackTarget = null;
+
+  for (const candidate of candidateTargets) {
+    const normalizedCandidate = _clipboardGetElementTarget(candidate);
+    if (!normalizedCandidate || seenTargets.has(normalizedCandidate)) continue;
+    seenTargets.add(normalizedCandidate);
+
+    const playlistTarget = _clipboardGetPlaylistTargetFromElement(normalizedCandidate);
+    if (!playlistTarget) continue;
+    if (playlistTarget.playlist || playlistTarget.playlistSound) return playlistTarget;
+    fallbackTarget ||= playlistTarget;
+  }
+
+  return fallbackTarget;
+}
+
 function _clipboardFocusGameRoot() {
   const root = _clipboardGetGameRoot();
   if (!root) return false;
@@ -86,7 +136,9 @@ function _clipboardShouldRestoreGameFocus(target) {
 }
 
 function _clipboardOnMouseDown(event) {
-  if (!_clipboardShouldRestoreGameFocus(event.target)) return;
+  const target = _clipboardGetElementTarget(event.target);
+  if (target) _clipboardSetLastPointerTarget(target);
+  if (!_clipboardShouldRestoreGameFocus(target)) return;
   _clipboardFocusGameRoot();
 }
 
@@ -221,7 +273,7 @@ function _clipboardOnPaste(event) {
   }
 
   const audioFieldTarget = _clipboardGetFocusedAudioFieldTarget(event.target);
-  const playlistAudioTarget = _clipboardGetPlaylistTargetFromElement(event.target);
+  const playlistAudioTarget = _clipboardGetPlaylistPasteTarget(event.target);
   const explicitAudioContext = Boolean(audioFieldTarget || playlistAudioTarget || canvas?.activeLayer === canvas?.sounds);
   const audioInput = _clipboardExtractAudioInputFromDataTransfer(event.clipboardData, {
     explicitAudioContext,

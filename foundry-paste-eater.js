@@ -3659,15 +3659,20 @@ var FoundryPasteEaterRuntime = (() => {
       var CLIPBOARD_IMAGE_BOUND_EVENT_DOCUMENTS = /* @__PURE__ */ new WeakSet();
       var CLIPBOARD_IMAGE_LOCKED = false;
       var CLIPBOARD_HIDDEN_MODE = false;
+      var CLIPBOARD_IMAGE_LAST_POINTER_TARGET = null;
       function _clipboardGetRuntimeState() {
         return {
           locked: CLIPBOARD_IMAGE_LOCKED,
-          hiddenMode: CLIPBOARD_HIDDEN_MODE
+          hiddenMode: CLIPBOARD_HIDDEN_MODE,
+          lastPointerTarget: CLIPBOARD_IMAGE_LAST_POINTER_TARGET
         };
       }
-      function _clipboardSetRuntimeState({ locked, hiddenMode } = {}) {
+      function _clipboardSetRuntimeState({ locked, hiddenMode, lastPointerTarget } = {}) {
         if (typeof locked === "boolean") CLIPBOARD_IMAGE_LOCKED = locked;
         if (typeof hiddenMode === "boolean") CLIPBOARD_HIDDEN_MODE = hiddenMode;
+        if (Object.hasOwn(arguments[0] || {}, "lastPointerTarget")) {
+          CLIPBOARD_IMAGE_LAST_POINTER_TARGET = lastPointerTarget || null;
+        }
       }
       function _clipboardGetLocked() {
         return CLIPBOARD_IMAGE_LOCKED;
@@ -3681,6 +3686,12 @@ var FoundryPasteEaterRuntime = (() => {
       function _clipboardSetHiddenMode(hiddenMode) {
         if (typeof hiddenMode === "boolean") CLIPBOARD_HIDDEN_MODE = hiddenMode;
       }
+      function _clipboardGetLastPointerTarget() {
+        return CLIPBOARD_IMAGE_LAST_POINTER_TARGET;
+      }
+      function _clipboardSetLastPointerTarget(target) {
+        CLIPBOARD_IMAGE_LAST_POINTER_TARGET = target || null;
+      }
       module.exports = {
         CLIPBOARD_IMAGE_BOUND_CHAT_ROOTS,
         CLIPBOARD_IMAGE_BOUND_EVENT_DOCUMENTS,
@@ -3689,7 +3700,9 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardGetLocked,
         _clipboardSetLocked,
         _clipboardGetHiddenMode,
-        _clipboardSetHiddenMode
+        _clipboardSetHiddenMode,
+        _clipboardGetLastPointerTarget,
+        _clipboardSetLastPointerTarget
       };
     }
   });
@@ -7828,26 +7841,63 @@ var FoundryPasteEaterRuntime = (() => {
           const input = document.createElement("input");
           input.type = "file";
           input.accept = CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT;
-          input.style.display = "none";
+          input.tabIndex = -1;
+          input.setAttribute("aria-hidden", "true");
+          Object.assign(input.style, {
+            position: "fixed",
+            top: "0",
+            left: "-9999px",
+            width: "1px",
+            height: "1px",
+            opacity: "0",
+            pointerEvents: "none"
+          });
+          let settled = false;
+          let sawWindowBlur = false;
+          let focusCancelTimeout = null;
+          const finish = (file) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(file || null);
+          };
           const cleanup = () => {
             input.removeEventListener("change", onChange);
-            window.removeEventListener("focus", onWindowFocus);
+            input.removeEventListener("cancel", onCancel);
+            input.removeEventListener("input", onInput);
+            window.removeEventListener("blur", onWindowBlur, true);
+            window.removeEventListener("focus", onWindowFocus, true);
+            if (focusCancelTimeout !== null) {
+              window.clearTimeout(focusCancelTimeout);
+            }
             input.remove();
           };
           const onChange = () => {
             const [file] = Array.from(input.files || []);
-            cleanup();
-            resolve(file || null);
+            finish(file);
+          };
+          const onInput = onChange;
+          const onCancel = () => {
+            finish(null);
+          };
+          const onWindowBlur = () => {
+            sawWindowBlur = true;
           };
           const onWindowFocus = () => {
-            window.setTimeout(() => {
-              if (input.files?.length) return;
-              cleanup();
-              resolve(null);
-            }, 0);
+            if (!sawWindowBlur) return;
+            if (focusCancelTimeout !== null) {
+              window.clearTimeout(focusCancelTimeout);
+            }
+            focusCancelTimeout = window.setTimeout(() => {
+              if (settled || input.files?.length) return;
+              finish(null);
+            }, 250);
           };
           input.addEventListener("change", onChange, { once: true });
-          window.addEventListener("focus", onWindowFocus, { once: true });
+          input.addEventListener("input", onInput, { once: true });
+          input.addEventListener("cancel", onCancel, { once: true });
+          window.addEventListener("blur", onWindowBlur, true);
+          window.addEventListener("focus", onWindowFocus, true);
           document.body.appendChild(input);
           input.click();
         });
@@ -8344,7 +8394,9 @@ var FoundryPasteEaterRuntime = (() => {
     "src/ui/paste-events.js"(exports, module) {
       var {
         CLIPBOARD_IMAGE_BOUND_EVENT_DOCUMENTS,
-        _clipboardSetHiddenMode
+        _clipboardGetLastPointerTarget,
+        _clipboardSetHiddenMode,
+        _clipboardSetLastPointerTarget
       } = require_state();
       var {
         _clipboardDescribeDataTransfer,
@@ -8401,6 +8453,44 @@ var FoundryPasteEaterRuntime = (() => {
       function _clipboardGetGameRoot() {
         return document.querySelector(".game");
       }
+      function _clipboardGetElementTarget(target) {
+        if (target instanceof Element) return target;
+        if (target?.nodeType === Node.TEXT_NODE) return target.parentElement || null;
+        return null;
+      }
+      function _clipboardIsPageRootTarget(target) {
+        return target === document.body || target === document.documentElement;
+      }
+      function _clipboardGetActivePlaylistUiRoot() {
+        return document.querySelector(
+          "#playlists.sidebar-tab.active, #playlists.active, .directory.playlists.active, [data-tab='playlists'].active, [data-application-part='playlists'].active"
+        ) || document.querySelector(
+          "#playlists, .directory.playlists, [data-tab='playlists'], [data-application-part='playlists']"
+        );
+      }
+      function _clipboardGetPlaylistPasteTarget(target) {
+        const normalizedTarget = _clipboardGetElementTarget(target);
+        const activeElement = _clipboardGetElementTarget(document.activeElement);
+        const shouldUseFallbackTarget = (!normalizedTarget || _clipboardIsPageRootTarget(normalizedTarget)) && !_clipboardIsEditableTarget(activeElement);
+        const candidateTargets = [
+          normalizedTarget,
+          shouldUseFallbackTarget ? _clipboardGetLastPointerTarget() : null,
+          activeElement,
+          _clipboardGetActivePlaylistUiRoot()
+        ];
+        const seenTargets = /* @__PURE__ */ new Set();
+        let fallbackTarget = null;
+        for (const candidate of candidateTargets) {
+          const normalizedCandidate = _clipboardGetElementTarget(candidate);
+          if (!normalizedCandidate || seenTargets.has(normalizedCandidate)) continue;
+          seenTargets.add(normalizedCandidate);
+          const playlistTarget = _clipboardGetPlaylistTargetFromElement(normalizedCandidate);
+          if (!playlistTarget) continue;
+          if (playlistTarget.playlist || playlistTarget.playlistSound) return playlistTarget;
+          fallbackTarget ||= playlistTarget;
+        }
+        return fallbackTarget;
+      }
       function _clipboardFocusGameRoot() {
         const root = _clipboardGetGameRoot();
         if (!root) return false;
@@ -8421,7 +8511,9 @@ var FoundryPasteEaterRuntime = (() => {
         return Boolean(target.closest("#board, #scene-controls"));
       }
       function _clipboardOnMouseDown(event) {
-        if (!_clipboardShouldRestoreGameFocus(event.target)) return;
+        const target = _clipboardGetElementTarget(event.target);
+        if (target) _clipboardSetLastPointerTarget(target);
+        if (!_clipboardShouldRestoreGameFocus(target)) return;
         _clipboardFocusGameRoot();
       }
       function _clipboardBindEventDocument(eventDocument = document) {
@@ -8536,7 +8628,7 @@ var FoundryPasteEaterRuntime = (() => {
           return;
         }
         const audioFieldTarget = _clipboardGetFocusedAudioFieldTarget(event.target);
-        const playlistAudioTarget = _clipboardGetPlaylistTargetFromElement(event.target);
+        const playlistAudioTarget = _clipboardGetPlaylistPasteTarget(event.target);
         const explicitAudioContext = Boolean(audioFieldTarget || playlistAudioTarget || canvas?.activeLayer === canvas?.sounds);
         const audioInput = _clipboardExtractAudioInputFromDataTransfer(event.clipboardData, {
           explicitAudioContext
@@ -8754,7 +8846,6 @@ var FoundryPasteEaterRuntime = (() => {
             order,
             button: true,
             visible: _clipboardCanUseScenePasteTool(),
-            onClick: onPasteClick,
             onChange: onPasteClick
           });
           _clipboardUpsertSceneControlTool(control, CLIPBOARD_IMAGE_TOOL_UPLOAD, {
@@ -8764,7 +8855,6 @@ var FoundryPasteEaterRuntime = (() => {
             order: order + 1,
             button: true,
             visible: _clipboardCanUseSceneUploadTool(),
-            onClick: onUploadClick,
             onChange: onUploadClick
           });
         }

@@ -71,7 +71,6 @@ function _clipboardAddSceneControlButtons(controls) {
       order,
       button: true,
       visible: _clipboardCanUseScenePasteTool(),
-      onClick: onPasteClick,
       onChange: onPasteClick,
     });
     _clipboardUpsertSceneControlTool(control, CLIPBOARD_IMAGE_TOOL_UPLOAD, {
@@ -81,7 +80,6 @@ function _clipboardAddSceneControlButtons(controls) {
       order: order + 1,
       button: true,
       visible: _clipboardCanUseSceneUploadTool(),
-      onClick: onUploadClick,
       onChange: onUploadClick,
     });
   }

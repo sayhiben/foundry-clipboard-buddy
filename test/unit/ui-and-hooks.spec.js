@@ -34,10 +34,37 @@ describe("ui and hook integration helpers", () => {
 
     it("returns null when the picker closes without a selection", async () => {
       const restoreClick = setInputClickBehavior(() => {
+        window.dispatchEvent(new Event("blur"));
         window.dispatchEvent(new Event("focus"));
       });
 
       await expect(api._clipboardChooseImageFile()).resolves.toBeNull();
+      restoreClick();
+    });
+
+    it("returns null when the picker dispatches a cancel event", async () => {
+      const restoreClick = setInputClickBehavior(input => {
+        input.dispatchEvent(new Event("cancel"));
+      });
+
+      await expect(api._clipboardChooseImageFile()).resolves.toBeNull();
+      restoreClick();
+    });
+
+    it("keeps a real selection when change arrives after window focus returns", async () => {
+      const restoreClick = setInputClickBehavior(input => {
+        window.dispatchEvent(new Event("blur"));
+        window.dispatchEvent(new Event("focus"));
+        window.setTimeout(() => {
+          Object.defineProperty(input, "files", {
+            configurable: true,
+            value: [new File(["x"], "late-picked.png", {type: "image/png"})],
+          });
+          input.dispatchEvent(new Event("change"));
+        }, 0);
+      });
+
+      await expect(api._clipboardChooseImageFile()).resolves.toMatchObject({name: "late-picked.png"});
       restoreClick();
     });
 
@@ -61,6 +88,7 @@ describe("ui and hook integration helpers", () => {
 
     it("returns false when the media chooser closes without a selection", async () => {
       const restoreClick = setInputClickBehavior(() => {
+        window.dispatchEvent(new Event("blur"));
         window.dispatchEvent(new Event("focus"));
       });
 
@@ -658,6 +686,7 @@ describe("ui and hook integration helpers", () => {
       expect(api._clipboardGetScenePastePrompt()).toBeNull();
 
       restoreClick = setInputClickBehavior(() => {
+        window.dispatchEvent(new Event("blur"));
         window.dispatchEvent(new Event("focus"));
       });
       const secondPrompt = api._clipboardOpenScenePastePrompt();
@@ -834,11 +863,11 @@ describe("ui and hook integration helpers", () => {
 
       api._clipboardAddSceneControlButtons(controls);
       expect(controls.tiles.tools["foundry-paste-eater-paste"]).toMatchObject({title: "Paste Media, PDF, or Audio", button: true});
-      expect(controls.tiles.tools["foundry-paste-eater-paste"].onClick).toBeTypeOf("function");
-      expect(controls.tiles.tools["foundry-paste-eater-paste"].onChange).toBe(controls.tiles.tools["foundry-paste-eater-paste"].onClick);
+      expect(controls.tiles.tools["foundry-paste-eater-paste"].onClick).toBeUndefined();
+      expect(controls.tiles.tools["foundry-paste-eater-paste"].onChange).toBeTypeOf("function");
       expect(controls.tokens.tools["foundry-paste-eater-upload"]).toMatchObject({title: "Upload Media, PDF, or Audio", button: true});
-      expect(controls.tokens.tools["foundry-paste-eater-upload"].onClick).toBeTypeOf("function");
-      expect(controls.tokens.tools["foundry-paste-eater-upload"].onChange).toBe(controls.tokens.tools["foundry-paste-eater-upload"].onClick);
+      expect(controls.tokens.tools["foundry-paste-eater-upload"].onClick).toBeUndefined();
+      expect(controls.tokens.tools["foundry-paste-eater-upload"].onChange).toBeTypeOf("function");
       expect(controls.sounds.tools["foundry-paste-eater-paste"]).toMatchObject({title: "Paste Media, PDF, or Audio", button: true});
       expect(controls.walls.tools["foundry-paste-eater-paste"]).toBeUndefined();
     });
@@ -980,8 +1009,8 @@ describe("ui and hook integration helpers", () => {
     it("invokes scene control callbacks", async () => {
       const controls = {tiles: {tools: {}}, tokens: {tools: {}}};
       api._clipboardAddSceneControlButtons(controls);
-      controls.tiles.tools["foundry-paste-eater-paste"].onClick();
-      controls.tokens.tools["foundry-paste-eater-upload"].onClick();
+      controls.tiles.tools["foundry-paste-eater-paste"].onChange();
+      controls.tokens.tools["foundry-paste-eater-upload"].onChange();
       await flush();
       api._clipboardCloseScenePastePrompt();
     });
@@ -1805,6 +1834,79 @@ describe("ui and hook integration helpers", () => {
           path: expect.stringMatching(/^pasted_images\/playlist-\d+\.wav\?foundry-paste-eater=\d+$/),
         }),
       ]);
+    });
+
+    it("routes playlist audio paste events through the last clicked playlist row when paste lands on the page root", async () => {
+      const playlist = env.createPlaylist({id: "native-playlist", name: "Native Playlist"});
+      const directory = document.createElement("section");
+      directory.id = "playlists";
+      directory.className = "tab sidebar-tab directory playlists-sidebar active";
+      directory.dataset.tab = "playlists";
+      directory.innerHTML = '<div data-entry-id="native-playlist"><span id="playlist-row-label">Native Playlist</span></div>';
+      document.body.append(directory);
+
+      api._clipboardOnMouseDown({target: document.getElementById("playlist-row-label")});
+      directory.innerHTML = '<div class="playlist-rerendered">Native Playlist</div>';
+
+      const audio = new File(["audio"], "playlist-body.wav", {type: "audio/wav"});
+      const event = {
+        target: document.body,
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "audio/wav",
+            getAsFile: () => audio,
+          }],
+          files: [audio],
+        }),
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+
+      api._clipboardOnPaste(event);
+      await flush();
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(playlist.createEmbeddedDocuments).toHaveBeenCalledWith("PlaylistSound", [
+        expect.objectContaining({
+          name: "playlist-body",
+          path: expect.stringMatching(/^pasted_images\/playlist-body-\d+\.wav\?foundry-paste-eater=\d+$/),
+        }),
+      ]);
+    });
+
+    it("routes playlist audio paste events through the active playlist sidebar when no specific row is targeted", async () => {
+      const directory = document.createElement("section");
+      directory.id = "playlists";
+      directory.className = "tab sidebar-tab directory playlists-sidebar active";
+      directory.dataset.tab = "playlists";
+      document.body.append(directory);
+
+      const audio = new File(["audio"], "playlist-panel.wav", {type: "audio/wav"});
+      const event = {
+        target: document.body,
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "audio/wav",
+            getAsFile: () => audio,
+          }],
+          files: [audio],
+        }),
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+
+      api._clipboardOnPaste(event);
+      await flush();
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(globalThis.foundry.documents.Playlist.create).toHaveBeenCalledWith(expect.objectContaining({
+        name: "Pasted Audio",
+      }));
+      const createdPlaylist = globalThis.game.playlists.contents.find(entry => entry.name === "Pasted Audio");
+      expect(createdPlaylist?.sounds?.contents?.[0]).toMatchObject({
+        name: "playlist-panel",
+        path: expect.stringMatching(/^pasted_images\/playlist-panel-\d+\.wav\?foundry-paste-eater=\d+$/),
+      });
     });
 
     it("routes canvas PDF paste events through the PDF note pipeline", async () => {

@@ -112,30 +112,73 @@ function _clipboardChooseImageFile() {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = CLIPBOARD_IMAGE_MEDIA_FILE_ACCEPT;
-    input.style.display = "none";
+    input.tabIndex = -1;
+    input.setAttribute("aria-hidden", "true");
+    Object.assign(input.style, {
+      position: "fixed",
+      top: "0",
+      left: "-9999px",
+      width: "1px",
+      height: "1px",
+      opacity: "0",
+      pointerEvents: "none",
+    });
+
+    let settled = false;
+    let sawWindowBlur = false;
+    let focusCancelTimeout = null;
+
+    const finish = file => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(file || null);
+    };
 
     const cleanup = () => {
       input.removeEventListener("change", onChange);
-      window.removeEventListener("focus", onWindowFocus);
+      input.removeEventListener("cancel", onCancel);
+      input.removeEventListener("input", onInput);
+      window.removeEventListener("blur", onWindowBlur, true);
+      window.removeEventListener("focus", onWindowFocus, true);
+      if (focusCancelTimeout !== null) {
+        window.clearTimeout(focusCancelTimeout);
+      }
       input.remove();
     };
 
     const onChange = () => {
       const [file] = Array.from(input.files || []);
-      cleanup();
-      resolve(file || null);
+      finish(file);
+    };
+
+    const onInput = onChange;
+
+    const onCancel = () => {
+      finish(null);
+    };
+
+    const onWindowBlur = () => {
+      sawWindowBlur = true;
     };
 
     const onWindowFocus = () => {
-      window.setTimeout(() => {
-        if (input.files?.length) return;
-        cleanup();
-        resolve(null);
-      }, 0);
+      if (!sawWindowBlur) return;
+      if (focusCancelTimeout !== null) {
+        window.clearTimeout(focusCancelTimeout);
+      }
+
+      focusCancelTimeout = window.setTimeout(() => {
+        if (settled || input.files?.length) return;
+        finish(null);
+      }, 250);
     };
 
     input.addEventListener("change", onChange, {once: true});
-    window.addEventListener("focus", onWindowFocus, {once: true});
+    input.addEventListener("input", onInput, {once: true});
+    input.addEventListener("cancel", onCancel, {once: true});
+    window.addEventListener("blur", onWindowBlur, true);
+    window.addEventListener("focus", onWindowFocus, true);
     document.body.appendChild(input);
     input.click();
   });
