@@ -13,12 +13,20 @@ describe("canvas context helpers", () => {
 
   describe("runtime state", () => {
     it("returns the default runtime state", () => {
-      expect(api._clipboardGetRuntimeState()).toEqual({locked: false, hiddenMode: false});
+      expect(api._clipboardGetRuntimeState()).toEqual({
+        locked: false,
+        hiddenMode: false,
+        lastPointerTarget: null,
+      });
     });
 
     it("updates the runtime state", () => {
       api._clipboardSetRuntimeState({hiddenMode: true, locked: true});
-      expect(api._clipboardGetRuntimeState()).toEqual({locked: true, hiddenMode: true});
+      expect(api._clipboardGetRuntimeState()).toEqual({
+        locked: true,
+        hiddenMode: true,
+        lastPointerTarget: null,
+      });
     });
   });
 

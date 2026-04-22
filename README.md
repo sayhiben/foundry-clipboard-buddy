@@ -139,7 +139,7 @@ Normal keyboard canvas paste respects Foundry's copied-object buffer before this
 | Focus a token-style art field and paste an image or video | Update that field | Works for `texture.src` and `prototypeToken.texture.src` |
 | Focus chat and paste an image or video | Upload and post media to chat | Chat display mode controls preview style |
 | Focus chat and paste a PDF | Create a Journal PDF page and post a chat reference | Uses a thumbnail when available, otherwise a PDF icon |
-| Focus chat and paste audio | Prompt for a quiet audio card or a chat message sound | The default card uses browser audio controls and does not auto-play |
+| Focus chat and paste audio | Prompt for a quiet audio card or an audio card that plays once now | The default card uses browser audio controls and does not auto-play |
 | Focus a PlaylistSound, AmbientSound, or ChatMessage audio field and paste audio | Update that field | Only known audio document fields are targeted |
 | Paste audio in a Playlist UI context | Add or update a PlaylistSound | Falls back to a `Pasted Audio` playlist when no specific playlist is inferred |
 | Focus chat and paste plain text or a non-media URL | Keep normal chat text | The module does not swallow normal chat text |
@@ -263,7 +263,7 @@ Supported audio formats follow Foundry's runtime audio support: `.aac`, `.flac`,
 
 | Audio action | Result |
 | --- | --- |
-| Paste audio into chat | Prompt for a quiet audio card or a chat message that also sets `ChatMessage.sound` |
+| Paste audio into chat | Prompt for a quiet audio card or an audio card that plays once now |
 | Drag, drop, or upload audio into chat | Post the same chat audio card flow |
 | Paste audio on the canvas | Prompt for a non-repeating AmbientSound or a repeat-enabled ambient loop |
 | Paste audio in a Playlist UI context | Add to the targeted Playlist or PlaylistSound, or create/reuse a `Pasted Audio` playlist when no specific playlist can be inferred |
@@ -278,7 +278,7 @@ Direct audio URLs are downloaded and uploaded when the browser allows it. If bro
 | --- | --- |
 | Paste an image or video | Upload and post a chat media message |
 | Paste a PDF | Create a Journal PDF page and post a chat PDF card |
-| Paste audio | Prompt for a quiet chat audio card or a chat message sound |
+| Paste audio | Prompt for a quiet chat audio card or an audio card that plays once now |
 | Paste a direct media URL | Download, upload, and post media when the browser allows it |
 | Paste a direct PDF URL | Download, upload, and post a Journal PDF reference when the browser allows it |
 | Paste a direct audio URL | Download and upload audio when possible, or use a clearly audio-like URL directly when browser download is blocked |

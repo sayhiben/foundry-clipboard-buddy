@@ -6248,6 +6248,7 @@ var FoundryPasteEaterRuntime = (() => {
       var { _clipboardEscapeHtml, _clipboardLog } = require_diagnostics();
       var { _clipboardGetMediaKind } = require_media();
       var {
+        CLIPBOARD_IMAGE_MODULE_ID,
         CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_FULL_PREVIEW,
         CLIPBOARD_IMAGE_CHAT_MEDIA_DISPLAY_LINK_ONLY,
         CLIPBOARD_IMAGE_UPLOAD_CONTEXT_CHAT
@@ -6260,6 +6261,10 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardUploadBlob,
         _clipboardCreateFreshMediaPath
       } = require_storage();
+      var CLIPBOARD_IMAGE_CHAT_AUDIO_PLAY_ONCE_FLAG = "playOnceNow";
+      var CLIPBOARD_IMAGE_CHAT_AUDIO_AUTOPLAY_MAX_AGE_MS = 15e3;
+      var CLIPBOARD_IMAGE_PENDING_CHAT_AUDIO_AUTOPLAY = /* @__PURE__ */ new Set();
+      var CLIPBOARD_IMAGE_PLAYED_CHAT_AUDIO_AUTOPLAY = /* @__PURE__ */ new Set();
       function _clipboardCreateChatMediaContent(path) {
         const mediaKind = _clipboardGetMediaKind({ src: path }) || "image";
         const displayMode = _clipboardGetChatMediaDisplayMode();
@@ -6297,6 +6302,39 @@ var FoundryPasteEaterRuntime = (() => {
         caption.append(openLink);
         figure.append(caption);
         return figure.outerHTML;
+      }
+      function _clipboardGetChatAudioAutoplayFlag(message) {
+        return Boolean(message?.flags?.[CLIPBOARD_IMAGE_MODULE_ID]?.[CLIPBOARD_IMAGE_CHAT_AUDIO_PLAY_ONCE_FLAG]);
+      }
+      function _clipboardQueueChatAudioAutoplay(messageId) {
+        if (!messageId) return;
+        CLIPBOARD_IMAGE_PENDING_CHAT_AUDIO_AUTOPLAY.add(String(messageId));
+      }
+      function _clipboardResolveChatHtmlRoot(html) {
+        if (!html) return null;
+        if (typeof html.querySelector === "function") return html;
+        if (html[0] && typeof html[0].querySelector === "function") return html[0];
+        if (typeof html.get === "function") {
+          const root = html.get(0);
+          if (root && typeof root.querySelector === "function") return root;
+        }
+        return null;
+      }
+      function _clipboardShouldAutoplayChatAudio(message) {
+        const messageId = String(message?.id || "");
+        if (!messageId) return false;
+        if (!_clipboardGetChatAudioAutoplayFlag(message)) return false;
+        if (CLIPBOARD_IMAGE_PLAYED_CHAT_AUDIO_AUTOPLAY.has(messageId)) return false;
+        if (CLIPBOARD_IMAGE_PENDING_CHAT_AUDIO_AUTOPLAY.has(messageId)) return true;
+        const timestamp = Number(message?.timestamp);
+        if (!Number.isFinite(timestamp)) return false;
+        return Math.abs(Date.now() - timestamp) <= CLIPBOARD_IMAGE_CHAT_AUDIO_AUTOPLAY_MAX_AGE_MS;
+      }
+      function _clipboardMarkChatAudioAutoplayAttempted(messageId) {
+        if (!messageId) return;
+        const normalizedId = String(messageId);
+        CLIPBOARD_IMAGE_PENDING_CHAT_AUDIO_AUTOPLAY.delete(normalizedId);
+        CLIPBOARD_IMAGE_PLAYED_CHAT_AUDIO_AUTOPLAY.add(normalizedId);
       }
       function _clipboardCreateJournalPageContentLink({ entry, page, label = "Open PDF" } = {}) {
         const uuid = _clipboardGetJournalPageUuid(entry, page);
@@ -6443,7 +6481,7 @@ var FoundryPasteEaterRuntime = (() => {
         const visibilityOptions = _clipboardGetChatMessageVisibilityOptions();
         return visibilityOptions ? foundry.documents.ChatMessage.create(messageData, visibilityOptions) : foundry.documents.ChatMessage.create(messageData);
       }
-      async function _clipboardCreateAudioChatMessage({ audioData = {}, playAsMessageSound = false } = {}) {
+      async function _clipboardCreateAudioChatMessage({ audioData = {}, playOnceNow = false } = {}) {
         if (!audioData?.src) {
           throw new Error("Cannot create a chat audio message without a usable audio path");
         }
@@ -6451,18 +6489,49 @@ var FoundryPasteEaterRuntime = (() => {
           src: audioData.src || null,
           name: audioData.name || null,
           external: Boolean(audioData.external),
-          playAsMessageSound
+          playOnceNow
         });
         const messageData = {
           content: _clipboardCreateChatAudioContent(audioData),
           speaker: foundry.documents.ChatMessage.getSpeaker(),
-          user: game.user.id
+          user: game.user.id,
+          flags: {
+            [CLIPBOARD_IMAGE_MODULE_ID]: {
+              [CLIPBOARD_IMAGE_CHAT_AUDIO_PLAY_ONCE_FLAG]: Boolean(playOnceNow)
+            }
+          }
         };
-        if (playAsMessageSound) {
-          messageData.sound = audioData.src;
-        }
         const visibilityOptions = _clipboardGetChatMessageVisibilityOptions();
-        return visibilityOptions ? foundry.documents.ChatMessage.create(messageData, visibilityOptions) : foundry.documents.ChatMessage.create(messageData);
+        const message = visibilityOptions ? foundry.documents.ChatMessage.create(messageData, visibilityOptions) : foundry.documents.ChatMessage.create(messageData);
+        const createdMessage = await message;
+        if (playOnceNow) {
+          _clipboardQueueChatAudioAutoplay(createdMessage?.id);
+        }
+        return createdMessage;
+      }
+      function _clipboardOnRenderChatMessageHTML(message, html) {
+        if (!_clipboardShouldAutoplayChatAudio(message)) return;
+        const root = _clipboardResolveChatHtmlRoot(html);
+        const audio = root?.querySelector?.(".foundry-paste-eater-chat-audio");
+        if (!audio || typeof audio.play !== "function") return;
+        _clipboardMarkChatAudioAutoplayAttempted(message.id);
+        audio.autoplay = true;
+        try {
+          const playPromise = audio.play();
+          if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch((error) => {
+              _clipboardLog("warn", "Auto-play for a pasted chat audio card was blocked or failed.", {
+                messageId: message?.id || null,
+                error: error instanceof Error ? error.message : String(error || "")
+              });
+            });
+          }
+        } catch (error) {
+          _clipboardLog("warn", "Auto-play for a pasted chat audio card threw synchronously.", {
+            messageId: message?.id || null,
+            error: error instanceof Error ? error.message : String(error || "")
+          });
+        }
       }
       async function _clipboardPostChatImage(blob) {
         const destination = _clipboardGetUploadDestination({
@@ -6478,9 +6547,15 @@ var FoundryPasteEaterRuntime = (() => {
         _clipboardCreateJournalPageContentLink,
         _clipboardCreateChatPdfContent,
         _clipboardCreateChatAudioContent,
+        _clipboardGetChatAudioAutoplayFlag,
+        _clipboardQueueChatAudioAutoplay,
+        _clipboardResolveChatHtmlRoot,
+        _clipboardShouldAutoplayChatAudio,
+        _clipboardMarkChatAudioAutoplayAttempted,
         _clipboardCreateChatMessage,
         _clipboardCreatePdfChatMessage,
         _clipboardCreateAudioChatMessage,
+        _clipboardOnRenderChatMessageHTML,
         _clipboardPostChatImage
       };
     }
@@ -7408,7 +7483,7 @@ var FoundryPasteEaterRuntime = (() => {
             settled = true;
             resolve(behavior);
           };
-          const defaultBehavior = { playAsMessageSound: false };
+          const defaultBehavior = { playOnceNow: false };
           const DialogConstructor = globalThis.Dialog;
           if (typeof DialogConstructor !== "function") {
             settle(defaultBehavior);
@@ -7422,9 +7497,9 @@ var FoundryPasteEaterRuntime = (() => {
                 label: "Audio card only",
                 callback: () => settle(defaultBehavior)
               },
-              sound: {
-                label: "Audio card + message sound",
-                callback: () => settle({ playAsMessageSound: true })
+              playNow: {
+                label: "Audio card + play once now",
+                callback: () => settle({ playOnceNow: true })
               }
             },
             default: "card",
@@ -7440,7 +7515,7 @@ var FoundryPasteEaterRuntime = (() => {
           if (!audioData?.src) return false;
           await _clipboardCreateAudioChatMessage({
             audioData,
-            playAsMessageSound: Boolean(behavior?.playAsMessageSound)
+            playOnceNow: Boolean(behavior?.playOnceNow)
           });
           return true;
         } catch (error) {
@@ -8468,15 +8543,22 @@ var FoundryPasteEaterRuntime = (() => {
           "#playlists, .directory.playlists, [data-tab='playlists'], [data-application-part='playlists']"
         );
       }
+      function _clipboardElementContainsTarget(container, target) {
+        const normalizedContainer = _clipboardGetElementTarget(container);
+        const normalizedTarget = _clipboardGetElementTarget(target);
+        if (!normalizedContainer || !normalizedTarget) return false;
+        return normalizedContainer === normalizedTarget || normalizedContainer.contains(normalizedTarget);
+      }
       function _clipboardGetPlaylistPasteTarget(target) {
         const normalizedTarget = _clipboardGetElementTarget(target);
         const activeElement = _clipboardGetElementTarget(document.activeElement);
+        const activePlaylistUiRoot = _clipboardGetActivePlaylistUiRoot();
         const shouldUseFallbackTarget = (!normalizedTarget || _clipboardIsPageRootTarget(normalizedTarget)) && !_clipboardIsEditableTarget(activeElement);
+        const lastPointerTarget = shouldUseFallbackTarget ? _clipboardGetLastPointerTarget() : null;
         const candidateTargets = [
           normalizedTarget,
-          shouldUseFallbackTarget ? _clipboardGetLastPointerTarget() : null,
-          activeElement,
-          _clipboardGetActivePlaylistUiRoot()
+          lastPointerTarget,
+          activeElement
         ];
         const seenTargets = /* @__PURE__ */ new Set();
         let fallbackTarget = null;
@@ -8489,7 +8571,15 @@ var FoundryPasteEaterRuntime = (() => {
           if (playlistTarget.playlist || playlistTarget.playlistSound) return playlistTarget;
           fallbackTarget ||= playlistTarget;
         }
-        return fallbackTarget;
+        if (fallbackTarget) return fallbackTarget;
+        if (!shouldUseFallbackTarget || !activePlaylistUiRoot) return null;
+        const hasPlaylistInteraction = [
+          normalizedTarget,
+          lastPointerTarget,
+          activeElement
+        ].some((candidate) => _clipboardElementContainsTarget(activePlaylistUiRoot, candidate));
+        if (!hasPlaylistInteraction) return null;
+        return _clipboardGetPlaylistTargetFromElement(activePlaylistUiRoot);
       }
       function _clipboardFocusGameRoot() {
         const root = _clipboardGetGameRoot();
@@ -9155,6 +9245,7 @@ var FoundryPasteEaterRuntime = (() => {
         settings._clipboardRegisterSettings();
         Hooks.on("getSceneControlButtons", uiHandlers._clipboardAddSceneControlButtons);
         Hooks.on("renderChatInput", uiHandlers._clipboardOnRenderChatInput);
+        Hooks.on("renderChatMessageHTML", chat._clipboardOnRenderChatMessageHTML);
         diagnostics._clipboardLog("info", "Initializing foundry-paste-eater module.", {
           clipboardReadAvailable: Boolean(navigator.clipboard?.read),
           sceneControls: constants.CLIPBOARD_IMAGE_SCENE_CONTROLS

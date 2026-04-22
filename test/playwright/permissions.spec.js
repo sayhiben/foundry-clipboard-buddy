@@ -125,10 +125,15 @@ async function invokeHookedSceneTool(page, controlName, toolName) {
       ? control.tools
       : Object.values(control?.tools || {});
     const tool = tools.find(entry => entry?.name === toolName) || null;
-    if (!tool?.visible || typeof tool.onClick !== "function") {
+    const callback = typeof tool?.onChange === "function"
+      ? tool.onChange
+      : typeof tool?.onClick === "function"
+        ? tool.onClick
+        : null;
+    if (!tool?.visible || !callback) {
       throw new Error(`Could not find visible tool ${toolName} on control ${controlName}.`);
     }
-    tool.onClick();
+    callback();
   }, {controlName, toolName});
 }
 

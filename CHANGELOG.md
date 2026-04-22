@@ -1,7 +1,11 @@
 ### Unreleased
-* Add audio paste and upload support for Foundry audio formats, including chat audio cards, optional `ChatMessage.sound`, canvas AmbientSound creation, PlaylistSound add/update flows, focused audio document fields, and direct audio URL fallbacks
-* Route organized audio uploads under the `audio` context and include AmbientSound, PlaylistSound, ChatMessage sound, and chat audio-card references in uploaded-media audit reporting
-* Expand unit and Playwright coverage for audio extraction, routing precedence, prompts, permissions, playlist behavior, focused fields, chat cards, and canvas AmbientSound creation
+
+### 1.4.0
+* Add audio paste and upload support for Foundry audio formats, including chat audio cards, `Audio card + play once now`, canvas AmbientSound creation, PlaylistSound add/update flows, focused audio document fields, and direct audio URL fallbacks
+* Route organized audio uploads under the `audio` context and include AmbientSound, PlaylistSound, `ChatMessage.sound`, and chat audio-card references in uploaded-media audit reporting
+* Fix Firefox upload-picker handling so real file selections are not misreported as canceled when the browser restores focus before the file-input change event arrives
+* Fix duplicate scene upload control callbacks and preserve playlist sidebar targeting when the real Foundry sidebar delivers paste events at the page root instead of the clicked playlist row
+* Expand unit, Playwright, and Firefox coverage for audio extraction, prompts, chat playback behavior, playlist targeting, focused audio fields, scene uploads, and canvas AmbientSound creation
 
 ### 1.3.1
 * Mark the module as verified through Foundry V14.359 after running the full local release gate and Playwright smoke suite against a real V14 world

@@ -82,18 +82,26 @@ function _clipboardGetActivePlaylistUiRoot() {
   );
 }
 
+function _clipboardElementContainsTarget(container, target) {
+  const normalizedContainer = _clipboardGetElementTarget(container);
+  const normalizedTarget = _clipboardGetElementTarget(target);
+  if (!normalizedContainer || !normalizedTarget) return false;
+  return normalizedContainer === normalizedTarget || normalizedContainer.contains(normalizedTarget);
+}
+
 function _clipboardGetPlaylistPasteTarget(target) {
   const normalizedTarget = _clipboardGetElementTarget(target);
   const activeElement = _clipboardGetElementTarget(document.activeElement);
+  const activePlaylistUiRoot = _clipboardGetActivePlaylistUiRoot();
   const shouldUseFallbackTarget = (
     !normalizedTarget ||
     _clipboardIsPageRootTarget(normalizedTarget)
   ) && !_clipboardIsEditableTarget(activeElement);
+  const lastPointerTarget = shouldUseFallbackTarget ? _clipboardGetLastPointerTarget() : null;
   const candidateTargets = [
     normalizedTarget,
-    shouldUseFallbackTarget ? _clipboardGetLastPointerTarget() : null,
+    lastPointerTarget,
     activeElement,
-    _clipboardGetActivePlaylistUiRoot(),
   ];
   const seenTargets = new Set();
   let fallbackTarget = null;
@@ -109,7 +117,17 @@ function _clipboardGetPlaylistPasteTarget(target) {
     fallbackTarget ||= playlistTarget;
   }
 
-  return fallbackTarget;
+  if (fallbackTarget) return fallbackTarget;
+  if (!shouldUseFallbackTarget || !activePlaylistUiRoot) return null;
+
+  const hasPlaylistInteraction = [
+    normalizedTarget,
+    lastPointerTarget,
+    activeElement,
+  ].some(candidate => _clipboardElementContainsTarget(activePlaylistUiRoot, candidate));
+  if (!hasPlaylistInteraction) return null;
+
+  return _clipboardGetPlaylistTargetFromElement(activePlaylistUiRoot);
 }
 
 function _clipboardFocusGameRoot() {

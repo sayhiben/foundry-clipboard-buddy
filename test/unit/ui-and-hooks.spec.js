@@ -853,6 +853,80 @@ describe("ui and hook integration helpers", () => {
       await expect(api._clipboardCreateChatMessage("")).rejects.toThrow("usable media path");
     });
 
+    it("can mark chat audio cards to play once now and auto-play them once on render", async () => {
+      const message = await api._clipboardCreateAudioChatMessage({
+        audioData: {
+          src: "folder/theme.mp3",
+          name: "theme",
+        },
+        playOnceNow: true,
+      });
+
+      expect(message.flags?.["foundry-paste-eater"]?.playOnceNow).toBe(true);
+      expect(api._clipboardGetChatAudioAutoplayFlag(message)).toBe(true);
+      expect(api._clipboardShouldAutoplayChatAudio(message)).toBe(true);
+
+      const root = document.createElement("div");
+      root.innerHTML = message.content;
+      const audio = root.querySelector(".foundry-paste-eater-chat-audio");
+      audio.play = vi.fn(() => Promise.resolve());
+
+      api._clipboardOnRenderChatMessageHTML(message, root);
+      expect(audio.play).toHaveBeenCalledTimes(1);
+      expect(api._clipboardShouldAutoplayChatAudio(message)).toBe(false);
+
+      api._clipboardOnRenderChatMessageHTML(message, root);
+      expect(audio.play).toHaveBeenCalledTimes(1);
+    });
+
+    it("covers chat audio autoplay edge cases and fallback branches", async () => {
+      const message = {
+        id: "message-edge",
+        timestamp: Date.now(),
+        flags: {
+          "foundry-paste-eater": {
+            playOnceNow: true,
+          },
+        },
+      };
+      const root = document.createElement("div");
+      root.innerHTML = '<audio class="foundry-paste-eater-chat-audio"></audio>';
+      const audio = root.querySelector(".foundry-paste-eater-chat-audio");
+
+      expect(api._clipboardResolveChatHtmlRoot(root)).toBe(root);
+      expect(api._clipboardResolveChatHtmlRoot({0: root})).toBe(root);
+      expect(api._clipboardResolveChatHtmlRoot({get: () => root})).toBe(root);
+      expect(api._clipboardResolveChatHtmlRoot({})).toBeNull();
+      expect(api._clipboardShouldAutoplayChatAudio({
+        ...message,
+        timestamp: Date.now() - 60_000,
+      })).toBe(false);
+
+      audio.play = undefined;
+      api._clipboardQueueChatAudioAutoplay(message.id);
+      api._clipboardOnRenderChatMessageHTML(message, root);
+      expect(api._clipboardShouldAutoplayChatAudio(message)).toBe(true);
+
+      audio.play = vi.fn(() => Promise.reject(new Error("blocked")));
+      api._clipboardQueueChatAudioAutoplay(message.id);
+      api._clipboardOnRenderChatMessageHTML(message, root);
+      await Promise.resolve();
+      expect(audio.play).toHaveBeenCalledTimes(1);
+
+      const syncMessage = {
+        ...message,
+        id: "message-sync",
+      };
+      audio.play = vi.fn(() => {
+        throw new Error("sync");
+      });
+      api._clipboardQueueChatAudioAutoplay(syncMessage.id);
+      api._clipboardOnRenderChatMessageHTML(syncMessage, root);
+      expect(audio.play).toHaveBeenCalledTimes(1);
+
+      await expect(api._clipboardCreateAudioChatMessage({audioData: {}})).rejects.toThrow("usable audio path");
+    });
+
     it("adds scene control buttons to tiles and tokens", () => {
       const controls = {
         tiles: {tools: {}},
@@ -1880,6 +1954,7 @@ describe("ui and hook integration helpers", () => {
       directory.className = "tab sidebar-tab directory playlists-sidebar active";
       directory.dataset.tab = "playlists";
       document.body.append(directory);
+      api._clipboardOnMouseDown({target: directory});
 
       const audio = new File(["audio"], "playlist-panel.wav", {type: "audio/wav"});
       const event = {
@@ -1907,6 +1982,34 @@ describe("ui and hook integration helpers", () => {
         name: "playlist-panel",
         path: expect.stringMatching(/^pasted_images\/playlist-panel-\d+\.wav\?foundry-paste-eater=\d+$/),
       });
+    });
+
+    it("does not route page-root audio paste into playlists without playlist interaction", async () => {
+      const directory = document.createElement("section");
+      directory.id = "playlists";
+      directory.className = "tab sidebar-tab directory playlists-sidebar active";
+      directory.dataset.tab = "playlists";
+      document.body.append(directory);
+      document.querySelector(".game").focus();
+
+      const audio = new File(["audio"], "playlist-unfocused.wav", {type: "audio/wav"});
+      const event = {
+        target: document.body,
+        clipboardData: createDataTransfer({
+          items: [{
+            kind: "file",
+            type: "audio/wav",
+            getAsFile: () => audio,
+          }],
+          files: [audio],
+        }),
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+
+      api._clipboardOnPaste(event);
+      await flush();
+      expect(globalThis.foundry.documents.Playlist.create).not.toHaveBeenCalled();
     });
 
     it("routes canvas PDF paste events through the PDF note pipeline", async () => {
@@ -2831,6 +2934,7 @@ describe("ui and hook integration helpers", () => {
       env.onceHandlers.init();
       expect(globalThis.Hooks.on).toHaveBeenCalledWith("getSceneControlButtons", api._clipboardAddSceneControlButtons);
       expect(globalThis.Hooks.on).toHaveBeenCalledWith("renderChatInput", api._clipboardOnRenderChatInput);
+      expect(globalThis.Hooks.on).toHaveBeenCalledWith("renderChatMessageHTML", api._clipboardOnRenderChatMessageHTML);
       expect(globalThis.game.keybindings.register).not.toHaveBeenCalled();
     });
 

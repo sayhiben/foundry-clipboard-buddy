@@ -21,6 +21,7 @@ Hooks.once("init", function() {
   settings._clipboardRegisterSettings();
   Hooks.on("getSceneControlButtons", uiHandlers._clipboardAddSceneControlButtons);
   Hooks.on("renderChatInput", uiHandlers._clipboardOnRenderChatInput);
+  Hooks.on("renderChatMessageHTML", chat._clipboardOnRenderChatMessageHTML);
   diagnostics._clipboardLog("info", "Initializing foundry-paste-eater module.", {
     clipboardReadAvailable: Boolean(navigator.clipboard?.read),
     sceneControls: constants.CLIPBOARD_IMAGE_SCENE_CONTROLS,

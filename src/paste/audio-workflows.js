@@ -156,7 +156,7 @@ function _clipboardPromptChatAudioBehavior() {
       resolve(behavior);
     };
 
-    const defaultBehavior = {playAsMessageSound: false};
+    const defaultBehavior = {playOnceNow: false};
     const DialogConstructor = globalThis.Dialog;
     if (typeof DialogConstructor !== "function") {
       settle(defaultBehavior);
@@ -171,9 +171,9 @@ function _clipboardPromptChatAudioBehavior() {
           label: "Audio card only",
           callback: () => settle(defaultBehavior),
         },
-        sound: {
-          label: "Audio card + message sound",
-          callback: () => settle({playAsMessageSound: true}),
+        playNow: {
+          label: "Audio card + play once now",
+          callback: () => settle({playOnceNow: true}),
         },
       },
       default: "card",
@@ -192,7 +192,7 @@ async function _clipboardHandleChatAudioInput(audioInput) {
 
     await _clipboardCreateAudioChatMessage({
       audioData,
-      playAsMessageSound: Boolean(behavior?.playAsMessageSound),
+      playOnceNow: Boolean(behavior?.playOnceNow),
     });
     return true;
   } catch (error) {

@@ -242,7 +242,7 @@ Leave the default `Canvas text paste mode = Scene notes` setting enabled before 
 8. Drag and drop image, video, or PDF files onto the chat input.
    Expected: the dropped file is uploaded and posted as chat media or a PDF reference.
 9. Paste or drop an audio file into chat.
-   Expected: a prompt offers `Audio card only` and `Use as message sound`; the default audio card posts without creating canvas content.
+   Expected: a prompt offers `Audio card only` and `Audio card + play once now`; the default audio card posts without creating canvas content.
 10. Paste a direct audio URL into chat from a host that blocks browser-side downloads.
    Expected: if the URL is clearly audio-like, the chat audio card can use the original URL instead of creating an empty message.
 11. Use the chat `Upload Chat Media, PDF, or Audio` button.

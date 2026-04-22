@@ -1602,7 +1602,7 @@ describe("paste and handler workflows", () => {
       });
     });
 
-    it("posts chat audio cards by default and can set ChatMessage.sound", async () => {
+    it("posts chat audio cards by default and can mark them to play once now", async () => {
       const defaultPost = api._clipboardHandleChatAudioInput({
         blob: new File(["audio"], "chat.mp3", {type: "audio/mpeg"}),
       });
@@ -1613,16 +1613,18 @@ describe("paste and handler workflows", () => {
       expect(message.content).toContain("foundry-paste-eater-chat-audio-message");
       expect(message.content).toContain("<audio");
       expect(message.sound).toBeUndefined();
+      expect(message.flags?.["foundry-paste-eater"]?.playOnceNow).toBe(false);
 
-      const soundPost = api._clipboardHandleChatAudioInput({
+      const playNowPost = api._clipboardHandleChatAudioInput({
         blob: new File(["audio"], "notify.mp3", {type: "audio/mpeg"}),
       });
-      env.dialogInstances.at(-1).data.buttons.sound.callback();
-      await expect(soundPost).resolves.toBe(true);
+      env.dialogInstances.at(-1).data.buttons.playNow.callback();
+      await expect(playNowPost).resolves.toBe(true);
 
       message = globalThis.game.messages.contents.at(-1);
       expect(message.content).toContain("foundry-paste-eater-chat-audio-message");
-      expect(message.sound).toMatch(/^pasted_images\/notify-\d+\.mp3\?foundry-paste-eater=\d+$/);
+      expect(message.sound).toBeUndefined();
+      expect(message.flags?.["foundry-paste-eater"]?.playOnceNow).toBe(true);
     });
 
     it("annotates chat audio handling failures", async () => {
@@ -1804,7 +1806,7 @@ describe("paste and handler workflows", () => {
       const OriginalDialog = globalThis.Dialog;
       try {
         delete globalThis.Dialog;
-        await expect(api._clipboardPromptChatAudioBehavior()).resolves.toEqual({playAsMessageSound: false});
+        await expect(api._clipboardPromptChatAudioBehavior()).resolves.toEqual({playOnceNow: false});
         await expect(api._clipboardPromptCanvasAudioBehavior()).resolves.toEqual({repeat: false});
       } finally {
         globalThis.Dialog = OriginalDialog;
@@ -1813,8 +1815,8 @@ describe("paste and handler workflows", () => {
       const chatPrompt = api._clipboardPromptChatAudioBehavior();
       const chatDialog = env.dialogInstances.at(-1);
       chatDialog.data.buttons.card.callback();
-      chatDialog.data.buttons.sound.callback();
-      await expect(chatPrompt).resolves.toEqual({playAsMessageSound: false});
+      chatDialog.data.buttons.playNow.callback();
+      await expect(chatPrompt).resolves.toEqual({playOnceNow: false});
 
       const canvasPrompt = api._clipboardPromptCanvasAudioBehavior();
       const canvasDialog = env.dialogInstances.at(-1);
